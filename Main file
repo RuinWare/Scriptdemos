@@ -1808,16 +1808,15 @@ bubble.MouseButton1Click:Connect(function()
 end)
 
 -- ═══════════════════════════════════════════════════════════════════
---  FEATURE LOGIC  ·  Auto Jump
+--  FEATURE LOGIC  ·  Auto Jump (buffed)
 -- ═══════════════════════════════════════════════════════════════════
 local MAX_SLOPE_COS = math.cos(math.rad(35))
-local JUMP_COOLDOWN = 0.12
+local lastJump = 0
+local JUMP_COOLDOWN = 0.02   -- was 0.12 — basically one frame at 60fps
 
 local jumpRayParams = RaycastParams.new()
 jumpRayParams.FilterType = Enum.RaycastFilterType.Exclude
 jumpRayParams.IgnoreWater = true
-
-local lastJump = 0
 
 local function worstGroundNormal(char, root)
     jumpRayParams.FilterDescendantsInstances = { char }
@@ -1841,78 +1840,122 @@ local function worstGroundNormal(char, root)
     return got, worstY
 end
 
-RunService.Heartbeat:Connect(function()
+RunService.Stepped:Connect(function()
     if not Features.autojump or not Features.autojump.enabled then return end
-    local now = tick()
-    if now - lastJump < JUMP_COOLDOWN then return end
+
     local char = player.Character
     if not char then return end
     local hum = char:FindFirstChildOfClass("Humanoid")
     if not hum then return end
-    local state = hum:GetState()
-    if state == Enum.HumanoidStateType.Jumping
-    or state == Enum.HumanoidStateType.Freefall
-    or state == Enum.HumanoidStateType.Landed then return end
+
+    -- Grounded check (fastest possible bail)
     if hum.FloorMaterial == Enum.Material.Air then return end
+
+    -- Only skip if we're actively rising or falling — no more Landed check
+    local st = hum:GetState()
+    if st == Enum.HumanoidStateType.Jumping
+    or st == Enum.HumanoidStateType.Freefall then return end
+
+    -- Tiny cooldown, just enough to avoid burning CPU every single frame
+    local now = tick()
+    if now - lastJump < JUMP_COOLDOWN then return end
+
     local root = char:FindFirstChild("HumanoidRootPart")
     if not root then return end
+
     local gotGround, worstY = worstGroundNormal(char, root)
     if gotGround and worstY < MAX_SLOPE_COS then return end
+
     pcall(function() hum:ChangeState(Enum.HumanoidStateType.Jumping) end)
     lastJump = now
 end)
 
 -- ═══════════════════════════════════════════════════════════════════
---  FEATURE LOGIC  ·  Spam Crouch
+--  FEATURE LOGIC  ·  Spam Crouch (robust event lookup + identity bump)
 -- ═══════════════════════════════════════════════════════════════════
-local spamEvent
-pcall(function()
-    local events = game:GetService("ReplicatedStorage"):FindFirstChild("Events")
-    if events then
-        spamEvent = events:FindFirstChild("UpdateCharacterDataRegistry")
-    end
-end)
+local spamCrouchTask = nil
 
--- Pre-build the byte buffer once and reuse it (immutable bytes)
-local crouchBuffer
-do
+-- Fresh buffer each fire — safer than reusing a cached one
+local function buildCrouchBuffer()
     local bytes = { 15, 0 }
     local b = buffer.create(#bytes)
     for i = 1, #bytes do
         buffer.writeu8(b, i - 1, bytes[i])
     end
-    crouchBuffer = b
+    return b
 end
 
-local spamCrouchTask = nil
+-- Look the event up fresh every time; caches nothing so a missing
+-- ReplicatedStorage.Events at boot can't brick the feature forever.
+local function lookupSpamEvent()
+    local ok, rs = pcall(function() return game:GetService("ReplicatedStorage") end)
+    if not ok or not rs then return nil end
+
+    local events = rs:FindFirstChild("Events")
+    if not events then
+        local ok2, ev = pcall(function() return rs:WaitForChild("Events", 1) end)
+        if ok2 then events = ev end
+    end
+    if not events then return nil end
+
+    local ev = events:FindFirstChild("UpdateCharacterDataRegistry")
+    if not ev then
+        local ok3, ev3 = pcall(function() return events:WaitForChild("UpdateCharacterDataRegistry", 1) end)
+        if ok3 then ev = ev3 end
+    end
+    return ev
+end
+
+-- Runs the FireServer with the game's own thread identity if the
+-- executor supports setthreadidentity. This is what makes some
+-- "runs from the game" scripts work when plain FireServer doesn't.
+local function fireCrouch(state)
+    local ev = lookupSpamEvent()
+    if not ev then return false end
+    local buf = buildCrouchBuffer()
+    local ok = pcall(function()
+        if setthreadidentity then
+            pcall(setthreadidentity, 8)
+        end
+        ev:FireServer({ buf, state })
+    end)
+    return ok
+end
 
 local function startSpamCrouch()
-    if spamCrouchTask then task.cancel(spamCrouchTask) end
-    if not spamEvent then return end
+    if spamCrouchTask then
+        pcall(task.cancel, spamCrouchTask)
+        spamCrouchTask = nil
+    end
+
+    -- One-shot check so we can report "event not found" in the status bar
+    if not lookupSpamEvent() then
+        setStatus("crouch: event not found", C.bad)
+        return
+    end
+
     spamCrouchTask = task.spawn(function()
+        -- Bump the thread identity once for the whole loop
+        if setthreadidentity then pcall(setthreadidentity, 8) end
+
+        setStatus("crouch: spamming", C.good)
         local useCrouchIdle = true
         while Features.spamcrouch and Features.spamcrouch.enabled do
             local state = useCrouchIdle and "CrouchIdle" or "Idle"
-            pcall(function()
-                spamEvent:FireServer({ crouchBuffer, state })
-            end)
+            fireCrouch(state)
             useCrouchIdle = not useCrouchIdle
-            local spd = Config.get("crouch_speed") or 0.08
-            task.wait(spd)
+            task.wait(Config.get("crouch_speed") or 0.08)
         end
     end)
 end
 
 local function stopSpamCrouch()
     if spamCrouchTask then
-        task.cancel(spamCrouchTask)
+        pcall(task.cancel, spamCrouchTask)
         spamCrouchTask = nil
     end
-    if spamEvent then
-        pcall(function()
-            spamEvent:FireServer({ crouchBuffer, "Idle" })
-        end)
-    end
+    -- Send one final Idle so the character doesn't get stuck crouched
+    fireCrouch("Idle")
 end
 
 Features.addListener("spamcrouch", function(enabled)
