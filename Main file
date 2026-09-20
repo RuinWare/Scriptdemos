@@ -1,5 +1,5 @@
 -- ═══════════════════════════════════════════════════════════════════
---   R E F O R G E D   ·   v1.2
+--   R E F O R G E D   ·   v1.3
 -- ═══════════════════════════════════════════════════════════════════
 local Players          = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
@@ -33,12 +33,11 @@ local LOGO_ID    = "rbxassetid://127983099298280"
 local MAX_LAYER  = 2147483647
 
 -- ═══════════════════════════════════════════════════════════════════
---  USER CARD  ·  edit this section for your profile card
+--  USER CARD  ·  edit the description below
 -- ═══════════════════════════════════════════════════════════════════
 local USER_CARD = {
-    username    = player.Name,   -- auto-filled
-    description = "test",        -- shown under username
-    -- future fields go here, just render them in buildUserCard() below
+    username    = player.Name,
+    description = "test",
 }
 
 -- ═══════════════════════════════════════════════════════════════════
@@ -89,7 +88,14 @@ guiHud.DisplayOrder = MAX_LAYER
 guiHud.Parent = pg
 
 -- ═══════════════════════════════════════════════════════════════════
---  WINDOW  (everything wrapped in a container so we can animate as one)
+--  FORWARD DECLARATIONS
+-- ═══════════════════════════════════════════════════════════════════
+local setStatus
+local switchTab
+local Features = {}
+
+-- ═══════════════════════════════════════════════════════════════════
+--  WINDOW
 -- ═══════════════════════════════════════════════════════════════════
 local MIN_W, MIN_H = 380, 380
 local DEF_W, DEF_H = 520, 460
@@ -107,8 +113,7 @@ local winScale = Instance.new("UIScale")
 winScale.Scale = 1
 winScale.Parent = windowContainer
 
--- CRAZY GLOW: three stacked halos pulsing out of phase
-local function makeGlowLayer(offset, thickness, alpha, period)
+local function makeGlowLayer(offset, alpha, period)
     local g = Instance.new("Frame")
     g.Size = UDim2.fromOffset(DEF_W + offset*2, DEF_H + offset*2)
     g.Position = UDim2.new(0, -offset, 0, -offset)
@@ -131,9 +136,9 @@ local function makeGlowLayer(offset, thickness, alpha, period)
     return g
 end
 
-local glowOuter  = makeGlowLayer(26, 1, 0.94, 2.4)
-local glowMid    = makeGlowLayer(14, 1, 0.86, 2.0)
-local glowInner  = makeGlowLayer(6,  1, 0.72, 1.6)
+makeGlowLayer(26, 0.94, 2.4)
+makeGlowLayer(14, 0.86, 2.0)
+makeGlowLayer(6,  0.72, 1.6)
 
 local shadow = Instance.new("Frame")
 shadow.Size = UDim2.fromOffset(DEF_W, DEF_H)
@@ -148,7 +153,6 @@ Instance.new("UICorner", shadow).CornerRadius = UDim.new(0, 16)
 local win = Instance.new("Frame")
 win.Name = "Window"
 win.Size = UDim2.fromOffset(DEF_W, DEF_H)
-win.Position = UDim2.new(0, 0, 0, 0)
 win.BackgroundColor3 = C.panel
 win.BorderSizePixel = 0
 win.ClipsDescendants = true
@@ -276,7 +280,7 @@ local subtitleText = Instance.new("TextLabel")
 subtitleText.Size = UDim2.new(1, -160, 0, 14)
 subtitleText.Position = UDim2.new(0, 57, 0, 30)
 subtitleText.BackgroundTransparency = 1
-subtitleText.Text = "v1.2"
+subtitleText.Text = "v1.3"
 subtitleText.TextColor3 = C.sub
 subtitleText.TextSize = 10
 subtitleText.Font = FONT_MONO
@@ -473,8 +477,6 @@ end
 -- ═══════════════════════════════════════════════════════════════════
 --  FEATURE REGISTRY
 -- ═══════════════════════════════════════════════════════════════════
-local Features = {}
-
 function Features.register(id, opts)
     Features[id] = {
         id = id,
@@ -488,10 +490,6 @@ function Features.register(id, opts)
         pillVisible = true,
         hudOffset = opts.hudOffset or Vector2.new(-180, 200),
         listeners = {},
-        onEnable = opts.onEnable,
-        onDisable = opts.onDisable,
-        floating = nil,
-        refreshFloating = nil,
     }
     return Features[id]
 end
@@ -500,8 +498,6 @@ function Features.setEnabled(id, state)
     local f = Features[id]
     if not f or f.enabled == state then return end
     f.enabled = state
-    if state and f.onEnable then pcall(f.onEnable) end
-    if not state and f.onDisable then pcall(f.onDisable) end
     for _, cb in ipairs(f.listeners) do pcall(cb, state) end
 end
 
@@ -1513,7 +1509,7 @@ local credVer = Instance.new("TextLabel")
 credVer.Size = UDim2.new(1, 0, 0, 16)
 credVer.Position = UDim2.new(0, 0, 0, 142)
 credVer.BackgroundTransparency = 1
-credVer.Text = "v1.2  ·  private build"
+credVer.Text = "v1.3  ·  private build"
 credVer.TextColor3 = C.sub
 credVer.TextSize = 10
 credVer.Font = FONT_MONO
@@ -1577,7 +1573,6 @@ function setStatus(text, color, hold)
     statusUntil = tick() + (hold or 0)
 end
 
--- revert to idle after temp hold expires
 task.spawn(function()
     while true do
         task.wait(0.25)
@@ -1589,34 +1584,29 @@ task.spawn(function()
 end)
 
 -- ═══════════════════════════════════════════════════════════════════
---  SIDEBAR  ·  search + results + user card
+--  SIDEBAR  ·  screen-anchored to the far left
 -- ═══════════════════════════════════════════════════════════════════
-local SB_W = 108
-local SB_GAP = 8
+local SB_W = 220  -- was thin; now wider for text
 
 local sidebar = Instance.new("Frame")
 sidebar.Name = "Sidebar"
-sidebar.Size = UDim2.fromOffset(SB_W, DEF_H)
-sidebar.Position = UDim2.new(0.5, -DEF_W/2 - SB_W - SB_GAP, 0.5, -DEF_H/2)
+sidebar.Size = UDim2.new(0, SB_W, 1, 0)   -- full screen height
+sidebar.Position = UDim2.new(0, -SB_W - 10, 0, 0)  -- start off-screen left
 sidebar.BackgroundColor3 = C.panel
-sidebar.BackgroundTransparency = 0.15
+sidebar.BackgroundTransparency = 0.08
 sidebar.BorderSizePixel = 0
 sidebar.ClipsDescendants = true
 sidebar.Active = true
-sidebar.ZIndex = 2
+sidebar.ZIndex = 20
 sidebar.Parent = guiMain
-Instance.new("UICorner", sidebar).CornerRadius = UDim.new(0, 14)
-
-local sbScale = Instance.new("UIScale")
-sbScale.Scale = 1
-sbScale.Parent = sidebar
+Instance.new("UICorner", sidebar).CornerRadius = UDim.new(0, 0)
 
 local sbGrad = Instance.new("UIGradient")
 sbGrad.Color = ColorSequence.new{
     ColorSequenceKeypoint.new(0, C.panel2),
     ColorSequenceKeypoint.new(1, C.space),
 }
-sbGrad.Rotation = 90
+sbGrad.Rotation = 0
 sbGrad.Parent = sidebar
 
 local sbStroke = Instance.new("UIStroke")
@@ -1625,14 +1615,27 @@ sbStroke.Thickness = 1.4
 sbStroke.Transparency = 0.25
 sbStroke.Parent = sidebar
 
--- Search box (top)
+-- Title (top)
+local sbTitle = Instance.new("TextLabel")
+sbTitle.Size = UDim2.new(1, -20, 0, 20)
+sbTitle.Position = UDim2.new(0, 14, 0, 12)
+sbTitle.BackgroundTransparency = 1
+sbTitle.Text = "FEATURES"
+sbTitle.TextColor3 = C.text
+sbTitle.TextSize = 11
+sbTitle.Font = FONT_BOLD
+sbTitle.TextXAlignment = Enum.TextXAlignment.Left
+sbTitle.ZIndex = 21
+sbTitle.Parent = sidebar
+
+-- Search box
 local searchHolder = Instance.new("Frame")
-searchHolder.Size = UDim2.new(1, -16, 0, 32)
-searchHolder.Position = UDim2.new(0, 8, 0, 10)
+searchHolder.Size = UDim2.new(1, -20, 0, 32)
+searchHolder.Position = UDim2.new(0, 10, 0, 38)
 searchHolder.BackgroundColor3 = Color3.fromRGB(20, 24, 40)
 searchHolder.BackgroundTransparency = 0.4
 searchHolder.BorderSizePixel = 0
-searchHolder.ZIndex = 5
+searchHolder.ZIndex = 21
 searchHolder.Parent = sidebar
 Instance.new("UICorner", searchHolder).CornerRadius = UDim.new(0, 8)
 
@@ -1650,7 +1653,7 @@ searchIcon.Text = "⌕"
 searchIcon.TextColor3 = C.sub
 searchIcon.TextSize = 14
 searchIcon.Font = FONT_ICON
-searchIcon.ZIndex = 6
+searchIcon.ZIndex = 22
 searchIcon.Parent = searchHolder
 
 local searchBox = Instance.new("TextBox")
@@ -1658,32 +1661,32 @@ searchBox.Size = UDim2.new(1, -32, 1, 0)
 searchBox.Position = UDim2.new(0, 26, 0, 0)
 searchBox.BackgroundTransparency = 1
 searchBox.Text = ""
-searchBox.PlaceholderText = "search..."
+searchBox.PlaceholderText = "search features..."
 searchBox.PlaceholderColor3 = C.sub
 searchBox.TextColor3 = C.text
 searchBox.TextSize = 11
 searchBox.Font = FONT_MONO
 searchBox.TextXAlignment = Enum.TextXAlignment.Left
 searchBox.ClearTextOnFocus = false
-searchBox.ZIndex = 6
+searchBox.ZIndex = 22
 searchBox.Parent = searchHolder
 
 -- Results list (fills middle)
 local resultsScroll = Instance.new("ScrollingFrame")
-resultsScroll.Size = UDim2.new(1, -16, 1, -32 - 10 - 62)
-resultsScroll.Position = UDim2.new(0, 8, 0, 50)
+resultsScroll.Size = UDim2.new(1, -20, 1, -38 - 32 - 10 - 62)
+resultsScroll.Position = UDim2.new(0, 10, 0, 78)
 resultsScroll.BackgroundTransparency = 1
 resultsScroll.BorderSizePixel = 0
 resultsScroll.ScrollBarThickness = 2
 resultsScroll.ScrollBarImageColor3 = C.border
 resultsScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
 resultsScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
-resultsScroll.ZIndex = 5
+resultsScroll.ZIndex = 21
 resultsScroll.Parent = sidebar
 
 local function rebuildResults(filter)
     for _, c in ipairs(resultsScroll:GetChildren()) do
-        if c:IsA("Frame") or c:IsA("TextButton") then c:Destroy() end
+        if c:IsA("Frame") or c:IsA("TextButton") or c:IsA("TextLabel") then c:Destroy() end
     end
 
     filter = (filter or ""):lower():gsub("%s+", "")
@@ -1691,85 +1694,86 @@ local function rebuildResults(filter)
     local count = 0
 
     for _, f in pairs(Features) do
-        local nameLow = f.name:lower():gsub("%s+", "")
-        local catLow  = f.category:lower()
-        if filter == "" or nameLow:find(filter, 1, true) or catLow:find(filter, 1, true) then
-            local item = Instance.new("TextButton")
-            item.Size = UDim2.new(1, -4, 0, 44)
-            item.Position = UDim2.new(0, 2, 0, y)
-            item.BackgroundColor3 = Color3.fromRGB(20, 24, 40)
-            item.BackgroundTransparency = 0.55
-            item.Text = ""
-            item.AutoButtonColor = false
-            item.BorderSizePixel = 0
-            item.ZIndex = 6
-            item.Parent = resultsScroll
-            Instance.new("UICorner", item).CornerRadius = UDim.new(0, 8)
+        if type(f) == "table" and f.id then
+            local nameLow = f.name:lower():gsub("%s+", "")
+            local catLow  = f.category:lower()
+            if filter == "" or nameLow:find(filter, 1, true) or catLow:find(filter, 1, true) then
+                local item = Instance.new("TextButton")
+                item.Size = UDim2.new(1, -4, 0, 48)
+                item.Position = UDim2.new(0, 2, 0, y)
+                item.BackgroundColor3 = Color3.fromRGB(20, 24, 40)
+                item.BackgroundTransparency = 0.55
+                item.Text = ""
+                item.AutoButtonColor = false
+                item.BorderSizePixel = 0
+                item.ZIndex = 22
+                item.Parent = resultsScroll
+                Instance.new("UICorner", item).CornerRadius = UDim.new(0, 8)
 
-            local iStroke = Instance.new("UIStroke")
-            iStroke.Color = C.border
-            iStroke.Thickness = 1
-            iStroke.Transparency = 0.7
-            iStroke.Parent = item
+                local iStroke = Instance.new("UIStroke")
+                iStroke.Color = C.border
+                iStroke.Thickness = 1
+                iStroke.Transparency = 0.7
+                iStroke.Parent = item
 
-            local nm = Instance.new("TextLabel")
-            nm.Size = UDim2.new(1, -8, 0, 16)
-            nm.Position = UDim2.new(0, 6, 0, 6)
-            nm.BackgroundTransparency = 1
-            nm.Text = f.name
-            nm.TextColor3 = C.text
-            nm.TextSize = 10
-            nm.Font = FONT_BOLD
-            nm.TextXAlignment = Enum.TextXAlignment.Left
-            nm.TextTruncate = Enum.TextTruncate.AtEnd
-            nm.ZIndex = 7
-            nm.Parent = item
+                local nm = Instance.new("TextLabel")
+                nm.Size = UDim2.new(1, -22, 0, 16)
+                nm.Position = UDim2.new(0, 8, 0, 6)
+                nm.BackgroundTransparency = 1
+                nm.Text = f.name
+                nm.TextColor3 = C.text
+                nm.TextSize = 11
+                nm.Font = FONT_BOLD
+                nm.TextXAlignment = Enum.TextXAlignment.Left
+                nm.TextTruncate = Enum.TextTruncate.AtEnd
+                nm.ZIndex = 23
+                nm.Parent = item
 
-            local ct = Instance.new("TextLabel")
-            ct.Size = UDim2.new(1, -8, 0, 12)
-            ct.Position = UDim2.new(0, 6, 0, 24)
-            ct.BackgroundTransparency = 1
-            ct.Text = f.category:lower()
-            ct.TextColor3 = C.sub
-            ct.TextSize = 8
-            ct.Font = FONT_MONO
-            ct.TextXAlignment = Enum.TextXAlignment.Left
-            ct.TextTruncate = Enum.TextTruncate.AtEnd
-            ct.ZIndex = 7
-            ct.Parent = item
+                local ct = Instance.new("TextLabel")
+                ct.Size = UDim2.new(1, -22, 0, 12)
+                ct.Position = UDim2.new(0, 8, 0, 26)
+                ct.BackgroundTransparency = 1
+                ct.Text = f.category:lower()
+                ct.TextColor3 = C.sub
+                ct.TextSize = 9
+                ct.Font = FONT_MONO
+                ct.TextXAlignment = Enum.TextXAlignment.Left
+                ct.TextTruncate = Enum.TextTruncate.AtEnd
+                ct.ZIndex = 23
+                ct.Parent = item
 
-            -- state dot
-            local dot = Instance.new("Frame")
-            dot.Size = UDim2.fromOffset(6, 6)
-            dot.AnchorPoint = Vector2.new(1, 0.5)
-            dot.Position = UDim2.new(1, -8, 0, 18)
-            dot.BackgroundColor3 = f.enabled and C.good or C.sub
-            dot.BorderSizePixel = 0
-            dot.ZIndex = 7
-            dot.Parent = item
-            Instance.new("UICorner", dot).CornerRadius = UDim.new(1, 0)
+                local dot = Instance.new("Frame")
+                dot.Size = UDim2.fromOffset(6, 6)
+                dot.AnchorPoint = Vector2.new(1, 0.5)
+                dot.Position = UDim2.new(1, -10, 0, 20)
+                dot.BackgroundColor3 = f.enabled and C.good or C.sub
+                dot.BorderSizePixel = 0
+                dot.ZIndex = 23
+                dot.Parent = item
+                Instance.new("UICorner", dot).CornerRadius = UDim.new(1, 0)
 
-            Features.addListener(f.id, function(on)
-                if dot and dot.Parent then
-                    dot.BackgroundColor3 = on and C.good or C.sub
-                end
-            end)
+                Features.addListener(f.id, function(on)
+                    if dot and dot.Parent then
+                        dot.BackgroundColor3 = on and C.good or C.sub
+                    end
+                end)
 
-            item.MouseEnter:Connect(function()
-                TweenService:Create(item, TweenInfo.new(0.15), {BackgroundTransparency = 0.3}):Play()
-                TweenService:Create(iStroke, TweenInfo.new(0.15), {Transparency = 0.3}):Play()
-            end)
-            item.MouseLeave:Connect(function()
-                TweenService:Create(item, TweenInfo.new(0.15), {BackgroundTransparency = 0.55}):Play()
-                TweenService:Create(iStroke, TweenInfo.new(0.15), {Transparency = 0.7}):Play()
-            end)
-            item.MouseButton1Click:Connect(function()
-                Features.toggle(f.id)
-                switchTab(f.tab)
-            end)
+                item.MouseEnter:Connect(function()
+                    TweenService:Create(item, TweenInfo.new(0.15), {BackgroundTransparency = 0.3}):Play()
+                    TweenService:Create(iStroke, TweenInfo.new(0.15), {Transparency = 0.3}):Play()
+                end)
+                item.MouseLeave:Connect(function()
+                    TweenService:Create(item, TweenInfo.new(0.15), {BackgroundTransparency = 0.55}):Play()
+                    TweenService:Create(iStroke, TweenInfo.new(0.15), {Transparency = 0.7}):Play()
+                end)
+                item.MouseButton1Click:Connect(function()
+                    Features.toggle(f.id)
+                    if switchTab then switchTab(f.tab) end
+                end)
 
-            y = y + 50
-            count = count + 1
+                y = y + 54
+                count = count + 1
+            end
         end
     end
 
@@ -1783,7 +1787,7 @@ local function rebuildResults(filter)
         empty.TextSize = 10
         empty.Font = FONT_MONO
         empty.TextXAlignment = Enum.TextXAlignment.Center
-        empty.ZIndex = 6
+        empty.ZIndex = 22
         empty.Parent = resultsScroll
     end
 end
@@ -1795,15 +1799,15 @@ rebuildResults("")
 
 -- User card (bottom)
 local userCard = Instance.new("Frame")
-userCard.Size = UDim2.new(1, -16, 0, 54)
+userCard.Size = UDim2.new(1, -20, 0, 56)
 userCard.AnchorPoint = Vector2.new(0, 1)
-userCard.Position = UDim2.new(0, 8, 1, -8)
+userCard.Position = UDim2.new(0, 10, 1, -10)
 userCard.BackgroundColor3 = Color3.fromRGB(20, 24, 40)
 userCard.BackgroundTransparency = 0.5
 userCard.BorderSizePixel = 0
-userCard.ZIndex = 5
+userCard.ZIndex = 21
 userCard.Parent = sidebar
-Instance.new("UICorner", userCard).CornerRadius = UDim.new(0, 8)
+Instance.new("UICorner", userCard).CornerRadius = UDim.new(0, 10)
 
 local ucStroke = Instance.new("UIStroke")
 ucStroke.Color = C.border
@@ -1811,49 +1815,43 @@ ucStroke.Thickness = 1
 ucStroke.Transparency = 0.6
 ucStroke.Parent = userCard
 
--- small logo circle
 local ucDot = Instance.new("ImageLabel")
-ucDot.Size = UDim2.fromOffset(22, 22)
-ucDot.Position = UDim2.new(0, 6, 0, 6)
+ucDot.Size = UDim2.fromOffset(28, 28)
+ucDot.Position = UDim2.new(0, 10, 0, 12)
 ucDot.BackgroundColor3 = C.panel2
 ucDot.BackgroundTransparency = 0.4
 ucDot.Image = LOGO_ID
 ucDot.ImageColor3 = Color3.fromRGB(255, 255, 255)
 ucDot.ScaleType = Enum.ScaleType.Fit
-ucDot.ZIndex = 6
+ucDot.ZIndex = 22
 ucDot.Parent = userCard
 Instance.new("UICorner", ucDot).CornerRadius = UDim.new(1, 0)
 
 local ucName = Instance.new("TextLabel")
-ucName.Size = UDim2.new(1, -36, 0, 14)
-ucName.Position = UDim2.new(0, 32, 0, 8)
+ucName.Size = UDim2.new(1, -50, 0, 16)
+ucName.Position = UDim2.new(0, 46, 0, 10)
 ucName.BackgroundTransparency = 1
 ucName.Text = USER_CARD.username
 ucName.TextColor3 = C.text
-ucName.TextSize = 10
+ucName.TextSize = 12
 ucName.Font = FONT_BOLD
 ucName.TextXAlignment = Enum.TextXAlignment.Left
 ucName.TextTruncate = Enum.TextTruncate.AtEnd
-ucName.ZIndex = 6
+ucName.ZIndex = 22
 ucName.Parent = userCard
 
 local ucDesc = Instance.new("TextLabel")
-ucDesc.Size = UDim2.new(1, -36, 0, 12)
-ucDesc.Position = UDim2.new(0, 32, 0, 24)
+ucDesc.Size = UDim2.new(1, -50, 0, 14)
+ucDesc.Position = UDim2.new(0, 46, 0, 28)
 ucDesc.BackgroundTransparency = 1
 ucDesc.Text = USER_CARD.description
 ucDesc.TextColor3 = C.sub
-ucDesc.TextSize = 9
+ucDesc.TextSize = 10
 ucDesc.Font = FONT_MONO
 ucDesc.TextXAlignment = Enum.TextXAlignment.Left
 ucDesc.TextTruncate = Enum.TextTruncate.AtEnd
-ucDesc.ZIndex = 6
+ucDesc.ZIndex = 22
 ucDesc.Parent = userCard
-
--- Sidebar follows window when it moves
-local function syncSidebarPosition(winPosX, winPosY)
-    sidebar.Position = UDim2.new(0.5, winPosX - SB_W - SB_GAP, 0.5, winPosY)
-end
 
 -- ═══════════════════════════════════════════════════════════════════
 --  RESIZE
@@ -1941,7 +1939,6 @@ UserInputService.InputChanged:Connect(function(input)
             windowContainer.Size = UDim2.fromOffset(nx, ny)
             win.Size = UDim2.fromOffset(nx, ny)
             shadow.Size = UDim2.fromOffset(nx, ny)
-            sidebar.Size = UDim2.fromOffset(SB_W, ny)
         end
     end
 end)
@@ -1962,7 +1959,7 @@ RunService.RenderStepped:Connect(function(dt)
         local nx = expLerp(cx, dragState.target.X, 22, dt)
         local ny = expLerp(cy, dragState.target.Y, 22, dt)
         windowContainer.Position = UDim2.new(0.5, nx, 0.5, ny)
-        syncSidebarPosition(nx, ny)
+        -- sidebar stays anchored to screen, no sync needed
     end
 end)
 
@@ -2120,7 +2117,7 @@ RunService.RenderStepped:Connect(function(dt)
 end)
 
 -- ═══════════════════════════════════════════════════════════════════
---  TAB SWITCH / OPEN / CLOSE  (slide animations)
+--  TAB SWITCH
 -- ═══════════════════════════════════════════════════════════════════
 function switchTab(id)
     if activeTab == id then return end
@@ -2144,15 +2141,17 @@ for id, data in pairs(tabButtons) do
     data.btn.MouseButton1Click:Connect(function() switchTab(id) end)
 end
 
--- Slide-in on open: window from below, sidebar from left
-local FINAL_WIN_POS  = UDim2.new(0.5, -DEF_W/2, 0.5, -DEF_H/2)
-local FINAL_SB_X     = -DEF_W/2 - SB_W - SB_GAP
-local FINAL_SB_POS   = UDim2.new(0.5, FINAL_SB_X, 0.5, -DEF_H/2)
+-- ═══════════════════════════════════════════════════════════════════
+--  SLIDE-IN ANIMATIONS
+-- ═══════════════════════════════════════════════════════════════════
+local FINAL_WIN_POS = UDim2.new(0.5, -DEF_W/2, 0.5, -DEF_H/2)
+local FINAL_SB_POS  = UDim2.new(0, 0, 0, 0)
+local OFF_SB_POS    = UDim2.new(0, -SB_W - 20, 0, 0)
 
 local function slideWindowIn()
     windowContainer.Position = UDim2.new(0.5, -DEF_W/2, 0.5, -DEF_H/2 + 140)
     windowContainer.Visible = true
-    sidebar.Position = UDim2.new(0.5, FINAL_SB_X - 180, 0.5, -DEF_H/2)
+    sidebar.Position = OFF_SB_POS
     sidebar.Visible = true
 
     TweenService:Create(windowContainer, TweenInfo.new(0.42, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
@@ -2168,7 +2167,7 @@ local function slideWindowOut()
         Position = UDim2.new(0.5, -DEF_W/2, 0.5, -DEF_H/2 + 140)
     }):Play()
     TweenService:Create(sidebar, TweenInfo.new(0.3, Enum.EasingStyle.Quint, Enum.EasingDirection.In), {
-        Position = UDim2.new(0.5, FINAL_SB_X - 180, 0.5, -DEF_H/2)
+        Position = OFF_SB_POS
     }):Play()
     task.wait(0.3)
     windowContainer.Visible = false
@@ -2246,7 +2245,6 @@ RunService.Stepped:Connect(function()
     if gotGround and worstY < MAX_SLOPE_COS then return end
     pcall(function() hum:ChangeState(Enum.HumanoidStateType.Jumping) end)
     lastJump = now
-    -- show active status, but only every 0.6s so it doesn't flicker
     if now - lastJumpShown > 0.6 then
         lastJumpShown = now
         setStatus("auto jump active", C.good, 1.0)
@@ -2254,7 +2252,7 @@ RunService.Stepped:Connect(function()
 end)
 
 -- ═══════════════════════════════════════════════════════════════════
---  SPAM CROUCH
+--  SPAM CROUCH  ·  fire CrouchIdle repeatedly (do NOT toggle)
 -- ═══════════════════════════════════════════════════════════════════
 local spamCrouchTask = nil
 
@@ -2270,12 +2268,20 @@ end
 local function lookupSpamEvent()
     local ok, rs = pcall(function() return game:GetService("ReplicatedStorage") end)
     if not ok or not rs then return nil end
-    local events = rs:FindFirstChild("Events") or rs:WaitForChild("Events", 1)
+    local events = rs:FindFirstChild("Events")
+    if not events then
+        local ok2, ev = pcall(function() return rs:WaitForChild("Events", 1) end)
+        if ok2 then events = ev end
+    end
     if not events then return nil end
-    return events:FindFirstChild("UpdateCharacterDataRegistry") or events:WaitForChild("UpdateCharacterDataRegistry", 1)
+    local ev = events:FindFirstChild("UpdateCharacterDataRegistry")
+    if not ev then
+        local ok3, ev3 = pcall(function() return events:WaitForChild("UpdateCharacterDataRegistry", 1) end)
+        if ok3 then ev = ev3 end
+    end
+    return ev
 end
 
--- Fire raw, no identity tinkering — that's what worked in your original test
 local function fireCrouch(state)
     local ev = lookupSpamEvent()
     if not ev then return false end
@@ -2289,15 +2295,12 @@ local function startSpamCrouch()
         spamCrouchTask = nil
     end
     if not lookupSpamEvent() then
-        setStatus("crouch: event not found", C.bad)
+        setStatus("crouch: event not found", C.bad, 3)
         Features.setEnabled("spamcrouch", false)
         return
     end
     spamCrouchTask = task.spawn(function()
-        setStatus("crouch: spamming", C.good)
-        -- Fire only CrouchIdle. Do NOT toggle to Idle between fires.
-        -- The "spam" look comes from re-firing CrouchIdle repeatedly —
-        -- toggling to Idle resets the pose and it looks frozen.
+        setStatus("crouch: spamming", C.good, 1.5)
         while Features.spamcrouch and Features.spamcrouch.enabled do
             fireCrouch("CrouchIdle")
             task.wait(Config.get("crouch_speed") or 0.08)
@@ -2528,16 +2531,11 @@ end)
 --  BOOT
 -- ═══════════════════════════════════════════════════════════════════
 pcall(function()
-    switchTab("map")
     activeTab = nil
     switchTab("map")
 end)
 
--- Initialize final positions, then animate everything in
 windowContainer.Position = FINAL_WIN_POS
-sidebar.Position = FINAL_SB_POS
 winScale.Scale = 0.7
 TweenService:Create(winScale, TweenInfo.new(0.35, Enum.EasingStyle.Back), {Scale = 1}):Play()
-
--- Kick the slide-in immediately
 slideWindowIn()
