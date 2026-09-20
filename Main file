@@ -1,5 +1,5 @@
 -- ═══════════════════════════════════════════════════════════════════
---   R E F O R G E D   ·   v1.6
+--   R E F O R G E D   ·   v1.7
 -- ═══════════════════════════════════════════════════════════════════
 local Players          = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
@@ -34,9 +34,6 @@ local FONT_ICON  = Enum.Font.SourceSansBold
 local LOGO_ID    = "rbxassetid://127983099298280"
 local MAX_LAYER  = 2147483647
 
--- ═══════════════════════════════════════════════════════════════════
---  USER CARD
--- ═══════════════════════════════════════════════════════════════════
 local USER_CARD = {
     username    = player.Name,
     description = "test",
@@ -369,7 +366,7 @@ local subtitleText = Instance.new("TextLabel")
 subtitleText.Size = UDim2.new(1, -160, 0, 14)
 subtitleText.Position = UDim2.new(0, 57, 0, 30)
 subtitleText.BackgroundTransparency = 1
-subtitleText.Text = "v1.6"
+subtitleText.Text = "v1.7"
 subtitleText.TextColor3 = C.sub
 subtitleText.TextSize = 10
 subtitleText.Font = FONT_MONO
@@ -585,9 +582,10 @@ end
 
 local FORCE_OFF = {
     autojump   = { "autotrimp" },
-    easybounce = { "hardbounce", "autotrimp" },
-    hardbounce = { "easybounce", "autotrimp" },
-    autotrimp  = { "autojump", "easybounce", "hardbounce" },
+    easybounce = { "hardbounce", "autotrimp", "efling" },
+    hardbounce = { "easybounce", "autotrimp", "efling" },
+    autotrimp  = { "autojump", "easybounce", "hardbounce", "efling" },
+    efling     = { "autojump", "easybounce", "hardbounce", "autotrimp" },
 }
 
 function Features.setEnabled(id, state)
@@ -1303,22 +1301,27 @@ end
 -- ═══════════════════════════════════════════════════════════════════
 Features.register("autojump", {
     name = "Auto Jump", icon = "▲", category = "MOVEMENT", tab = "movement",
-    hudOffset = Vector2.new(-240, 160),
+    hudOffset = Vector2.new(-240, 130),
 })
 Features.register("easybounce", {
     name = "Easy Bounce", icon = "◈", category = "MOVEMENT", tab = "movement",
     hint = "bounce on ramps (>10°) after 1.5s airtime",
-    hudOffset = Vector2.new(-240, 228),
+    hudOffset = Vector2.new(-240, 198),
 })
 Features.register("hardbounce", {
     name = "Hard Bounce", icon = "◭", category = "MOVEMENT", tab = "movement",
     hint = "bounce on any surface after 1.5s airtime",
-    hudOffset = Vector2.new(-240, 296),
+    hudOffset = Vector2.new(-240, 266),
 })
 Features.register("autotrimp", {
     name = "Auto Trimp", icon = "✦", category = "MOVEMENT", tab = "movement",
     hint = "auto jump + easy bounce combo",
-    hudOffset = Vector2.new(-240, 364),
+    hudOffset = Vector2.new(-240, 334),
+})
+Features.register("efling", {
+    name = "E-Fling", icon = "⟁", category = "MOVEMENT", tab = "movement",
+    hint = "Basic E-Fling Mechanic",
+    hudOffset = Vector2.new(-240, 402),
 })
 
 -- ═══════════════════════════════════════════════════════════════════
@@ -1330,11 +1333,12 @@ makeFeatureRow(movementPage, "autojump",   36)
 makeFeatureRow(movementPage, "easybounce", 102)
 makeFeatureRow(movementPage, "hardbounce", 168)
 makeFeatureRow(movementPage, "autotrimp",  234)
-makeCategoryHeader(movementPage, "PLAYER", 306)
-makeSoon(movementPage, 326)
-makeCategoryHeader(movementPage, "SETTINGS", 356)
+makeFeatureRow(movementPage, "efling",     300)
+makeCategoryHeader(movementPage, "PLAYER", 372)
+makeSoon(movementPage, 392)
+makeCategoryHeader(movementPage, "SETTINGS", 422)
 local bounceSliderRow, refreshBounceSlider = makeSliderRow(
-    movementPage, "Bounce Multiplier", "bounce_multiplier", 1.04, 5.0, 378, "x", 2
+    movementPage, "Bounce Multiplier", "bounce_multiplier", 1.04, 5.0, 444, "x", 2
 )
 
 -- ═══════════════════════════════════════════════════════════════════
@@ -1898,7 +1902,7 @@ local credVer = Instance.new("TextLabel")
 credVer.Size = UDim2.new(1, 0, 0, 16)
 credVer.Position = UDim2.new(0, 0, 0, 142)
 credVer.BackgroundTransparency = 1
-credVer.Text = "v1.6  ·  private build"
+credVer.Text = "v1.7  ·  private build"
 credVer.TextColor3 = C.sub
 credVer.TextSize = 10
 credVer.Font = FONT_MONO
@@ -1973,7 +1977,7 @@ task.spawn(function()
 end)
 
 -- ═══════════════════════════════════════════════════════════════════
---  SIDEBAR  ·  offset from left edge, rounded corners
+--  SIDEBAR
 -- ═══════════════════════════════════════════════════════════════════
 local SB_W    = 220
 local SB_TOP  = 48
@@ -2235,12 +2239,10 @@ ucDesc.ZIndex = 22
 ucDesc.Parent = userCard
 
 -- ═══════════════════════════════════════════════════════════════════
---  BOOMBOX  ·  working music player
+--  BOOMBOX
 -- ═══════════════════════════════════════════════════════════════════
--- ► ADD YOUR SONGS HERE. Each entry is { name = "...", id = "rbxassetid://..." }
 local musicTracks = {
     -- { name = "example track", id = "rbxassetid://1837879082" },
-    -- { name = "another",       id = "rbxassetid://1836318192" },
 }
 local currentTrack = 1
 local musicPlaying = false
@@ -2737,7 +2739,7 @@ RunService.Stepped:Connect(function()
 end)
 
 -- ═══════════════════════════════════════════════════════════════════
---  EASY + HARD BOUNCE
+--  EASY + HARD BOUNCE + E-FLING
 -- ═══════════════════════════════════════════════════════════════════
 local airStartTick = 0
 local wasAirborne = false
@@ -2761,7 +2763,8 @@ RunService.Heartbeat:Connect(function()
     local easyOn  = Features.easybounce and Features.easybounce.enabled
     local hardOn  = Features.hardbounce and Features.hardbounce.enabled
     local trimpOn = Features.autotrimp and Features.autotrimp.enabled
-    local anyBounce = easyOn or hardOn or trimpOn
+    local flingOn = Features.efling and Features.efling.enabled
+    local anyBounce = easyOn or hardOn or trimpOn or flingOn
 
     local char = player.Character
     if not char then return end
@@ -2783,28 +2786,40 @@ RunService.Heartbeat:Connect(function()
         local airtime = tick() - airStartTick
         wasAirborne = false
 
-        if anyBounce and airtime >= MIN_AIR then
-            local normal = getGroundNormal(char, root)
-            if normal then
-                local isRamp = normal.Y <= MIN_SLOPE_COS_BOUNCE
-                local shouldFire = false
-                if hardOn then
-                    shouldFire = true
-                elseif easyOn or trimpOn then
-                    shouldFire = isRamp
-                end
-                if shouldFire then
-                    local fall = math.abs(lastYVel)
-                    if fall > 8 then
-                        local mult = Config.get("bounce_multiplier") or 1.6
-                        local bounceSpeed = fall * (mult - 1) + 15
-                        bounceSpeed = math.clamp(bounceSpeed, 20, 220)
-                        root.AssemblyLinearVelocity = Vector3.new(
-                            root.AssemblyLinearVelocity.X,
-                            bounceSpeed,
-                            root.AssemblyLinearVelocity.Z
-                        )
-                        setStatus(string.format("bounce  ·  %.0f", bounceSpeed), C.warn, 1.2)
+        if anyBounce then
+            -- E-Fling needs less airtime (0.2s); the rest need 1.5s
+            local reqAir = flingOn and 0.2 or MIN_AIR
+
+            if airtime >= reqAir then
+                local normal = getGroundNormal(char, root)
+                if normal then
+                    local isRamp = normal.Y <= MIN_SLOPE_COS_BOUNCE
+                    local shouldFire = false
+
+                    if flingOn then
+                        -- E-Fling: ramps only, always 5x
+                        shouldFire = isRamp
+                    elseif hardOn then
+                        shouldFire = true
+                    elseif easyOn or trimpOn then
+                        shouldFire = isRamp
+                    end
+
+                    if shouldFire then
+                        local fall = math.abs(lastYVel)
+                        if fall > 8 then
+                            -- E-Fling ignores the slider and locks to 5x
+                            local mult = flingOn and 5.0 or (Config.get("bounce_multiplier") or 1.6)
+                            local bounceSpeed = fall * (mult - 1) + 15
+                            bounceSpeed = math.clamp(bounceSpeed, 20, 220)
+                            root.AssemblyLinearVelocity = Vector3.new(
+                                root.AssemblyLinearVelocity.X,
+                                bounceSpeed,
+                                root.AssemblyLinearVelocity.Z
+                            )
+                            local label = flingOn and "e-fling" or "bounce"
+                            setStatus(string.format("%s  ·  %.0f", label, bounceSpeed), C.warn, 1.2)
+                        end
                     end
                 end
             end
