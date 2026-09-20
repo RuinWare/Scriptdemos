@@ -1,5 +1,5 @@
 -- ═══════════════════════════════════════════════════════════════════
---   R E F O R G E D   ·   v1.7
+--   R E F O R G E D   ·   v1.8
 -- ═══════════════════════════════════════════════════════════════════
 local Players          = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
@@ -51,6 +51,7 @@ Config.defaults = {
     use_asset_spawn   = true,
     invis_menu        = false,
     bounce_multiplier = 1.6,
+    lag_duration      = 0.5,
 }
 Config.data = {}
 for k, v in pairs(Config.defaults) do Config.data[k] = v end
@@ -366,7 +367,7 @@ local subtitleText = Instance.new("TextLabel")
 subtitleText.Size = UDim2.new(1, -160, 0, 14)
 subtitleText.Position = UDim2.new(0, 57, 0, 30)
 subtitleText.BackgroundTransparency = 1
-subtitleText.Text = "v1.7"
+subtitleText.Text = "v1.8"
 subtitleText.TextColor3 = C.sub
 subtitleText.TextSize = 10
 subtitleText.Font = FONT_MONO
@@ -576,6 +577,8 @@ function Features.register(id, opts)
         pillVisible = true,
         hudOffset = opts.hudOffset or Vector2.new(-180, 200),
         listeners = {},
+        isButton = opts.isButton or false,
+        action = opts.action,
     }
     return Features[id]
 end
@@ -891,7 +894,7 @@ local function toggleFloating(featureId)
         for _, p in ipairs(particleLayer:GetChildren()) do
             if p:IsA("Frame") then p.BackgroundTransparency = 0.3 + math.random() * 0.5 end
         end
-        if f.enabled then
+        if f.isButton or f.enabled then
             stroke.Color = f.locked and C.warn or C.aurora
             stroke.Transparency = 0.1
             nameLbl.TextColor3 = C.aurora
@@ -944,7 +947,11 @@ local function toggleFloating(featureId)
             if drag then
                 local held = tick() - drag.startTime
                 if not drag.moved and held < 0.35 then
-                    Features.toggle(featureId)
+                    if f.isButton then
+                        if f.action then pcall(f.action) end
+                    else
+                        Features.toggle(featureId)
+                    end
                 elseif drag.moved and not f.locked and f.pillVisible then
                     f.hudOffset = Vector2.new(btn.Position.X.Offset, btn.Position.Y.Offset)
                 end
@@ -1024,13 +1031,59 @@ local function makeFeatureRow(parent, featureId, yPos)
     rowSub.ZIndex = 10
     rowSub.Parent = row
 
-    local refreshToggle = makeGlassToggle(
-        row,
-        UDim2.new(1, -14, 0, 16),
-        function() return f.enabled end,
-        function(v) Features.setEnabled(featureId, v) end
-    )
-    Features.addListener(featureId, function() refreshToggle() end)
+    if f.isButton then
+        local pressBtn = Instance.new("Frame")
+        pressBtn.Size = UDim2.fromOffset(58, 26)
+        pressBtn.AnchorPoint = Vector2.new(1, 0)
+        pressBtn.Position = UDim2.new(1, -14, 0, 16)
+        pressBtn.BackgroundColor3 = Color3.fromRGB(60, 66, 84)
+        pressBtn.BackgroundTransparency = 0.25
+        pressBtn.BorderSizePixel = 0
+        pressBtn.ZIndex = 9
+        pressBtn.Parent = row
+        Instance.new("UICorner", pressBtn).CornerRadius = UDim.new(0, 8)
+
+        local pbGrad = Instance.new("UIGradient")
+        pbGrad.Color = ColorSequence.new{
+            ColorSequenceKeypoint.new(0, Color3.fromRGB(110, 118, 140)),
+            ColorSequenceKeypoint.new(1, Color3.fromRGB(45, 50, 68)),
+        }
+        pbGrad.Rotation = 90
+        pbGrad.Parent = pressBtn
+
+        local pbStroke = Instance.new("UIStroke")
+        pbStroke.Color = C.aurora
+        pbStroke.Thickness = 1
+        pbStroke.Transparency = 0.45
+        pbStroke.Parent = pressBtn
+
+        local pbLabel = Instance.new("TextLabel")
+        pbLabel.Size = UDim2.fromScale(1, 1)
+        pbLabel.BackgroundTransparency = 1
+        pbLabel.Text = "PRESS"
+        pbLabel.TextColor3 = C.text
+        pbLabel.TextSize = 10
+        pbLabel.Font = FONT_BOLD
+        pbLabel.ZIndex = 10
+        pbLabel.Parent = pressBtn
+
+        f._flashButton = function()
+            TweenService:Create(pbStroke, TweenInfo.new(0.1), {Transparency = 0, Color = C.aurora}):Play()
+            TweenService:Create(pbLabel, TweenInfo.new(0.1), {TextColor3 = C.aurora}):Play()
+            task.delay(0.18, function()
+                TweenService:Create(pbStroke, TweenInfo.new(0.25), {Transparency = 0.45, Color = C.aurora}):Play()
+                TweenService:Create(pbLabel, TweenInfo.new(0.25), {TextColor3 = C.text}):Play()
+            end)
+        end
+    else
+        local refreshToggle = makeGlassToggle(
+            row,
+            UDim2.new(1, -14, 0, 16),
+            function() return f.enabled end,
+            function(v) Features.setEnabled(featureId, v) end
+        )
+        Features.addListener(featureId, function() refreshToggle() end)
+    end
 
     local lockBtn = Instance.new("TextButton")
     lockBtn.Size = UDim2.fromOffset(22, 22)
@@ -1103,7 +1156,12 @@ local function makeFeatureRow(parent, featureId, yPos)
         if input.UserInputType == Enum.UserInputType.MouseButton1
         or input.UserInputType == Enum.UserInputType.Touch then
             if not longPressed then
-                Features.toggle(featureId)
+                if f.isButton then
+                    if f.action then pcall(f.action) end
+                    if f._flashButton then pcall(f._flashButton) end
+                else
+                    Features.toggle(featureId)
+                end
             end
             holdStart = nil
             if holdTask then task.cancel(holdTask); holdTask = nil end
@@ -1324,6 +1382,31 @@ Features.register("efling", {
     hudOffset = Vector2.new(-240, 402),
 })
 
+-- Lag switch — momentary button that freezes the client render loop
+-- for a short duration so replication stalls briefly for trimping.
+local lagFrozen = false
+local lagFreezeUntil = 0
+
+RunService.RenderStepped:Connect(function()
+    if lagFrozen then
+        while tick() < lagFreezeUntil do end
+        lagFrozen = false
+    end
+end)
+
+Features.register("lagswitch", {
+    name = "Lag Switch", icon = "⧖", category = "PLAYER", tab = "movement",
+    hint = "tap to freeze client briefly (trimp assist)",
+    isButton = true,
+    action = function()
+        local dur = Config.get("lag_duration") or 0.5
+        lagFreezeUntil = tick() + dur
+        lagFrozen = true
+        setStatus(string.format("lag  ·  %.2fs", dur), C.warn, dur + 0.3)
+    end,
+    hudOffset = Vector2.new(-240, 470),
+})
+
 -- ═══════════════════════════════════════════════════════════════════
 --  MOVEMENT PAGE
 -- ═══════════════════════════════════════════════════════════════════
@@ -1335,10 +1418,13 @@ makeFeatureRow(movementPage, "hardbounce", 168)
 makeFeatureRow(movementPage, "autotrimp",  234)
 makeFeatureRow(movementPage, "efling",     300)
 makeCategoryHeader(movementPage, "PLAYER", 372)
-makeSoon(movementPage, 392)
-makeCategoryHeader(movementPage, "SETTINGS", 422)
+makeFeatureRow(movementPage, "lagswitch",  394)
+makeCategoryHeader(movementPage, "SETTINGS", 466)
 local bounceSliderRow, refreshBounceSlider = makeSliderRow(
-    movementPage, "Bounce Multiplier", "bounce_multiplier", 1.04, 5.0, 444, "x", 2
+    movementPage, "Bounce Multiplier", "bounce_multiplier", 1.04, 5.0, 488, "x", 2
+)
+local lagSliderRow, refreshLagSlider = makeSliderRow(
+    movementPage, "Lag Duration", "lag_duration", 0.2, 1.2, 560, "s", 2
 )
 
 -- ═══════════════════════════════════════════════════════════════════
@@ -1801,6 +1887,7 @@ local function rebuildConfigPresets()
             end
             for _, cb in pairs(configCallbacks) do pcall(cb) end
             if refreshBounceSlider then pcall(refreshBounceSlider) end
+            if refreshLagSlider then pcall(refreshLagSlider) end
             setStatus("loaded config: " .. p.name, C.good, 1.5)
         end)
 
@@ -1869,6 +1956,7 @@ resetBtn.MouseButton1Click:Connect(function()
     Config.reset()
     for _, cb in pairs(configCallbacks) do pcall(cb) end
     if refreshBounceSlider then pcall(refreshBounceSlider) end
+    if refreshLagSlider then pcall(refreshLagSlider) end
 end)
 cfgY = cfgY + 44
 cfgScroll.CanvasSize = UDim2.new(0, 0, 0, cfgY + 40)
@@ -1902,7 +1990,7 @@ local credVer = Instance.new("TextLabel")
 credVer.Size = UDim2.new(1, 0, 0, 16)
 credVer.Position = UDim2.new(0, 0, 0, 142)
 credVer.BackgroundTransparency = 1
-credVer.Text = "v1.7  ·  private build"
+credVer.Text = "v1.8  ·  private build"
 credVer.TextColor3 = C.sub
 credVer.TextSize = 10
 credVer.Font = FONT_MONO
@@ -2140,7 +2228,7 @@ local function rebuildResults(filter)
                 dot.Size = UDim2.fromOffset(6, 6)
                 dot.AnchorPoint = Vector2.new(1, 0.5)
                 dot.Position = UDim2.new(1, -10, 0, 20)
-                dot.BackgroundColor3 = f.enabled and C.good or C.sub
+                dot.BackgroundColor3 = (f.enabled or f.isButton) and C.good or C.sub
                 dot.BorderSizePixel = 0
                 dot.ZIndex = 23
                 dot.Parent = item
@@ -2153,7 +2241,11 @@ local function rebuildResults(filter)
                 end)
 
                 item.MouseButton1Click:Connect(function()
-                    Features.toggle(f.id)
+                    if f.isButton then
+                        if f.action then pcall(f.action) end
+                    else
+                        Features.toggle(f.id)
+                    end
                     if switchTab then switchTab(f.tab) end
                 end)
 
@@ -2787,7 +2879,6 @@ RunService.Heartbeat:Connect(function()
         wasAirborne = false
 
         if anyBounce then
-            -- E-Fling needs less airtime (0.2s); the rest need 1.5s
             local reqAir = flingOn and 0.2 or MIN_AIR
 
             if airtime >= reqAir then
@@ -2797,7 +2888,6 @@ RunService.Heartbeat:Connect(function()
                     local shouldFire = false
 
                     if flingOn then
-                        -- E-Fling: ramps only, always 5x
                         shouldFire = isRamp
                     elseif hardOn then
                         shouldFire = true
@@ -2808,7 +2898,6 @@ RunService.Heartbeat:Connect(function()
                     if shouldFire then
                         local fall = math.abs(lastYVel)
                         if fall > 8 then
-                            -- E-Fling ignores the slider and locks to 5x
                             local mult = flingOn and 5.0 or (Config.get("bounce_multiplier") or 1.6)
                             local bounceSpeed = fall * (mult - 1) + 15
                             bounceSpeed = math.clamp(bounceSpeed, 20, 220)
