@@ -1,10 +1,12 @@
 -- ═══════════════════════════════════════════════════════════════════
---   R E F O R G E D   ·   v1.4
+--   R E F O R G E D   ·   v1.5
 -- ═══════════════════════════════════════════════════════════════════
 local Players          = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local RunService       = game:GetService("RunService")
 local TweenService     = game:GetService("TweenService")
+local VirtualInputManager = game:GetService("VirtualInputManager")
+local HttpService      = game:GetService("HttpService")
 local player = Players.LocalPlayer
 
 local C = {
@@ -45,13 +47,13 @@ local USER_CARD = {
 -- ═══════════════════════════════════════════════════════════════════
 local Config = {}
 Config.defaults = {
-    auto_smooth      = true,
-    strip_scripts    = true,
-    clear_spawns     = true,
-    clear_terrain    = true,
-    use_asset_spawn  = true,
-    invis_menu       = false,
-    crouch_speed     = 0.08,
+    auto_smooth       = true,
+    strip_scripts     = true,
+    clear_spawns      = true,
+    clear_terrain     = true,
+    use_asset_spawn   = true,
+    invis_menu        = false,
+    crouch_speed      = 0.08,
     bounce_multiplier = 1.6,
 }
 Config.data = {}
@@ -61,6 +63,34 @@ function Config.set(k, v) Config.data[k] = v end
 function Config.reset()
     for k, v in pairs(Config.defaults) do Config.data[k] = v end
 end
+
+-- ═══════════════════════════════════════════════════════════════════
+--  PRESET STORE
+-- ═══════════════════════════════════════════════════════════════════
+local Presets = { maps = {}, configs = {} }
+
+local function savePresets()
+    pcall(function()
+        if writefile then
+            writefile("reforged_presets.json", HttpService:JSONEncode(Presets))
+        end
+    end)
+end
+
+local function loadPresets()
+    pcall(function()
+        if readfile and isfile and isfile("reforged_presets.json") then
+            local ok, data = pcall(function()
+                return HttpService:JSONDecode(readfile("reforged_presets.json"))
+            end)
+            if ok and type(data) == "table" then
+                Presets.maps = data.maps or {}
+                Presets.configs = data.configs or {}
+            end
+        end
+    end)
+end
+loadPresets()
 
 -- ═══════════════════════════════════════════════════════════════════
 --  CLEANUP + SCREENGUIS
@@ -88,10 +118,9 @@ guiHud.IgnoreGuiInset = true
 guiHud.DisplayOrder = MAX_LAYER
 guiHud.Parent = pg
 
--- Forward declarations
 local setStatus, switchTab
 local Features = {}
-local spawnAmbientParticles  -- particle helper
+local spawnAmbientParticles
 
 -- ═══════════════════════════════════════════════════════════════════
 --  WINDOW
@@ -112,7 +141,6 @@ local winScale = Instance.new("UIScale")
 winScale.Scale = 1
 winScale.Parent = windowContainer
 
--- Glow layers, tracked so we can resize them
 local glowLayers = {}
 
 local function makeGlowLayer(offset, alpha, period)
@@ -254,9 +282,6 @@ task.spawn(function()
     end
 end)
 
--- ═══════════════════════════════════════════════════════════════════
---  AMBIENT PARTICLES  (tiny white squares drifting up)
--- ═══════════════════════════════════════════════════════════════════
 function spawnAmbientParticles(parent, count)
     local layer = Instance.new("Frame")
     layer.Name = "AmbientParticles"
@@ -297,7 +322,6 @@ function spawnAmbientParticles(parent, count)
                 if not pt.el.Parent then continue end
                 pt.y = pt.y - pt.speed * dt
                 local x = pt.x + math.sin(t * 0.6 + pt.phase) * pt.sway + pt.drift * dt
-                -- recycle when off top
                 if pt.y < -0.05 then
                     pt.y = 1.05 + math.random() * 0.2
                     pt.x = math.random()
@@ -346,7 +370,7 @@ local subtitleText = Instance.new("TextLabel")
 subtitleText.Size = UDim2.new(1, -160, 0, 14)
 subtitleText.Position = UDim2.new(0, 57, 0, 30)
 subtitleText.BackgroundTransparency = 1
-subtitleText.Text = "v1.4"
+subtitleText.Text = "v1.5"
 subtitleText.TextColor3 = C.sub
 subtitleText.TextSize = 10
 subtitleText.Font = FONT_MONO
@@ -560,10 +584,28 @@ function Features.register(id, opts)
     return Features[id]
 end
 
+-- mutual exclusion map: enabling key forces these off
+local FORCE_OFF = {
+    autojump   = { "autotrimp" },
+    easybounce = { "hardbounce", "autotrimp" },
+    hardbounce = { "easybounce", "autotrimp" },
+    autotrimp  = { "autojump", "easybounce", "hardbounce" },
+}
+
 function Features.setEnabled(id, state)
     local f = Features[id]
     if not f or f.enabled == state then return end
     f.enabled = state
+    if state then
+        local block = FORCE_OFF[id]
+        if block then
+            for _, otherId in ipairs(block) do
+                if Features[otherId] and Features[otherId].enabled then
+                    Features.setEnabled(otherId, false)
+                end
+            end
+        end
+    end
     for _, cb in ipairs(f.listeners) do pcall(cb, state) end
 end
 
@@ -1262,28 +1304,28 @@ end
 --  REGISTER FEATURES
 -- ═══════════════════════════════════════════════════════════════════
 Features.register("autojump", {
-    name = "Auto Jump",
-    icon = "▲",
-    category = "MOVEMENT",
-    tab = "movement",
-    hudOffset = Vector2.new(-240, 160),
+    name = "Auto Jump", icon = "▲", category = "MOVEMENT", tab = "movement",
+    hudOffset = Vector2.new(-240, 130),
 })
-
 Features.register("spamcrouch", {
-    name = "Spam Crouch",
-    icon = "▼",
-    category = "MOVEMENT",
-    tab = "movement",
-    hudOffset = Vector2.new(-240, 228),
+    name = "Spam Crouch", icon = "▼", category = "MOVEMENT", tab = "movement",
+    hint = "spams LeftControl key events",
+    hudOffset = Vector2.new(-240, 198),
 })
-
 Features.register("easybounce", {
-    name = "Easy Bounce",
-    icon = "◈",
-    category = "MOVEMENT",
-    tab = "movement",
-    hint = "bounce higher on ramps after 1.5s airtime",
-    hudOffset = Vector2.new(-240, 296),
+    name = "Easy Bounce", icon = "◈", category = "MOVEMENT", tab = "movement",
+    hint = "bounce on ramps (>10°) after 1.5s airtime",
+    hudOffset = Vector2.new(-240, 266),
+})
+Features.register("hardbounce", {
+    name = "Hard Bounce", icon = "◭", category = "MOVEMENT", tab = "movement",
+    hint = "bounce on any surface after 1.5s airtime",
+    hudOffset = Vector2.new(-240, 334),
+})
+Features.register("autotrimp", {
+    name = "Auto Trimp", icon = "✦", category = "MOVEMENT", tab = "movement",
+    hint = "auto jump + easy bounce combo",
+    hudOffset = Vector2.new(-240, 402),
 })
 
 -- ═══════════════════════════════════════════════════════════════════
@@ -1294,20 +1336,22 @@ makeCategoryHeader(movementPage, "MOVEMENT", 14)
 makeFeatureRow(movementPage, "autojump",   36)
 makeFeatureRow(movementPage, "spamcrouch", 102)
 makeFeatureRow(movementPage, "easybounce", 168)
-makeCategoryHeader(movementPage, "PLAYER", 240)
-makeSoon(movementPage, 260)
-makeCategoryHeader(movementPage, "SETTINGS", 290)
+makeFeatureRow(movementPage, "hardbounce", 234)
+makeFeatureRow(movementPage, "autotrimp",  300)
+makeCategoryHeader(movementPage, "PLAYER", 372)
+makeSoon(movementPage, 392)
+makeCategoryHeader(movementPage, "SETTINGS", 422)
 local crouchSliderRow, refreshCrouchSlider = makeSliderRow(
-    movementPage, "Crouch Speed", "crouch_speed", 0.02, 0.5, 312, "s", 2
+    movementPage, "Crouch Speed", "crouch_speed", 0.02, 0.5, 444, "s", 2
 )
 local bounceSliderRow, refreshBounceSlider = makeSliderRow(
-    movementPage, "Bounce Multiplier", "bounce_multiplier", 1.04, 5.0, 384, "x", 2
+    movementPage, "Bounce Multiplier", "bounce_multiplier", 1.04, 5.0, 516, "x", 2
 )
 
 -- ═══════════════════════════════════════════════════════════════════
---  MAP PAGE
+--  MAP PAGE  (map changer + preset system)
 -- ═══════════════════════════════════════════════════════════════════
-local mapPage = newPage("map")
+local mapPage = newPage("map", true)
 makeCategoryHeader(mapPage, "MAP CHANGER", 14)
 
 local boxHolder = Instance.new("Frame")
@@ -1381,8 +1425,143 @@ activateBtn.MouseLeave:Connect(function()
     TweenService:Create(actStroke, TweenInfo.new(0.15), {Transparency = 0.5}):Play()
 end)
 
-makeCategoryHeader(mapPage, "SHADERS", 172)
-makeSoon(mapPage, 192)
+-- Preset section
+makeCategoryHeader(mapPage, "MAP PRESETS", 158)
+
+local mpNameHolder = Instance.new("Frame")
+mpNameHolder.Size = UDim2.new(1, -32, 0, 36)
+mpNameHolder.Position = UDim2.new(0, 16, 0, 180)
+mpNameHolder.BackgroundColor3 = Color3.fromRGB(20, 24, 40)
+mpNameHolder.BackgroundTransparency = 0.55
+mpNameHolder.BorderSizePixel = 0
+mpNameHolder.ZIndex = 8
+mpNameHolder.Parent = mapPage
+Instance.new("UICorner", mpNameHolder).CornerRadius = UDim.new(0, 8)
+
+local mpNameBox = Instance.new("TextBox")
+mpNameBox.Size = UDim2.new(1, -100, 1, 0)
+mpNameBox.Position = UDim2.new(0, 12, 0, 0)
+mpNameBox.BackgroundTransparency = 1
+mpNameBox.Text = ""
+mpNameBox.PlaceholderText = "preset name..."
+mpNameBox.PlaceholderColor3 = C.sub
+mpNameBox.TextColor3 = C.text
+mpNameBox.TextSize = 12
+mpNameBox.Font = FONT_MONO
+mpNameBox.TextXAlignment = Enum.TextXAlignment.Left
+mpNameBox.ClearTextOnFocus = false
+mpNameBox.ZIndex = 9
+mpNameBox.Parent = mpNameHolder
+
+local mpSaveBtn = Instance.new("TextButton")
+mpSaveBtn.Size = UDim2.fromOffset(72, 26)
+mpSaveBtn.AnchorPoint = Vector2.new(1, 0.5)
+mpSaveBtn.Position = UDim2.new(1, -5, 0.5, 0)
+mpSaveBtn.BackgroundColor3 = C.aurora
+mpSaveBtn.Text = "SAVE"
+mpSaveBtn.TextColor3 = C.void
+mpSaveBtn.TextSize = 11
+mpSaveBtn.Font = FONT_BOLD
+mpSaveBtn.AutoButtonColor = false
+mpSaveBtn.BorderSizePixel = 0
+mpSaveBtn.ZIndex = 9
+mpSaveBtn.Parent = mpNameHolder
+Instance.new("UICorner", mpSaveBtn).CornerRadius = UDim.new(0, 6)
+
+local mpListHolder = Instance.new("Frame")
+mpListHolder.Size = UDim2.new(1, -32, 0, 0)
+mpListHolder.Position = UDim2.new(0, 16, 0, 224)
+mpListHolder.BackgroundTransparency = 1
+mpListHolder.AutomaticSize = Enum.AutomaticSize.Y
+mpListHolder.ZIndex = 8
+mpListHolder.Parent = mapPage
+
+local function rebuildMapPresets()
+    for _, c in ipairs(mpListHolder:GetChildren()) do c:Destroy() end
+    local y = 0
+    if #Presets.maps == 0 then
+        local none = Instance.new("TextLabel")
+        none.Size = UDim2.new(1, 0, 0, 22)
+        none.Position = UDim2.new(0, 0, 0, 0)
+        none.BackgroundTransparency = 1
+        none.Text = "no presets saved"
+        none.TextColor3 = C.sub
+        none.TextSize = 10
+        none.Font = FONT_MONO
+        none.TextXAlignment = Enum.TextXAlignment.Left
+        none.ZIndex = 9
+        none.Parent = mpListHolder
+        return
+    end
+    for idx, p in ipairs(Presets.maps) do
+        local item = Instance.new("Frame")
+        item.Size = UDim2.new(1, 0, 0, 34)
+        item.Position = UDim2.new(0, 0, 0, y)
+        item.BackgroundColor3 = Color3.fromRGB(20, 24, 40)
+        item.BackgroundTransparency = 0.55
+        item.BorderSizePixel = 0
+        item.ZIndex = 9
+        item.Parent = mpListHolder
+        Instance.new("UICorner", item).CornerRadius = UDim.new(0, 8)
+
+        local nm = Instance.new("TextButton")
+        nm.Size = UDim2.new(1, -40, 1, 0)
+        nm.Position = UDim2.new(0, 0, 0, 0)
+        nm.BackgroundTransparency = 1
+        nm.Text = p.name .. "  ·  " .. p.id
+        nm.TextColor3 = C.text
+        nm.TextSize = 11
+        nm.Font = FONT_MONO
+        nm.TextXAlignment = Enum.TextXAlignment.Left
+        nm.ZIndex = 10
+        nm.Parent = item
+        nm.MouseButton1Click:Connect(function()
+            idBox.Text = p.id
+            setStatus("loaded preset: " .. p.name, C.good, 1.5)
+        end)
+
+        local del = Instance.new("TextButton")
+        del.Size = UDim2.fromOffset(24, 24)
+        del.AnchorPoint = Vector2.new(1, 0.5)
+        del.Position = UDim2.new(1, -5, 0.5, 0)
+        del.BackgroundColor3 = C.space
+        del.BackgroundTransparency = 0.5
+        del.Text = "×"
+        del.TextColor3 = C.bad
+        del.TextSize = 14
+        del.Font = FONT_BOLD
+        del.AutoButtonColor = false
+        del.BorderSizePixel = 0
+        del.ZIndex = 10
+        del.Parent = item
+        Instance.new("UICorner", del).CornerRadius = UDim.new(1, 0)
+        del.MouseButton1Click:Connect(function()
+            table.remove(Presets.maps, idx)
+            savePresets()
+            rebuildMapPresets()
+        end)
+
+        y = y + 40
+    end
+end
+rebuildMapPresets()
+
+mpSaveBtn.MouseButton1Click:Connect(function()
+    local name = (mpNameBox.Text:gsub("^%s+", ""):gsub("%s+$", ""))
+    local id = idBox.Text:gsub("%s+", "")
+    if name == "" or id == "" then
+        setStatus("name and id required", C.bad, 1.5)
+        return
+    end
+    table.insert(Presets.maps, { name = name, id = id })
+    savePresets()
+    rebuildMapPresets()
+    mpNameBox.Text = ""
+    setStatus("saved: " .. name, C.good, 1.5)
+end)
+
+makeCategoryHeader(mapPage, "SHADERS", 400)
+makeSoon(mapPage, 420)
 
 -- ═══════════════════════════════════════════════════════════════════
 --  PLACEHOLDER PAGES
@@ -1424,7 +1603,6 @@ end
 
 local visualsPage = newPage("visuals")
 makePlaceholder(visualsPage, "◉", "VISUALS", "coming soon")
-
 local extraPage = newPage("extra")
 makePlaceholder(extraPage, "★", "EXTRA", "coming soon")
 
@@ -1438,7 +1616,8 @@ cfgScroll.BackgroundTransparency = 1
 cfgScroll.BorderSizePixel = 0
 cfgScroll.ScrollBarThickness = 2
 cfgScroll.ScrollBarImageColor3 = C.border
-cfgScroll.CanvasSize = UDim2.new(0, 0, 0, 600)
+cfgScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+cfgScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
 cfgScroll.ZIndex = 8
 cfgScroll.Parent = configPage
 
@@ -1534,8 +1713,158 @@ makeConfigToggle("Invis Menu", "invis_menu",
 )
 
 cfgY = cfgY + 8
-cfgSectionHeader("RESET")
+cfgSectionHeader("CONFIGS")
 
+-- Config preset UI
+local cpNameHolder = Instance.new("Frame")
+cpNameHolder.Size = UDim2.new(1, -32, 0, 36)
+cpNameHolder.Position = UDim2.new(0, 16, 0, cfgY)
+cpNameHolder.BackgroundColor3 = Color3.fromRGB(20, 24, 40)
+cpNameHolder.BackgroundTransparency = 0.55
+cpNameHolder.BorderSizePixel = 0
+cpNameHolder.ZIndex = 9
+cpNameHolder.Parent = cfgScroll
+Instance.new("UICorner", cpNameHolder).CornerRadius = UDim.new(0, 8)
+cfgY = cfgY + 44
+
+local cpNameBox = Instance.new("TextBox")
+cpNameBox.Size = UDim2.new(1, -100, 1, 0)
+cpNameBox.Position = UDim2.new(0, 12, 0, 0)
+cpNameBox.BackgroundTransparency = 1
+cpNameBox.Text = ""
+cpNameBox.PlaceholderText = "config name..."
+cpNameBox.PlaceholderColor3 = C.sub
+cpNameBox.TextColor3 = C.text
+cpNameBox.TextSize = 12
+cpNameBox.Font = FONT_MONO
+cpNameBox.TextXAlignment = Enum.TextXAlignment.Left
+cpNameBox.ClearTextOnFocus = false
+cpNameBox.ZIndex = 10
+cpNameBox.Parent = cpNameHolder
+
+local cpSaveBtn = Instance.new("TextButton")
+cpSaveBtn.Size = UDim2.fromOffset(72, 26)
+cpSaveBtn.AnchorPoint = Vector2.new(1, 0.5)
+cpSaveBtn.Position = UDim2.new(1, -5, 0.5, 0)
+cpSaveBtn.BackgroundColor3 = C.aurora
+cpSaveBtn.Text = "SAVE"
+cpSaveBtn.TextColor3 = C.void
+cpSaveBtn.TextSize = 11
+cpSaveBtn.Font = FONT_BOLD
+cpSaveBtn.AutoButtonColor = false
+cpSaveBtn.BorderSizePixel = 0
+cpSaveBtn.ZIndex = 10
+cpSaveBtn.Parent = cpNameHolder
+Instance.new("UICorner", cpSaveBtn).CornerRadius = UDim.new(0, 6)
+
+local cpListHolder = Instance.new("Frame")
+cpListHolder.Size = UDim2.new(1, -32, 0, 0)
+cpListHolder.Position = UDim2.new(0, 16, 0, cfgY)
+cpListHolder.BackgroundTransparency = 1
+cpListHolder.AutomaticSize = Enum.AutomaticSize.Y
+cpListHolder.ZIndex = 9
+cpListHolder.Parent = cfgScroll
+
+local cpListHeight = 0
+local function rebuildConfigPresets()
+    for _, c in ipairs(cpListHolder:GetChildren()) do c:Destroy() end
+    local y = 0
+    if #Presets.configs == 0 then
+        local none = Instance.new("TextLabel")
+        none.Size = UDim2.new(1, 0, 0, 22)
+        none.Position = UDim2.new(0, 0, 0, 0)
+        none.BackgroundTransparency = 1
+        none.Text = "no configs saved"
+        none.TextColor3 = C.sub
+        none.TextSize = 10
+        none.Font = FONT_MONO
+        none.TextXAlignment = Enum.TextXAlignment.Left
+        none.ZIndex = 10
+        none.Parent = cpListHolder
+        cpListHeight = 22
+        return
+    end
+    for idx, p in ipairs(Presets.configs) do
+        local item = Instance.new("Frame")
+        item.Size = UDim2.new(1, 0, 0, 34)
+        item.Position = UDim2.new(0, 0, 0, y)
+        item.BackgroundColor3 = Color3.fromRGB(20, 24, 40)
+        item.BackgroundTransparency = 0.55
+        item.BorderSizePixel = 0
+        item.ZIndex = 9
+        item.Parent = cpListHolder
+        Instance.new("UICorner", item).CornerRadius = UDim.new(0, 8)
+
+        local nm = Instance.new("TextButton")
+        nm.Size = UDim2.new(1, -40, 1, 0)
+        nm.Position = UDim2.new(0, 0, 0, 0)
+        nm.BackgroundTransparency = 1
+        nm.Text = p.name
+        nm.TextColor3 = C.text
+        nm.TextSize = 11
+        nm.Font = FONT_MONO
+        nm.TextXAlignment = Enum.TextXAlignment.Left
+        nm.ZIndex = 10
+        nm.Parent = item
+        nm.MouseButton1Click:Connect(function()
+            for k, v in pairs(p.data) do
+                if Config.defaults[k] ~= nil then
+                    Config.set(k, v)
+                end
+            end
+            for _, cb in pairs(configCallbacks) do pcall(cb) end
+            if refreshCrouchSlider then pcall(refreshCrouchSlider) end
+            if refreshBounceSlider then pcall(refreshBounceSlider) end
+            setStatus("loaded config: " .. p.name, C.good, 1.5)
+        end)
+
+        local del = Instance.new("TextButton")
+        del.Size = UDim2.fromOffset(24, 24)
+        del.AnchorPoint = Vector2.new(1, 0.5)
+        del.Position = UDim2.new(1, -5, 0.5, 0)
+        del.BackgroundColor3 = C.space
+        del.BackgroundTransparency = 0.5
+        del.Text = "×"
+        del.TextColor3 = C.bad
+        del.TextSize = 14
+        del.Font = FONT_BOLD
+        del.AutoButtonColor = false
+        del.BorderSizePixel = 0
+        del.ZIndex = 10
+        del.Parent = item
+        Instance.new("UICorner", del).CornerRadius = UDim.new(1, 0)
+        del.MouseButton1Click:Connect(function()
+            table.remove(Presets.configs, idx)
+            savePresets()
+            rebuildConfigPresets()
+        end)
+
+        y = y + 40
+    end
+    cpListHeight = y
+end
+rebuildConfigPresets()
+
+cpSaveBtn.MouseButton1Click:Connect(function()
+    local name = (cpNameBox.Text:gsub("^%s+", ""):gsub("%s+$", ""))
+    if name == "" then
+        setStatus("name required", C.bad, 1.5)
+        return
+    end
+    local snap = {}
+    for k, v in pairs(Config.defaults) do
+        snap[k] = Config.get(k)
+    end
+    table.insert(Presets.configs, { name = name, data = snap })
+    savePresets()
+    rebuildConfigPresets()
+    cpNameBox.Text = ""
+    setStatus("config saved: " .. name, C.good, 1.5)
+end)
+
+cfgY = cfgY + cpListHeight + 12
+
+cfgSectionHeader("RESET")
 local resetBtn = Instance.new("TextButton")
 resetBtn.Size = UDim2.new(1, -32, 0, 36)
 resetBtn.Position = UDim2.new(0, 16, 0, cfgY)
@@ -1568,7 +1897,6 @@ cfgScroll.CanvasSize = UDim2.new(0, 0, 0, cfgY + 40)
 --  CREDITS PAGE
 -- ═══════════════════════════════════════════════════════════════════
 local creditsPage = newPage("credits")
-
 local credLogo = Instance.new("ImageLabel")
 credLogo.Size = UDim2.fromOffset(90, 90)
 credLogo.Position = UDim2.new(0.5, -45, 0, 20)
@@ -1594,7 +1922,7 @@ local credVer = Instance.new("TextLabel")
 credVer.Size = UDim2.new(1, 0, 0, 16)
 credVer.Position = UDim2.new(0, 0, 0, 142)
 credVer.BackgroundTransparency = 1
-credVer.Text = "v1.4  ·  private build"
+credVer.Text = "v1.5  ·  private build"
 credVer.TextColor3 = C.sub
 credVer.TextSize = 10
 credVer.Font = FONT_MONO
@@ -1669,11 +1997,11 @@ task.spawn(function()
 end)
 
 -- ═══════════════════════════════════════════════════════════════════
---  SIDEBAR  ·  screen-anchored, offset from top/bottom, rounded
+--  SIDEBAR
 -- ═══════════════════════════════════════════════════════════════════
-local SB_W     = 220
-local SB_TOP   = 48    -- clears the Roblox topbar
-local SB_BOT   = 48    -- clears mobile bottom controls
+local SB_W = 220
+local SB_TOP = 48
+local SB_BOT = 48
 
 local sidebar = Instance.new("Frame")
 sidebar.Name = "Sidebar"
@@ -1702,10 +2030,8 @@ sbStroke.Thickness = 1.4
 sbStroke.Transparency = 0.25
 sbStroke.Parent = sidebar
 
--- Sidebar ambient particles (must come after sidebar exists)
 spawnAmbientParticles(sidebar, 14)
 
--- Title (top)
 local sbTitle = Instance.new("TextLabel")
 sbTitle.Size = UDim2.new(1, -20, 0, 20)
 sbTitle.Position = UDim2.new(0, 14, 0, 12)
@@ -1718,7 +2044,6 @@ sbTitle.TextXAlignment = Enum.TextXAlignment.Left
 sbTitle.ZIndex = 21
 sbTitle.Parent = sidebar
 
--- Search box
 local searchHolder = Instance.new("Frame")
 searchHolder.Size = UDim2.new(1, -20, 0, 32)
 searchHolder.Position = UDim2.new(0, 10, 0, 38)
@@ -1761,7 +2086,6 @@ searchBox.ClearTextOnFocus = false
 searchBox.ZIndex = 22
 searchBox.Parent = searchHolder
 
--- Results list
 local resultsScroll = Instance.new("ScrollingFrame")
 resultsScroll.Size = UDim2.new(1, -20, 1, -38 - 32 - 10 - 62)
 resultsScroll.Position = UDim2.new(0, 10, 0, 78)
@@ -1828,7 +2152,6 @@ local function rebuildResults(filter)
                 ct.TextSize = 9
                 ct.Font = FONT_MONO
                 ct.TextXAlignment = Enum.TextXAlignment.Left
-                ct.TextTruncate = Enum.TextTruncate.AtEnd
                 ct.ZIndex = 23
                 ct.Parent = item
 
@@ -1848,14 +2171,6 @@ local function rebuildResults(filter)
                     end
                 end)
 
-                item.MouseEnter:Connect(function()
-                    TweenService:Create(item, TweenInfo.new(0.15), {BackgroundTransparency = 0.3}):Play()
-                    TweenService:Create(iStroke, TweenInfo.new(0.15), {Transparency = 0.3}):Play()
-                end)
-                item.MouseLeave:Connect(function()
-                    TweenService:Create(item, TweenInfo.new(0.15), {BackgroundTransparency = 0.55}):Play()
-                    TweenService:Create(iStroke, TweenInfo.new(0.15), {Transparency = 0.7}):Play()
-                end)
                 item.MouseButton1Click:Connect(function()
                     Features.toggle(f.id)
                     if switchTab then switchTab(f.tab) end
@@ -1887,7 +2202,6 @@ searchBox:GetPropertyChangedSignal("Text"):Connect(function()
 end)
 rebuildResults("")
 
--- User card (bottom)
 local userCard = Instance.new("Frame")
 userCard.Size = UDim2.new(1, -20, 0, 56)
 userCard.AnchorPoint = Vector2.new(0, 1)
@@ -1944,7 +2258,7 @@ ucDesc.ZIndex = 22
 ucDesc.Parent = userCard
 
 -- ═══════════════════════════════════════════════════════════════════
---  BOOMBOX  ·  to the right of the sidebar, independent
+--  BOOMBOX
 -- ═══════════════════════════════════════════════════════════════════
 local BB_SIZE = 58
 local BB_GAP  = 14
@@ -1952,7 +2266,7 @@ local BB_GAP  = 14
 local boombox = Instance.new("TextButton")
 boombox.Name = "Boombox"
 boombox.Size = UDim2.fromOffset(BB_SIZE, BB_SIZE)
-boombox.Position = UDim2.new(0, -BB_SIZE - 20, 0, SB_TOP)  -- starts off-screen, tweened in
+boombox.Position = UDim2.new(0, -BB_SIZE - 20, 0, SB_TOP)
 boombox.BackgroundColor3 = C.panel
 boombox.BackgroundTransparency = 0.15
 boombox.Text = ""
@@ -1987,18 +2301,8 @@ bbIcon.Font = FONT_ICON
 bbIcon.ZIndex = 21
 bbIcon.Parent = boombox
 
-local bbPulse = Instance.new("Frame")
-bbPulse.Size = UDim2.fromScale(1, 1)
-bbPulse.BackgroundTransparency = 1
-bbPulse.ZIndex = 20
-bbPulse.Parent = boombox
-
--- Simple music state (placeholder — add SoundId later)
 local musicPlaying = false
-local musicTracks = {
-    -- { name = "track name", id = "rbxassetid://..." },
-}
-local currentTrack = 1
+local musicTracks = {}
 
 boombox.MouseButton1Click:Connect(function()
     if #musicTracks == 0 then
@@ -2006,24 +2310,9 @@ boombox.MouseButton1Click:Connect(function()
         return
     end
     musicPlaying = not musicPlaying
-    if musicPlaying then
-        setStatus("now playing: " .. (musicTracks[currentTrack] and musicTracks[currentTrack].name or "?"), C.good, 2)
-    else
-        setStatus("music paused", C.sub, 1.5)
-    end
     TweenService:Create(bbIcon, TweenInfo.new(0.2), {TextColor3 = musicPlaying and C.good or C.aurora}):Play()
 end)
 
-boombox.MouseEnter:Connect(function()
-    TweenService:Create(boombox, TweenInfo.new(0.15), {BackgroundTransparency = 0.05}):Play()
-    TweenService:Create(bbStroke, TweenInfo.new(0.15), {Transparency = 0.05}):Play()
-end)
-boombox.MouseLeave:Connect(function()
-    TweenService:Create(boombox, TweenInfo.new(0.15), {BackgroundTransparency = 0.15}):Play()
-    TweenService:Create(bbStroke, TweenInfo.new(0.15), {Transparency = 0.25}):Play()
-end)
-
--- pulse icon
 task.spawn(function()
     while boombox.Parent do
         if musicPlaying then
@@ -2342,27 +2631,15 @@ local function slideWindowIn()
     boombox.Position = OFF_BB_POS
     boombox.Visible = true
 
-    TweenService:Create(windowContainer, TweenInfo.new(0.42, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
-        Position = FINAL_WIN_POS
-    }):Play()
-    TweenService:Create(sidebar, TweenInfo.new(0.42, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
-        Position = FINAL_SB_POS
-    }):Play()
-    TweenService:Create(boombox, TweenInfo.new(0.48, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
-        Position = FINAL_BB_POS
-    }):Play()
+    TweenService:Create(windowContainer, TweenInfo.new(0.42, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {Position = FINAL_WIN_POS}):Play()
+    TweenService:Create(sidebar, TweenInfo.new(0.42, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {Position = FINAL_SB_POS}):Play()
+    TweenService:Create(boombox, TweenInfo.new(0.48, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {Position = FINAL_BB_POS}):Play()
 end
 
 local function slideWindowOut()
-    TweenService:Create(windowContainer, TweenInfo.new(0.3, Enum.EasingStyle.Quint, Enum.EasingDirection.In), {
-        Position = UDim2.new(0.5, -DEF_W/2, 0.5, -DEF_H/2 + 140)
-    }):Play()
-    TweenService:Create(sidebar, TweenInfo.new(0.3, Enum.EasingStyle.Quint, Enum.EasingDirection.In), {
-        Position = OFF_SB_POS
-    }):Play()
-    TweenService:Create(boombox, TweenInfo.new(0.3, Enum.EasingStyle.Quint, Enum.EasingDirection.In), {
-        Position = OFF_BB_POS
-    }):Play()
+    TweenService:Create(windowContainer, TweenInfo.new(0.3, Enum.EasingStyle.Quint, Enum.EasingDirection.In), {Position = UDim2.new(0.5, -DEF_W/2, 0.5, -DEF_H/2 + 140)}):Play()
+    TweenService:Create(sidebar, TweenInfo.new(0.3, Enum.EasingStyle.Quint, Enum.EasingDirection.In), {Position = OFF_SB_POS}):Play()
+    TweenService:Create(boombox, TweenInfo.new(0.3, Enum.EasingStyle.Quint, Enum.EasingDirection.In), {Position = OFF_BB_POS}):Play()
     task.wait(0.3)
     windowContainer.Visible = false
     sidebar.Visible = false
@@ -2424,7 +2701,10 @@ local function worstGroundNormal(char, root)
 end
 
 RunService.Stepped:Connect(function()
-    if not Features.autojump or not Features.autojump.enabled then return end
+    local ajOn = Features.autojump and Features.autojump.enabled
+    local trimpOn = Features.autotrimp and Features.autotrimp.enabled
+    if not (ajOn or trimpOn) then return end
+
     local char = player.Character
     if not char then return end
     local hum = char:FindFirstChildOfClass("Humanoid")
@@ -2447,16 +2727,13 @@ RunService.Stepped:Connect(function()
 end)
 
 -- ═══════════════════════════════════════════════════════════════════
---  EASY BOUNCE
+--  EASY + HARD BOUNCE
 -- ═══════════════════════════════════════════════════════════════════
--- Track airtime: how long since the character left the ground.
--- On landing (air->ground transition) if airtime > 1.5s AND surface
--- angle > 10deg, apply an upward velocity proportional to the
--- fall speed multiplied by the configured multiplier.
 local airStartTick = 0
 local wasAirborne = false
 local MIN_AIR = 1.5
-local MIN_SLOPE_COS_BOUNCE = math.cos(math.rad(10))  -- ~0.985
+local MIN_SLOPE_COS_BOUNCE = math.cos(math.rad(10))
+local lastYVel = 0
 
 local bounceRayParams = RaycastParams.new()
 bounceRayParams.FilterType = Enum.RaycastFilterType.Exclude
@@ -2470,24 +2747,11 @@ local function getGroundNormal(char, root)
     return nil
 end
 
-local lastYVel = 0
-
 RunService.Heartbeat:Connect(function()
-    if not Features.easybounce or not Features.easybounce.enabled then
-        -- keep tracking airtime even when disabled so it starts fresh
-        local c = player.Character
-        if c then
-            local h = c:FindFirstChildOfClass("Humanoid")
-            if h then
-                if h.FloorMaterial == Enum.Material.Air then
-                    if not wasAirborne then wasAirborne = true; airStartTick = tick() end
-                else
-                    wasAirborne = false
-                end
-            end
-        end
-        return
-    end
+    local easyOn   = Features.easybounce and Features.easybounce.enabled
+    local hardOn   = Features.hardbounce and Features.hardbounce.enabled
+    local trimpOn  = Features.autotrimp and Features.autotrimp.enabled
+    local anyBounce = easyOn or hardOn or trimpOn
 
     local char = player.Character
     if not char then return end
@@ -2498,7 +2762,6 @@ RunService.Heartbeat:Connect(function()
 
     local airborne = hum.FloorMaterial == Enum.Material.Air
 
-    -- track vertical velocity while in air for magnitude reference
     if airborne then
         lastYVel = root.AssemblyLinearVelocity.Y
     end
@@ -2507,29 +2770,32 @@ RunService.Heartbeat:Connect(function()
         wasAirborne = true
         airStartTick = tick()
     elseif not airborne and wasAirborne then
-        -- just landed
         local airtime = tick() - airStartTick
         wasAirborne = false
 
-        if airtime >= MIN_AIR then
-            -- check the surface we landed on
+        if anyBounce and airtime >= MIN_AIR then
             local normal = getGroundNormal(char, root)
-            if normal and normal.Y <= MIN_SLOPE_COS_BOUNCE then
-                -- ramp detected (> 10° tilt)
-                local fall = math.abs(lastYVel)
-                if fall > 8 then
-                    local mult = Config.get("bounce_multiplier") or 1.6
-                    -- Base bounce speed is a fraction of fall speed times mult
-                    local bounceSpeed = fall * (mult - 1) + 15
-                    bounceSpeed = math.clamp(bounceSpeed, 20, 220)
-                    -- Apply upward velocity directly (Evade movement is custom but
-                    -- this offsets it for a bounce moment before normal physics resumes)
-                    root.AssemblyLinearVelocity = Vector3.new(
-                        root.AssemblyLinearVelocity.X,
-                        bounceSpeed,
-                        root.AssemblyLinearVelocity.Z
-                    )
-                    setStatus(string.format("bounce  ·  %.0f", bounceSpeed), C.warn, 1.2)
+            if normal then
+                local isRamp = normal.Y <= MIN_SLOPE_COS_BOUNCE
+                local shouldFire = false
+                if hardOn then
+                    shouldFire = true
+                elseif easyOn or trimpOn then
+                    shouldFire = isRamp
+                end
+                if shouldFire then
+                    local fall = math.abs(lastYVel)
+                    if fall > 8 then
+                        local mult = Config.get("bounce_multiplier") or 1.6
+                        local bounceSpeed = fall * (mult - 1) + 15
+                        bounceSpeed = math.clamp(bounceSpeed, 20, 220)
+                        root.AssemblyLinearVelocity = Vector3.new(
+                            root.AssemblyLinearVelocity.X,
+                            bounceSpeed,
+                            root.AssemblyLinearVelocity.Z
+                        )
+                        setStatus(string.format("bounce  ·  %.0f", bounceSpeed), C.warn, 1.2)
+                    end
                 end
             end
         end
@@ -2537,56 +2803,17 @@ RunService.Heartbeat:Connect(function()
 end)
 
 -- ═══════════════════════════════════════════════════════════════════
---  SPAM CROUCH
+--  SPAM CROUCH  ·  VirtualInputManager LeftControl spam
 -- ═══════════════════════════════════════════════════════════════════
 local spamCrouchTask = nil
 
-local function buildCrouchBuffer()
-    local bytes = { 15, 0 }
-    local b = buffer.create(#bytes)
-    for i = 1, #bytes do
-        buffer.writeu8(b, i - 1, bytes[i])
-    end
-    return b
-end
-
-local function lookupSpamEvent()
-    local ok, rs = pcall(function() return game:GetService("ReplicatedStorage") end)
-    if not ok or not rs then return nil end
-    local events = rs:FindFirstChild("Events")
-    if not events then
-        local ok2, ev = pcall(function() return rs:WaitForChild("Events", 1) end)
-        if ok2 then events = ev end
-    end
-    if not events then return nil end
-    local ev = events:FindFirstChild("UpdateCharacterDataRegistry")
-    if not ev then
-        local ok3, ev3 = pcall(function() return events:WaitForChild("UpdateCharacterDataRegistry", 1) end)
-        if ok3 then ev = ev3 end
-    end
-    return ev
-end
-
--- Try firing with the game's identity if the executor supports it
-local function fireCrouch(state)
-    local ev = lookupSpamEvent()
-    if not ev then return false end
-    local buf = buildCrouchBuffer()
-
-    -- Attempt with elevated identity first, fall back to plain
-    local elevatedOK = false
-    if setthreadidentity then
-        local ok = pcall(function()
-            setthreadidentity(8)
-            ev:FireServer({ buf, state })
-        end)
-        if ok then elevatedOK = true end
-    end
-
-    if not elevatedOK then
-        pcall(function() ev:FireServer({ buf, state }) end)
-    end
-    return true
+local function sendCtrlPress()
+    pcall(function()
+        VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.LeftControl, false, game)
+    end)
+    pcall(function()
+        VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.LeftControl, false, game)
+    end)
 end
 
 local function startSpamCrouch()
@@ -2594,18 +2821,12 @@ local function startSpamCrouch()
         pcall(task.cancel, spamCrouchTask)
         spamCrouchTask = nil
     end
-    if not lookupSpamEvent() then
-        setStatus("crouch: event not found", C.bad, 3)
-        Features.setEnabled("spamcrouch", false)
-        return
-    end
     spamCrouchTask = task.spawn(function()
-        setStatus("crouch: spamming", C.good, 1.5)
+        setStatus("crouch: spamming ctrl", C.good, 1.5)
         while Features.spamcrouch and Features.spamcrouch.enabled do
-            fireCrouch("CrouchIdle")
+            sendCtrlPress()
             task.wait(Config.get("crouch_speed") or 0.08)
         end
-        fireCrouch("Idle")
         setStatus("idle", C.sub)
     end)
 end
@@ -2615,7 +2836,10 @@ local function stopSpamCrouch()
         pcall(task.cancel, spamCrouchTask)
         spamCrouchTask = nil
     end
-    fireCrouch("Idle")
+    -- release key in case it's stuck down
+    pcall(function()
+        VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.LeftControl, false, game)
+    end)
     setStatus("idle", C.sub)
 end
 
