@@ -1,12 +1,12 @@
 -- ═══════════════════════════════════════════════════════════════════
---   R E F O R G E D   ·   v1.5
+--   R E F O R G E D   ·   v1.6
 -- ═══════════════════════════════════════════════════════════════════
 local Players          = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local RunService       = game:GetService("RunService")
 local TweenService     = game:GetService("TweenService")
-local VirtualInputManager = game:GetService("VirtualInputManager")
 local HttpService      = game:GetService("HttpService")
+local SoundService     = game:GetService("SoundService")
 local player = Players.LocalPlayer
 
 local C = {
@@ -53,7 +53,6 @@ Config.defaults = {
     clear_terrain     = true,
     use_asset_spawn   = true,
     invis_menu        = false,
-    crouch_speed      = 0.08,
     bounce_multiplier = 1.6,
 }
 Config.data = {}
@@ -370,7 +369,7 @@ local subtitleText = Instance.new("TextLabel")
 subtitleText.Size = UDim2.new(1, -160, 0, 14)
 subtitleText.Position = UDim2.new(0, 57, 0, 30)
 subtitleText.BackgroundTransparency = 1
-subtitleText.Text = "v1.5"
+subtitleText.Text = "v1.6"
 subtitleText.TextColor3 = C.sub
 subtitleText.TextSize = 10
 subtitleText.Font = FONT_MONO
@@ -584,7 +583,6 @@ function Features.register(id, opts)
     return Features[id]
 end
 
--- mutual exclusion map: enabling key forces these off
 local FORCE_OFF = {
     autojump   = { "autotrimp" },
     easybounce = { "hardbounce", "autotrimp" },
@@ -1305,27 +1303,22 @@ end
 -- ═══════════════════════════════════════════════════════════════════
 Features.register("autojump", {
     name = "Auto Jump", icon = "▲", category = "MOVEMENT", tab = "movement",
-    hudOffset = Vector2.new(-240, 130),
-})
-Features.register("spamcrouch", {
-    name = "Spam Crouch", icon = "▼", category = "MOVEMENT", tab = "movement",
-    hint = "spams LeftControl key events",
-    hudOffset = Vector2.new(-240, 198),
+    hudOffset = Vector2.new(-240, 160),
 })
 Features.register("easybounce", {
     name = "Easy Bounce", icon = "◈", category = "MOVEMENT", tab = "movement",
     hint = "bounce on ramps (>10°) after 1.5s airtime",
-    hudOffset = Vector2.new(-240, 266),
+    hudOffset = Vector2.new(-240, 228),
 })
 Features.register("hardbounce", {
     name = "Hard Bounce", icon = "◭", category = "MOVEMENT", tab = "movement",
     hint = "bounce on any surface after 1.5s airtime",
-    hudOffset = Vector2.new(-240, 334),
+    hudOffset = Vector2.new(-240, 296),
 })
 Features.register("autotrimp", {
     name = "Auto Trimp", icon = "✦", category = "MOVEMENT", tab = "movement",
     hint = "auto jump + easy bounce combo",
-    hudOffset = Vector2.new(-240, 402),
+    hudOffset = Vector2.new(-240, 364),
 })
 
 -- ═══════════════════════════════════════════════════════════════════
@@ -1334,22 +1327,18 @@ Features.register("autotrimp", {
 local movementPage = newPage("movement", true)
 makeCategoryHeader(movementPage, "MOVEMENT", 14)
 makeFeatureRow(movementPage, "autojump",   36)
-makeFeatureRow(movementPage, "spamcrouch", 102)
-makeFeatureRow(movementPage, "easybounce", 168)
-makeFeatureRow(movementPage, "hardbounce", 234)
-makeFeatureRow(movementPage, "autotrimp",  300)
-makeCategoryHeader(movementPage, "PLAYER", 372)
-makeSoon(movementPage, 392)
-makeCategoryHeader(movementPage, "SETTINGS", 422)
-local crouchSliderRow, refreshCrouchSlider = makeSliderRow(
-    movementPage, "Crouch Speed", "crouch_speed", 0.02, 0.5, 444, "s", 2
-)
+makeFeatureRow(movementPage, "easybounce", 102)
+makeFeatureRow(movementPage, "hardbounce", 168)
+makeFeatureRow(movementPage, "autotrimp",  234)
+makeCategoryHeader(movementPage, "PLAYER", 306)
+makeSoon(movementPage, 326)
+makeCategoryHeader(movementPage, "SETTINGS", 356)
 local bounceSliderRow, refreshBounceSlider = makeSliderRow(
-    movementPage, "Bounce Multiplier", "bounce_multiplier", 1.04, 5.0, 516, "x", 2
+    movementPage, "Bounce Multiplier", "bounce_multiplier", 1.04, 5.0, 378, "x", 2
 )
 
 -- ═══════════════════════════════════════════════════════════════════
---  MAP PAGE  (map changer + preset system)
+--  MAP PAGE
 -- ═══════════════════════════════════════════════════════════════════
 local mapPage = newPage("map", true)
 makeCategoryHeader(mapPage, "MAP CHANGER", 14)
@@ -1425,7 +1414,6 @@ activateBtn.MouseLeave:Connect(function()
     TweenService:Create(actStroke, TweenInfo.new(0.15), {Transparency = 0.5}):Play()
 end)
 
--- Preset section
 makeCategoryHeader(mapPage, "MAP PRESETS", 158)
 
 local mpNameHolder = Instance.new("Frame")
@@ -1482,7 +1470,6 @@ local function rebuildMapPresets()
     if #Presets.maps == 0 then
         local none = Instance.new("TextLabel")
         none.Size = UDim2.new(1, 0, 0, 22)
-        none.Position = UDim2.new(0, 0, 0, 0)
         none.BackgroundTransparency = 1
         none.Text = "no presets saved"
         none.TextColor3 = C.sub
@@ -1506,7 +1493,6 @@ local function rebuildMapPresets()
 
         local nm = Instance.new("TextButton")
         nm.Size = UDim2.new(1, -40, 1, 0)
-        nm.Position = UDim2.new(0, 0, 0, 0)
         nm.BackgroundTransparency = 1
         nm.Text = p.name .. "  ·  " .. p.id
         nm.TextColor3 = C.text
@@ -1715,7 +1701,6 @@ makeConfigToggle("Invis Menu", "invis_menu",
 cfgY = cfgY + 8
 cfgSectionHeader("CONFIGS")
 
--- Config preset UI
 local cpNameHolder = Instance.new("Frame")
 cpNameHolder.Size = UDim2.new(1, -32, 0, 36)
 cpNameHolder.Position = UDim2.new(0, 16, 0, cfgY)
@@ -1772,7 +1757,6 @@ local function rebuildConfigPresets()
     if #Presets.configs == 0 then
         local none = Instance.new("TextLabel")
         none.Size = UDim2.new(1, 0, 0, 22)
-        none.Position = UDim2.new(0, 0, 0, 0)
         none.BackgroundTransparency = 1
         none.Text = "no configs saved"
         none.TextColor3 = C.sub
@@ -1797,7 +1781,6 @@ local function rebuildConfigPresets()
 
         local nm = Instance.new("TextButton")
         nm.Size = UDim2.new(1, -40, 1, 0)
-        nm.Position = UDim2.new(0, 0, 0, 0)
         nm.BackgroundTransparency = 1
         nm.Text = p.name
         nm.TextColor3 = C.text
@@ -1813,7 +1796,6 @@ local function rebuildConfigPresets()
                 end
             end
             for _, cb in pairs(configCallbacks) do pcall(cb) end
-            if refreshCrouchSlider then pcall(refreshCrouchSlider) end
             if refreshBounceSlider then pcall(refreshBounceSlider) end
             setStatus("loaded config: " .. p.name, C.good, 1.5)
         end)
@@ -1879,15 +1861,9 @@ resetBtn.BorderSizePixel = 0
 resetBtn.ZIndex = 9
 resetBtn.Parent = cfgScroll
 Instance.new("UICorner", resetBtn).CornerRadius = UDim.new(0, 8)
-local resetStroke = Instance.new("UIStroke")
-resetStroke.Color = C.border
-resetStroke.Thickness = 1
-resetStroke.Transparency = 0.6
-resetStroke.Parent = resetBtn
 resetBtn.MouseButton1Click:Connect(function()
     Config.reset()
     for _, cb in pairs(configCallbacks) do pcall(cb) end
-    if refreshCrouchSlider then pcall(refreshCrouchSlider) end
     if refreshBounceSlider then pcall(refreshBounceSlider) end
 end)
 cfgY = cfgY + 44
@@ -1922,7 +1898,7 @@ local credVer = Instance.new("TextLabel")
 credVer.Size = UDim2.new(1, 0, 0, 16)
 credVer.Position = UDim2.new(0, 0, 0, 142)
 credVer.BackgroundTransparency = 1
-credVer.Text = "v1.5  ·  private build"
+credVer.Text = "v1.6  ·  private build"
 credVer.TextColor3 = C.sub
 credVer.TextSize = 10
 credVer.Font = FONT_MONO
@@ -1997,16 +1973,17 @@ task.spawn(function()
 end)
 
 -- ═══════════════════════════════════════════════════════════════════
---  SIDEBAR
+--  SIDEBAR  ·  offset from left edge, rounded corners
 -- ═══════════════════════════════════════════════════════════════════
-local SB_W = 220
-local SB_TOP = 48
-local SB_BOT = 48
+local SB_W    = 220
+local SB_TOP  = 48
+local SB_BOT  = 48
+local SB_LEFT = 14
 
 local sidebar = Instance.new("Frame")
 sidebar.Name = "Sidebar"
 sidebar.Size = UDim2.new(0, SB_W, 1, -SB_TOP - SB_BOT)
-sidebar.Position = UDim2.new(0, -SB_W - 20, 0, SB_TOP)
+sidebar.Position = UDim2.new(0, -SB_W - 40, 0, SB_TOP)
 sidebar.BackgroundColor3 = C.panel
 sidebar.BackgroundTransparency = 0.08
 sidebar.BorderSizePixel = 0
@@ -2014,7 +1991,7 @@ sidebar.ClipsDescendants = true
 sidebar.Active = true
 sidebar.ZIndex = 20
 sidebar.Parent = guiMain
-Instance.new("UICorner", sidebar).CornerRadius = UDim.new(0, 14)
+Instance.new("UICorner", sidebar).CornerRadius = UDim.new(0, 16)
 
 local sbGrad = Instance.new("UIGradient")
 sbGrad.Color = ColorSequence.new{
@@ -2258,8 +2235,38 @@ ucDesc.ZIndex = 22
 ucDesc.Parent = userCard
 
 -- ═══════════════════════════════════════════════════════════════════
---  BOOMBOX
+--  BOOMBOX  ·  working music player
 -- ═══════════════════════════════════════════════════════════════════
+-- ► ADD YOUR SONGS HERE. Each entry is { name = "...", id = "rbxassetid://..." }
+local musicTracks = {
+    -- { name = "example track", id = "rbxassetid://1837879082" },
+    -- { name = "another",       id = "rbxassetid://1836318192" },
+}
+local currentTrack = 1
+local musicPlaying = false
+
+local musicSound = Instance.new("Sound")
+musicSound.Name = "ReforgedMusic"
+musicSound.Volume = 0.5
+musicSound.Looped = false
+musicSound.Parent = SoundService
+
+local function playCurrentTrack()
+    if #musicTracks == 0 then return end
+    if currentTrack > #musicTracks then currentTrack = 1 end
+    local t = musicTracks[currentTrack]
+    musicSound.SoundId = t.id
+    musicSound:Play()
+    setStatus("playing · " .. t.name, C.good, 2)
+end
+
+musicSound.Stopped:Connect(function()
+    if musicPlaying then
+        currentTrack = currentTrack % #musicTracks + 1
+        playCurrentTrack()
+    end
+end)
+
 local BB_SIZE = 58
 local BB_GAP  = 14
 
@@ -2301,15 +2308,18 @@ bbIcon.Font = FONT_ICON
 bbIcon.ZIndex = 21
 bbIcon.Parent = boombox
 
-local musicPlaying = false
-local musicTracks = {}
-
 boombox.MouseButton1Click:Connect(function()
     if #musicTracks == 0 then
-        setStatus("no tracks loaded", C.warn, 1.5)
+        setStatus("add songs to musicTracks", C.warn, 2)
         return
     end
     musicPlaying = not musicPlaying
+    if musicPlaying then
+        playCurrentTrack()
+    else
+        musicSound:Stop()
+        setStatus("music paused", C.sub, 1.2)
+    end
     TweenService:Create(bbIcon, TweenInfo.new(0.2), {TextColor3 = musicPlaying and C.good or C.aurora}):Play()
 end)
 
@@ -2618,9 +2628,9 @@ end
 --  SLIDE-IN
 -- ═══════════════════════════════════════════════════════════════════
 local FINAL_WIN_POS = UDim2.new(0.5, -DEF_W/2, 0.5, -DEF_H/2)
-local FINAL_SB_POS  = UDim2.new(0, 0, 0, SB_TOP)
-local OFF_SB_POS    = UDim2.new(0, -SB_W - 20, 0, SB_TOP)
-local FINAL_BB_POS  = UDim2.new(0, SB_W + BB_GAP, 0, SB_TOP + 4)
+local FINAL_SB_POS  = UDim2.new(0, SB_LEFT, 0, SB_TOP)
+local OFF_SB_POS    = UDim2.new(0, SB_LEFT - SB_W - 40, 0, SB_TOP)
+local FINAL_BB_POS  = UDim2.new(0, SB_LEFT + SB_W + BB_GAP, 0, SB_TOP + 4)
 local OFF_BB_POS    = UDim2.new(0, -BB_SIZE - 20, 0, SB_TOP + 4)
 
 local function slideWindowIn()
@@ -2748,9 +2758,9 @@ local function getGroundNormal(char, root)
 end
 
 RunService.Heartbeat:Connect(function()
-    local easyOn   = Features.easybounce and Features.easybounce.enabled
-    local hardOn   = Features.hardbounce and Features.hardbounce.enabled
-    local trimpOn  = Features.autotrimp and Features.autotrimp.enabled
+    local easyOn  = Features.easybounce and Features.easybounce.enabled
+    local hardOn  = Features.hardbounce and Features.hardbounce.enabled
+    local trimpOn = Features.autotrimp and Features.autotrimp.enabled
     local anyBounce = easyOn or hardOn or trimpOn
 
     local char = player.Character
@@ -2800,51 +2810,6 @@ RunService.Heartbeat:Connect(function()
             end
         end
     end
-end)
-
--- ═══════════════════════════════════════════════════════════════════
---  SPAM CROUCH  ·  VirtualInputManager LeftControl spam
--- ═══════════════════════════════════════════════════════════════════
-local spamCrouchTask = nil
-
-local function sendCtrlPress()
-    pcall(function()
-        VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.LeftControl, false, game)
-    end)
-    pcall(function()
-        VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.LeftControl, false, game)
-    end)
-end
-
-local function startSpamCrouch()
-    if spamCrouchTask then
-        pcall(task.cancel, spamCrouchTask)
-        spamCrouchTask = nil
-    end
-    spamCrouchTask = task.spawn(function()
-        setStatus("crouch: spamming ctrl", C.good, 1.5)
-        while Features.spamcrouch and Features.spamcrouch.enabled do
-            sendCtrlPress()
-            task.wait(Config.get("crouch_speed") or 0.08)
-        end
-        setStatus("idle", C.sub)
-    end)
-end
-
-local function stopSpamCrouch()
-    if spamCrouchTask then
-        pcall(task.cancel, spamCrouchTask)
-        spamCrouchTask = nil
-    end
-    -- release key in case it's stuck down
-    pcall(function()
-        VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.LeftControl, false, game)
-    end)
-    setStatus("idle", C.sub)
-end
-
-Features.addListener("spamcrouch", function(enabled)
-    if enabled then startSpamCrouch() else stopSpamCrouch() end
 end)
 
 -- ═══════════════════════════════════════════════════════════════════
