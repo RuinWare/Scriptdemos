@@ -742,7 +742,7 @@ local function makeGlassToggle(parent, anchorPos, getState, setState)
 end
 
 -- ═══════════════════════════════════════════════════════════════════
---  FLOATING HUD PILL
+--  FLOATING HUD PILL  (multi-touch safe)
 -- ═══════════════════════════════════════════════════════════════════
 local function toggleFloating(featureId)
     local f = Features[featureId]
@@ -919,7 +919,10 @@ local function toggleFloating(featureId)
     btn.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1
         or input.UserInputType == Enum.UserInputType.Touch then
+            if drag then return end
             drag = {
+                sourceInput = input,
+                isTouch = (input.UserInputType == Enum.UserInputType.Touch),
                 startMouse = input.Position,
                 startPos = Vector2.new(btn.Position.X.Offset, btn.Position.Y.Offset),
                 startTime = tick(),
@@ -929,35 +932,45 @@ local function toggleFloating(featureId)
     end)
 
     UserInputService.InputChanged:Connect(function(input)
-        if drag and (input.UserInputType == Enum.UserInputType.MouseMovement
-        or input.UserInputType == Enum.UserInputType.Touch) then
-            local delta = input.Position - drag.startMouse
-            if math.abs(delta.X) > 10 or math.abs(delta.Y) > 10 then
-                drag.moved = true
-            end
-            if not f.locked and f.pillVisible and drag.moved then
-                btn.Position = UDim2.new(0.5, drag.startPos.X + delta.X, 0.5, drag.startPos.Y + delta.Y)
-            end
+        if not drag then return end
+        local matches
+        if drag.isTouch then
+            matches = (input == drag.sourceInput)
+        else
+            matches = (input.UserInputType == Enum.UserInputType.MouseMovement)
+        end
+        if not matches then return end
+
+        local delta = input.Position - drag.startMouse
+        if math.abs(delta.X) > 10 or math.abs(delta.Y) > 10 then
+            drag.moved = true
+        end
+        if not f.locked and f.pillVisible and drag.moved then
+            btn.Position = UDim2.new(0.5, drag.startPos.X + delta.X, 0.5, drag.startPos.Y + delta.Y)
         end
     end)
 
     UserInputService.InputEnded:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1
-        or input.UserInputType == Enum.UserInputType.Touch then
-            if drag then
-                local held = tick() - drag.startTime
-                if not drag.moved and held < 0.35 then
-                    if f.isButton then
-                        if f.action then pcall(f.action) end
-                    else
-                        Features.toggle(featureId)
-                    end
-                elseif drag.moved and not f.locked and f.pillVisible then
-                    f.hudOffset = Vector2.new(btn.Position.X.Offset, btn.Position.Y.Offset)
-                end
-            end
-            drag = nil
+        if not drag then return end
+        local matches
+        if drag.isTouch then
+            matches = (input == drag.sourceInput)
+        else
+            matches = (input.UserInputType == Enum.UserInputType.MouseButton1)
         end
+        if not matches then return end
+
+        local held = tick() - drag.startTime
+        if not drag.moved and held < 0.35 then
+            if f.isButton then
+                if f.action then pcall(f.action) end
+            else
+                Features.toggle(featureId)
+            end
+        elseif drag.moved and not f.locked and f.pillVisible then
+            f.hudOffset = Vector2.new(btn.Position.X.Offset, btn.Position.Y.Offset)
+        end
+        drag = nil
     end)
 end
 
@@ -2541,7 +2554,7 @@ RunService.RenderStepped:Connect(function(dt)
 end)
 
 -- ═══════════════════════════════════════════════════════════════════
---  BUBBLE
+--  BUBBLE  (multi-touch safe)
 -- ═══════════════════════════════════════════════════════════════════
 local bubble = Instance.new("TextButton")
 bubble.Size = UDim2.fromOffset(58, 58)
@@ -2653,7 +2666,10 @@ local bubbleDrag = nil
 bubble.InputBegan:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1
     or input.UserInputType == Enum.UserInputType.Touch then
+        if bubbleDrag then return end
         bubbleDrag = {
+            sourceInput = input,
+            isTouch = (input.UserInputType == Enum.UserInputType.Touch),
             startMouse = input.Position,
             startPos = Vector2.new(bubble.Position.X.Offset, bubble.Position.Y.Offset),
             target = Vector2.new(bubble.Position.X.Offset, bubble.Position.Y.Offset),
@@ -2664,21 +2680,33 @@ bubble.InputBegan:Connect(function(input)
 end)
 
 UserInputService.InputChanged:Connect(function(input)
-    if bubbleDrag and (input.UserInputType == Enum.UserInputType.MouseMovement
-    or input.UserInputType == Enum.UserInputType.Touch) then
-        local delta = input.Position - bubbleDrag.startMouse
-        if math.abs(delta.X) > 10 or math.abs(delta.Y) > 10 then
-            bubbleDrag.moved = true
-        end
-        if not Config.get("invis_menu") then
-            bubbleDrag.target = Vector2.new(bubbleDrag.startPos.X + delta.X, bubbleDrag.startPos.Y + delta.Y)
-        end
+    if not bubbleDrag then return end
+    local matches
+    if bubbleDrag.isTouch then
+        matches = (input == bubbleDrag.sourceInput)
+    else
+        matches = (input.UserInputType == Enum.UserInputType.MouseMovement)
+    end
+    if not matches then return end
+
+    local delta = input.Position - bubbleDrag.startMouse
+    if math.abs(delta.X) > 10 or math.abs(delta.Y) > 10 then
+        bubbleDrag.moved = true
+    end
+    if not Config.get("invis_menu") then
+        bubbleDrag.target = Vector2.new(bubbleDrag.startPos.X + delta.X, bubbleDrag.startPos.Y + delta.Y)
     end
 end)
 
 UserInputService.InputEnded:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1
-    or input.UserInputType == Enum.UserInputType.Touch then
+    if not bubbleDrag then return end
+    local matches
+    if bubbleDrag.isTouch then
+        matches = (input == bubbleDrag.sourceInput)
+    else
+        matches = (input.UserInputType == Enum.UserInputType.MouseButton1)
+    end
+    if matches then
         bubbleDrag = nil
     end
 end)
