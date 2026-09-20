@@ -1,5 +1,5 @@
 -- ═══════════════════════════════════════════════════════════════════
---   R E F O R G E D   ·   v1.3
+--   R E F O R G E D   ·   v1.4
 -- ═══════════════════════════════════════════════════════════════════
 local Players          = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
@@ -33,7 +33,7 @@ local LOGO_ID    = "rbxassetid://127983099298280"
 local MAX_LAYER  = 2147483647
 
 -- ═══════════════════════════════════════════════════════════════════
---  USER CARD  ·  edit the description below
+--  USER CARD
 -- ═══════════════════════════════════════════════════════════════════
 local USER_CARD = {
     username    = player.Name,
@@ -45,13 +45,14 @@ local USER_CARD = {
 -- ═══════════════════════════════════════════════════════════════════
 local Config = {}
 Config.defaults = {
-    auto_smooth     = true,
-    strip_scripts   = true,
-    clear_spawns    = true,
-    clear_terrain   = true,
-    use_asset_spawn = true,
-    invis_menu      = false,
-    crouch_speed    = 0.08,
+    auto_smooth      = true,
+    strip_scripts    = true,
+    clear_spawns     = true,
+    clear_terrain    = true,
+    use_asset_spawn  = true,
+    invis_menu       = false,
+    crouch_speed     = 0.08,
+    bounce_multiplier = 1.6,
 }
 Config.data = {}
 for k, v in pairs(Config.defaults) do Config.data[k] = v end
@@ -87,12 +88,10 @@ guiHud.IgnoreGuiInset = true
 guiHud.DisplayOrder = MAX_LAYER
 guiHud.Parent = pg
 
--- ═══════════════════════════════════════════════════════════════════
---  FORWARD DECLARATIONS
--- ═══════════════════════════════════════════════════════════════════
-local setStatus
-local switchTab
+-- Forward declarations
+local setStatus, switchTab
 local Features = {}
+local spawnAmbientParticles  -- particle helper
 
 -- ═══════════════════════════════════════════════════════════════════
 --  WINDOW
@@ -113,6 +112,9 @@ local winScale = Instance.new("UIScale")
 winScale.Scale = 1
 winScale.Parent = windowContainer
 
+-- Glow layers, tracked so we can resize them
+local glowLayers = {}
+
 local function makeGlowLayer(offset, alpha, period)
     local g = Instance.new("Frame")
     g.Size = UDim2.fromOffset(DEF_W + offset*2, DEF_H + offset*2)
@@ -123,6 +125,8 @@ local function makeGlowLayer(offset, alpha, period)
     g.ZIndex = 0
     g.Parent = windowContainer
     Instance.new("UICorner", g).CornerRadius = UDim.new(0, 22 + offset/3)
+    g:SetAttribute("GlowOffset", offset)
+    table.insert(glowLayers, g)
     task.spawn(function()
         local base = alpha
         local peak = math.max(0.5, alpha - 0.25)
@@ -139,6 +143,14 @@ end
 makeGlowLayer(26, 0.94, 2.4)
 makeGlowLayer(14, 0.86, 2.0)
 makeGlowLayer(6,  0.72, 1.6)
+
+local function resizeGlow(w, h)
+    for _, g in ipairs(glowLayers) do
+        local off = g:GetAttribute("GlowOffset") or 0
+        g.Size = UDim2.fromOffset(w + off*2, h + off*2)
+        g.Position = UDim2.new(0, -off, 0, -off)
+    end
+end
 
 local shadow = Instance.new("Frame")
 shadow.Size = UDim2.fromOffset(DEF_W, DEF_H)
@@ -193,7 +205,6 @@ winStroke.Transparency = 0.1
 winStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 winStroke.Parent = win
 
--- Star field
 local starField = Instance.new("Frame")
 starField.Size = UDim2.fromScale(1, 1)
 starField.BackgroundTransparency = 1
@@ -205,8 +216,7 @@ for i = 1, 70 do
     local s = Instance.new("Frame")
     local size = math.random(1, 2)
     s.Size = UDim2.fromOffset(size, size)
-    local px = math.random()
-    local py = math.random()
+    local px, py = math.random(), math.random()
     s.Position = UDim2.new(px, 0, py, 0)
     s.BackgroundColor3 = C.star
     s.BackgroundTransparency = 0.2 + math.random() * 0.6
@@ -245,13 +255,69 @@ task.spawn(function()
 end)
 
 -- ═══════════════════════════════════════════════════════════════════
+--  AMBIENT PARTICLES  (tiny white squares drifting up)
+-- ═══════════════════════════════════════════════════════════════════
+function spawnAmbientParticles(parent, count)
+    local layer = Instance.new("Frame")
+    layer.Name = "AmbientParticles"
+    layer.Size = UDim2.fromScale(1, 1)
+    layer.BackgroundTransparency = 1
+    layer.ClipsDescendants = true
+    layer.ZIndex = 5
+    layer.Parent = parent
+
+    local particles = {}
+    for i = 1, count do
+        local p = Instance.new("Frame")
+        local sz = 2 + math.random() * 2
+        p.Size = UDim2.fromOffset(sz, sz)
+        p.BackgroundColor3 = C.star
+        p.BackgroundTransparency = 0.4
+        p.BorderSizePixel = 0
+        p.Position = UDim2.new(math.random(), 0, 1 + math.random() * 0.4, 0)
+        p.ZIndex = 6
+        p.Parent = layer
+        table.insert(particles, {
+            el = p,
+            x = p.Position.X.Scale,
+            y = p.Position.Y.Scale,
+            speed = 0.005 + math.random() * 0.012,
+            sway = 0.002 + math.random() * 0.004,
+            phase = math.random() * math.pi * 2,
+            drift = (math.random() - 0.5) * 0.004,
+        })
+    end
+
+    task.spawn(function()
+        local t = 0
+        while layer.Parent do
+            local dt = task.wait(0.04)
+            t += dt
+            for _, pt in ipairs(particles) do
+                if not pt.el.Parent then continue end
+                pt.y = pt.y - pt.speed * dt
+                local x = pt.x + math.sin(t * 0.6 + pt.phase) * pt.sway + pt.drift * dt
+                -- recycle when off top
+                if pt.y < -0.05 then
+                    pt.y = 1.05 + math.random() * 0.2
+                    pt.x = math.random()
+                end
+                pt.el.Position = UDim2.new(x, 0, pt.y, 0)
+            end
+        end
+    end)
+end
+
+spawnAmbientParticles(win, 22)
+
+-- ═══════════════════════════════════════════════════════════════════
 --  TITLE BAR
 -- ═══════════════════════════════════════════════════════════════════
 local titleBar = Instance.new("Frame")
 titleBar.Name = "TitleBar"
 titleBar.Size = UDim2.new(1, 0, 0, 52)
 titleBar.BackgroundTransparency = 1
-titleBar.ZIndex = 5
+titleBar.ZIndex = 7
 titleBar.Parent = win
 
 local logoImg = Instance.new("ImageLabel")
@@ -261,7 +327,7 @@ logoImg.BackgroundTransparency = 1
 logoImg.Image = LOGO_ID
 logoImg.ImageColor3 = Color3.fromRGB(255, 255, 255)
 logoImg.ScaleType = Enum.ScaleType.Fit
-logoImg.ZIndex = 6
+logoImg.ZIndex = 8
 logoImg.Parent = titleBar
 
 local titleText = Instance.new("TextLabel")
@@ -273,19 +339,19 @@ titleText.TextColor3 = C.text
 titleText.TextSize = 16
 titleText.Font = FONT_TITLE
 titleText.TextXAlignment = Enum.TextXAlignment.Left
-titleText.ZIndex = 6
+titleText.ZIndex = 8
 titleText.Parent = titleBar
 
 local subtitleText = Instance.new("TextLabel")
 subtitleText.Size = UDim2.new(1, -160, 0, 14)
 subtitleText.Position = UDim2.new(0, 57, 0, 30)
 subtitleText.BackgroundTransparency = 1
-subtitleText.Text = "v1.3"
+subtitleText.Text = "v1.4"
 subtitleText.TextColor3 = C.sub
 subtitleText.TextSize = 10
 subtitleText.Font = FONT_MONO
 subtitleText.TextXAlignment = Enum.TextXAlignment.Left
-subtitleText.ZIndex = 6
+subtitleText.ZIndex = 8
 subtitleText.Parent = titleBar
 
 local function makeCircleBtn(text, pos, hoverColor)
@@ -300,7 +366,7 @@ local function makeCircleBtn(text, pos, hoverColor)
     b.Font = FONT_BOLD
     b.AutoButtonColor = false
     b.BorderSizePixel = 0
-    b.ZIndex = 7
+    b.ZIndex = 9
     b.Parent = titleBar
     Instance.new("UICorner", b).CornerRadius = UDim.new(1, 0)
     local st = Instance.new("UIStroke")
@@ -331,7 +397,7 @@ local tabBar = Instance.new("Frame")
 tabBar.Size = UDim2.new(1, 0, 0, TAB_H)
 tabBar.Position = UDim2.new(0, 0, 0, 52)
 tabBar.BackgroundTransparency = 1
-tabBar.ZIndex = 5
+tabBar.ZIndex = 7
 tabBar.Parent = win
 
 local divider = Instance.new("Frame")
@@ -340,7 +406,7 @@ divider.Position = UDim2.new(0, 16, 0, 52 + TAB_H)
 divider.BackgroundColor3 = C.border
 divider.BackgroundTransparency = 0.8
 divider.BorderSizePixel = 0
-divider.ZIndex = 5
+divider.ZIndex = 7
 divider.Parent = win
 
 local indicator = Instance.new("Frame")
@@ -348,7 +414,7 @@ indicator.Size = UDim2.new(1/6, -16, 0, 2)
 indicator.Position = UDim2.new(0, 8, 0, TAB_H - 2)
 indicator.BackgroundColor3 = C.aurora
 indicator.BorderSizePixel = 0
-indicator.ZIndex = 7
+indicator.ZIndex = 9
 indicator.Parent = tabBar
 Instance.new("UICorner", indicator).CornerRadius = UDim.new(1, 0)
 
@@ -370,7 +436,7 @@ for i, def in ipairs(tabDefs) do
     tb.BackgroundTransparency = 1
     tb.Text = ""
     tb.AutoButtonColor = false
-    tb.ZIndex = 6
+    tb.ZIndex = 8
     tb.Parent = tabBar
 
     local icon = Instance.new("TextLabel")
@@ -381,7 +447,7 @@ for i, def in ipairs(tabDefs) do
     icon.TextColor3 = C.sub
     icon.TextSize = 18
     icon.Font = FONT_ICON
-    icon.ZIndex = 7
+    icon.ZIndex = 9
     icon.Parent = tb
 
     local label = Instance.new("TextLabel")
@@ -392,7 +458,7 @@ for i, def in ipairs(tabDefs) do
     label.TextColor3 = C.sub
     label.TextSize = 9
     label.Font = FONT_BOLD
-    label.ZIndex = 7
+    label.ZIndex = 9
     label.Parent = tb
 
     tabButtons[def.id] = { btn = tb, icon = icon, label = label }
@@ -419,7 +485,7 @@ content.Name = "Content"
 content.Position = UDim2.new(0, 0, 0, 52 + TAB_H + 1)
 content.Size = UDim2.new(1, 0, 1, -(52 + TAB_H + 1) - 40)
 content.BackgroundTransparency = 1
-content.ZIndex = 5
+content.ZIndex = 7
 content.Parent = win
 
 local pages = {}
@@ -438,7 +504,7 @@ local function newPage(id, scrollable)
     p.Size = UDim2.fromScale(1, 1)
     p.BackgroundTransparency = 1
     p.Visible = false
-    p.ZIndex = 6
+    p.ZIndex = 8
     p.Parent = content
     pages[id] = p
     return p
@@ -454,7 +520,7 @@ local function makeCategoryHeader(parent, text, yPos)
     h.TextSize = 10
     h.Font = FONT_MONO
     h.TextXAlignment = Enum.TextXAlignment.Left
-    h.ZIndex = 8
+    h.ZIndex = 9
     h.Parent = parent
     return h
 end
@@ -469,7 +535,7 @@ local function makeSoon(parent, yPos)
     s.TextSize = 10
     s.Font = FONT_MONO
     s.TextXAlignment = Enum.TextXAlignment.Left
-    s.ZIndex = 8
+    s.ZIndex = 9
     s.Parent = parent
     return s
 end
@@ -864,7 +930,7 @@ local function makeFeatureRow(parent, featureId, yPos)
     row.BackgroundTransparency = 0.55
     row.BorderSizePixel = 0
     row.ClipsDescendants = true
-    row.ZIndex = 8
+    row.ZIndex = 9
     row.Parent = parent
     Instance.new("UICorner", row).CornerRadius = UDim.new(0, 12)
 
@@ -886,7 +952,7 @@ local function makeFeatureRow(parent, featureId, yPos)
     rGlass.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
     rGlass.BackgroundTransparency = 0.94
     rGlass.BorderSizePixel = 0
-    rGlass.ZIndex = 8
+    rGlass.ZIndex = 9
     rGlass.Parent = row
     Instance.new("UICorner", rGlass).CornerRadius = UDim.new(1, 0)
 
@@ -905,7 +971,7 @@ local function makeFeatureRow(parent, featureId, yPos)
     rowName.TextSize = 13
     rowName.Font = FONT_BOLD
     rowName.TextXAlignment = Enum.TextXAlignment.Left
-    rowName.ZIndex = 9
+    rowName.ZIndex = 10
     rowName.Parent = row
 
     local rowSub = Instance.new("TextLabel")
@@ -917,7 +983,7 @@ local function makeFeatureRow(parent, featureId, yPos)
     rowSub.TextSize = 9
     rowSub.Font = FONT_MONO
     rowSub.TextXAlignment = Enum.TextXAlignment.Left
-    rowSub.ZIndex = 9
+    rowSub.ZIndex = 10
     rowSub.Parent = row
 
     local refreshToggle = makeGlassToggle(
@@ -939,7 +1005,7 @@ local function makeFeatureRow(parent, featureId, yPos)
     lockBtn.Font = FONT_ICON
     lockBtn.AutoButtonColor = false
     lockBtn.BorderSizePixel = 0
-    lockBtn.ZIndex = 12
+    lockBtn.ZIndex = 13
     lockBtn.Parent = row
     Instance.new("UICorner", lockBtn).CornerRadius = UDim.new(0, 6)
 
@@ -961,7 +1027,7 @@ local function makeFeatureRow(parent, featureId, yPos)
     visBtn.Font = FONT_ICON
     visBtn.AutoButtonColor = false
     visBtn.BorderSizePixel = 0
-    visBtn.ZIndex = 12
+    visBtn.ZIndex = 13
     visBtn.Parent = row
     Instance.new("UICorner", visBtn).CornerRadius = UDim.new(1, 0)
 
@@ -975,7 +1041,7 @@ local function makeFeatureRow(parent, featureId, yPos)
     click.Size = UDim2.new(1, 0, 1, 0)
     click.BackgroundTransparency = 1
     click.Text = ""
-    click.ZIndex = 11
+    click.ZIndex = 12
     click.Parent = row
 
     local holdStart, holdTask, longPressed = nil, nil, false
@@ -1044,14 +1110,18 @@ end
 -- ═══════════════════════════════════════════════════════════════════
 --  SLIDER ROW
 -- ═══════════════════════════════════════════════════════════════════
-local function makeSliderRow(parent, labelText, cfgKey, minVal, maxVal, yPos)
+local function makeSliderRow(parent, labelText, cfgKey, minVal, maxVal, yPos, suffix, decimals)
+    suffix = suffix or "s"
+    decimals = decimals or 2
+    local fmt = "%." .. decimals .. "f" .. suffix
+
     local row = Instance.new("Frame")
     row.Size = UDim2.new(1, -32, 0, 64)
     row.Position = UDim2.new(0, 16, 0, yPos)
     row.BackgroundColor3 = Color3.fromRGB(20, 24, 40)
     row.BackgroundTransparency = 0.55
     row.BorderSizePixel = 0
-    row.ZIndex = 8
+    row.ZIndex = 9
     row.Parent = parent
     Instance.new("UICorner", row).CornerRadius = UDim.new(0, 12)
 
@@ -1082,7 +1152,7 @@ local function makeSliderRow(parent, labelText, cfgKey, minVal, maxVal, yPos)
     lbl.TextSize = 12
     lbl.Font = FONT_BOLD
     lbl.TextXAlignment = Enum.TextXAlignment.Left
-    lbl.ZIndex = 9
+    lbl.ZIndex = 10
     lbl.Parent = row
 
     local valLbl = Instance.new("TextLabel")
@@ -1094,14 +1164,14 @@ local function makeSliderRow(parent, labelText, cfgKey, minVal, maxVal, yPos)
     valLbl.TextSize = 12
     valLbl.Font = FONT_MONO
     valLbl.TextXAlignment = Enum.TextXAlignment.Right
-    valLbl.ZIndex = 9
+    valLbl.ZIndex = 10
     valLbl.Parent = row
 
     local trackHolder = Instance.new("Frame")
     trackHolder.Size = UDim2.new(1, -32, 0, 20)
     trackHolder.Position = UDim2.new(0, 16, 0, 34)
     trackHolder.BackgroundTransparency = 1
-    trackHolder.ZIndex = 9
+    trackHolder.ZIndex = 10
     trackHolder.Parent = row
 
     local track = Instance.new("Frame")
@@ -1109,7 +1179,7 @@ local function makeSliderRow(parent, labelText, cfgKey, minVal, maxVal, yPos)
     track.Position = UDim2.new(0, 0, 0.5, -2)
     track.BackgroundColor3 = C.panel2
     track.BorderSizePixel = 0
-    track.ZIndex = 9
+    track.ZIndex = 10
     track.Parent = trackHolder
     Instance.new("UICorner", track).CornerRadius = UDim.new(1, 0)
 
@@ -1117,7 +1187,7 @@ local function makeSliderRow(parent, labelText, cfgKey, minVal, maxVal, yPos)
     fill.Size = UDim2.new(0, 0, 1, 0)
     fill.BackgroundColor3 = C.aurora
     fill.BorderSizePixel = 0
-    fill.ZIndex = 10
+    fill.ZIndex = 11
     fill.Parent = track
     Instance.new("UICorner", fill).CornerRadius = UDim.new(1, 0)
 
@@ -1127,7 +1197,7 @@ local function makeSliderRow(parent, labelText, cfgKey, minVal, maxVal, yPos)
     knob.Position = UDim2.new(0, 0, 0.5, 0)
     knob.BackgroundColor3 = C.aurora
     knob.BorderSizePixel = 0
-    knob.ZIndex = 11
+    knob.ZIndex = 12
     knob.Parent = trackHolder
     Instance.new("UICorner", knob).CornerRadius = UDim.new(1, 0)
 
@@ -1141,7 +1211,7 @@ local function makeSliderRow(parent, labelText, cfgKey, minVal, maxVal, yPos)
         local f = math.clamp((value - minVal) / (maxVal - minVal), 0, 1)
         fill.Size = UDim2.new(f, 0, 1, 0)
         knob.Position = UDim2.new(f, 0, 0.5, 0)
-        valLbl.Text = string.format("%.2fs", value)
+        valLbl.Text = string.format(fmt, value)
     end
 
     local isDragging = false
@@ -1151,7 +1221,8 @@ local function makeSliderRow(parent, labelText, cfgKey, minVal, maxVal, yPos)
         if ts.X <= 0 then return end
         local f = math.clamp((input.Position.X - tp.X) / ts.X, 0, 1)
         local v = minVal + f * (maxVal - minVal)
-        v = math.floor(v * 100 + 0.5) / 100
+        local mult = 10 ^ decimals
+        v = math.floor(v * mult + 0.5) / mult
         Config.set(cfgKey, v)
         render(v)
     end
@@ -1160,7 +1231,7 @@ local function makeSliderRow(parent, labelText, cfgKey, minVal, maxVal, yPos)
     hit.Size = UDim2.fromScale(1, 1)
     hit.BackgroundTransparency = 1
     hit.Text = ""
-    hit.ZIndex = 12
+    hit.ZIndex = 13
     hit.Parent = trackHolder
 
     hit.InputBegan:Connect(function(input)
@@ -1195,7 +1266,7 @@ Features.register("autojump", {
     icon = "▲",
     category = "MOVEMENT",
     tab = "movement",
-    hudOffset = Vector2.new(-240, 200),
+    hudOffset = Vector2.new(-240, 160),
 })
 
 Features.register("spamcrouch", {
@@ -1203,7 +1274,16 @@ Features.register("spamcrouch", {
     icon = "▼",
     category = "MOVEMENT",
     tab = "movement",
-    hudOffset = Vector2.new(-240, 268),
+    hudOffset = Vector2.new(-240, 228),
+})
+
+Features.register("easybounce", {
+    name = "Easy Bounce",
+    icon = "◈",
+    category = "MOVEMENT",
+    tab = "movement",
+    hint = "bounce higher on ramps after 1.5s airtime",
+    hudOffset = Vector2.new(-240, 296),
 })
 
 -- ═══════════════════════════════════════════════════════════════════
@@ -1213,11 +1293,15 @@ local movementPage = newPage("movement", true)
 makeCategoryHeader(movementPage, "MOVEMENT", 14)
 makeFeatureRow(movementPage, "autojump",   36)
 makeFeatureRow(movementPage, "spamcrouch", 102)
-makeCategoryHeader(movementPage, "PLAYER", 174)
-makeSoon(movementPage, 194)
-makeCategoryHeader(movementPage, "SETTINGS", 224)
+makeFeatureRow(movementPage, "easybounce", 168)
+makeCategoryHeader(movementPage, "PLAYER", 240)
+makeSoon(movementPage, 260)
+makeCategoryHeader(movementPage, "SETTINGS", 290)
 local crouchSliderRow, refreshCrouchSlider = makeSliderRow(
-    movementPage, "Crouch Speed", "crouch_speed", 0.02, 0.5, 246
+    movementPage, "Crouch Speed", "crouch_speed", 0.02, 0.5, 312, "s", 2
+)
+local bounceSliderRow, refreshBounceSlider = makeSliderRow(
+    movementPage, "Bounce Multiplier", "bounce_multiplier", 1.04, 5.0, 384, "x", 2
 )
 
 -- ═══════════════════════════════════════════════════════════════════
@@ -1232,7 +1316,7 @@ boxHolder.Position = UDim2.new(0, 16, 0, 36)
 boxHolder.BackgroundColor3 = Color3.fromRGB(20, 24, 40)
 boxHolder.BackgroundTransparency = 0.55
 boxHolder.BorderSizePixel = 0
-boxHolder.ZIndex = 7
+boxHolder.ZIndex = 8
 boxHolder.Parent = mapPage
 Instance.new("UICorner", boxHolder).CornerRadius = UDim.new(0, 10)
 local boxStroke = Instance.new("UIStroke")
@@ -1253,7 +1337,7 @@ idBox.TextSize = 14
 idBox.Font = FONT_MONO
 idBox.TextXAlignment = Enum.TextXAlignment.Left
 idBox.ClearTextOnFocus = false
-idBox.ZIndex = 8
+idBox.ZIndex = 9
 idBox.Parent = boxHolder
 
 local activateBtn = Instance.new("TextButton")
@@ -1263,7 +1347,7 @@ activateBtn.BackgroundColor3 = C.aurora
 activateBtn.Text = ""
 activateBtn.AutoButtonColor = false
 activateBtn.BorderSizePixel = 0
-activateBtn.ZIndex = 7
+activateBtn.ZIndex = 8
 activateBtn.Parent = mapPage
 Instance.new("UICorner", activateBtn).CornerRadius = UDim.new(0, 12)
 
@@ -1287,7 +1371,7 @@ actLabel.Text = "A C T I V A T E"
 actLabel.TextColor3 = C.void
 actLabel.TextSize = 14
 actLabel.Font = FONT_BOLD
-actLabel.ZIndex = 8
+actLabel.ZIndex = 9
 actLabel.Parent = activateBtn
 
 activateBtn.MouseEnter:Connect(function()
@@ -1312,7 +1396,7 @@ local function makePlaceholder(page, icon, title, subtitle)
     i.TextColor3 = C.sub
     i.TextSize = 44
     i.Font = FONT_ICON
-    i.ZIndex = 7
+    i.ZIndex = 8
     i.Parent = page
 
     local t = Instance.new("TextLabel")
@@ -1323,7 +1407,7 @@ local function makePlaceholder(page, icon, title, subtitle)
     t.TextColor3 = C.text
     t.TextSize = 13
     t.Font = FONT_BOLD
-    t.ZIndex = 7
+    t.ZIndex = 8
     t.Parent = page
 
     local s = Instance.new("TextLabel")
@@ -1334,7 +1418,7 @@ local function makePlaceholder(page, icon, title, subtitle)
     s.TextColor3 = C.sub
     s.TextSize = 10
     s.Font = FONT_MONO
-    s.ZIndex = 7
+    s.ZIndex = 8
     s.Parent = page
 end
 
@@ -1355,7 +1439,7 @@ cfgScroll.BorderSizePixel = 0
 cfgScroll.ScrollBarThickness = 2
 cfgScroll.ScrollBarImageColor3 = C.border
 cfgScroll.CanvasSize = UDim2.new(0, 0, 0, 600)
-cfgScroll.ZIndex = 7
+cfgScroll.ZIndex = 8
 cfgScroll.Parent = configPage
 
 local cfgY = 14
@@ -1369,7 +1453,7 @@ local function cfgSectionHeader(text)
     h.TextSize = 10
     h.Font = FONT_MONO
     h.TextXAlignment = Enum.TextXAlignment.Left
-    h.ZIndex = 8
+    h.ZIndex = 9
     h.Parent = cfgScroll
     cfgY = cfgY + 22
 end
@@ -1383,7 +1467,7 @@ local function makeConfigToggle(labelText, cfgKey, subtitle, onChange)
     row.BackgroundColor3 = Color3.fromRGB(20, 24, 40)
     row.BackgroundTransparency = 0.55
     row.BorderSizePixel = 0
-    row.ZIndex = 8
+    row.ZIndex = 9
     row.Parent = cfgScroll
     Instance.new("UICorner", row).CornerRadius = UDim.new(0, 10)
     local rowStroke = Instance.new("UIStroke")
@@ -1401,7 +1485,7 @@ local function makeConfigToggle(labelText, cfgKey, subtitle, onChange)
     lbl.TextSize = 12
     lbl.Font = FONT_BOLD
     lbl.TextXAlignment = Enum.TextXAlignment.Left
-    lbl.ZIndex = 9
+    lbl.ZIndex = 10
     lbl.Parent = row
 
     local sub = Instance.new("TextLabel")
@@ -1413,7 +1497,7 @@ local function makeConfigToggle(labelText, cfgKey, subtitle, onChange)
     sub.TextSize = 9
     sub.Font = FONT_MONO
     sub.TextXAlignment = Enum.TextXAlignment.Left
-    sub.ZIndex = 9
+    sub.ZIndex = 10
     sub.Parent = row
 
     local refreshToggle = makeGlassToggle(
@@ -1463,7 +1547,7 @@ resetBtn.TextSize = 11
 resetBtn.Font = FONT_MONO
 resetBtn.AutoButtonColor = false
 resetBtn.BorderSizePixel = 0
-resetBtn.ZIndex = 8
+resetBtn.ZIndex = 9
 resetBtn.Parent = cfgScroll
 Instance.new("UICorner", resetBtn).CornerRadius = UDim.new(0, 8)
 local resetStroke = Instance.new("UIStroke")
@@ -1475,6 +1559,7 @@ resetBtn.MouseButton1Click:Connect(function()
     Config.reset()
     for _, cb in pairs(configCallbacks) do pcall(cb) end
     if refreshCrouchSlider then pcall(refreshCrouchSlider) end
+    if refreshBounceSlider then pcall(refreshBounceSlider) end
 end)
 cfgY = cfgY + 44
 cfgScroll.CanvasSize = UDim2.new(0, 0, 0, cfgY + 40)
@@ -1491,7 +1576,7 @@ credLogo.BackgroundTransparency = 1
 credLogo.Image = LOGO_ID
 credLogo.ImageColor3 = Color3.fromRGB(255, 255, 255)
 credLogo.ScaleType = Enum.ScaleType.Fit
-credLogo.ZIndex = 7
+credLogo.ZIndex = 8
 credLogo.Parent = creditsPage
 
 local credTitle = Instance.new("TextLabel")
@@ -1502,18 +1587,18 @@ credTitle.Text = "REFORGED"
 credTitle.TextColor3 = C.text
 credTitle.TextSize = 16
 credTitle.Font = FONT_TITLE
-credTitle.ZIndex = 7
+credTitle.ZIndex = 8
 credTitle.Parent = creditsPage
 
 local credVer = Instance.new("TextLabel")
 credVer.Size = UDim2.new(1, 0, 0, 16)
 credVer.Position = UDim2.new(0, 0, 0, 142)
 credVer.BackgroundTransparency = 1
-credVer.Text = "v1.3  ·  private build"
+credVer.Text = "v1.4  ·  private build"
 credVer.TextColor3 = C.sub
 credVer.TextSize = 10
 credVer.Font = FONT_MONO
-credVer.ZIndex = 7
+credVer.ZIndex = 8
 credVer.Parent = creditsPage
 
 local credBody = Instance.new("TextLabel")
@@ -1526,7 +1611,7 @@ credBody.TextSize = 11
 credBody.Font = FONT_MONO
 credBody.TextXAlignment = Enum.TextXAlignment.Center
 credBody.TextYAlignment = Enum.TextYAlignment.Top
-credBody.ZIndex = 7
+credBody.ZIndex = 8
 credBody.Parent = creditsPage
 
 -- ═══════════════════════════════════════════════════════════════════
@@ -1538,7 +1623,7 @@ statusBar.Position = UDim2.new(0, 16, 1, -32)
 statusBar.BackgroundColor3 = C.space
 statusBar.BackgroundTransparency = 0.4
 statusBar.BorderSizePixel = 0
-statusBar.ZIndex = 6
+statusBar.ZIndex = 7
 statusBar.Parent = win
 Instance.new("UICorner", statusBar).CornerRadius = UDim.new(0, 6)
 
@@ -1547,7 +1632,7 @@ statusDot.Size = UDim2.fromOffset(6, 6)
 statusDot.Position = UDim2.new(0, 10, 0.5, -3)
 statusDot.BackgroundColor3 = C.sub
 statusDot.BorderSizePixel = 0
-statusDot.ZIndex = 7
+statusDot.ZIndex = 8
 statusDot.Parent = statusBar
 Instance.new("UICorner", statusDot).CornerRadius = UDim.new(1, 0)
 
@@ -1560,7 +1645,7 @@ statusText.TextColor3 = C.sub
 statusText.TextSize = 10
 statusText.Font = FONT_MONO
 statusText.TextXAlignment = Enum.TextXAlignment.Left
-statusText.ZIndex = 7
+statusText.ZIndex = 8
 statusText.Parent = statusBar
 
 local statusUntil = 0
@@ -1584,14 +1669,16 @@ task.spawn(function()
 end)
 
 -- ═══════════════════════════════════════════════════════════════════
---  SIDEBAR  ·  screen-anchored to the far left
+--  SIDEBAR  ·  screen-anchored, offset from top/bottom, rounded
 -- ═══════════════════════════════════════════════════════════════════
-local SB_W = 220  -- was thin; now wider for text
+local SB_W     = 220
+local SB_TOP   = 48    -- clears the Roblox topbar
+local SB_BOT   = 48    -- clears mobile bottom controls
 
 local sidebar = Instance.new("Frame")
 sidebar.Name = "Sidebar"
-sidebar.Size = UDim2.new(0, SB_W, 1, 0)   -- full screen height
-sidebar.Position = UDim2.new(0, -SB_W - 10, 0, 0)  -- start off-screen left
+sidebar.Size = UDim2.new(0, SB_W, 1, -SB_TOP - SB_BOT)
+sidebar.Position = UDim2.new(0, -SB_W - 20, 0, SB_TOP)
 sidebar.BackgroundColor3 = C.panel
 sidebar.BackgroundTransparency = 0.08
 sidebar.BorderSizePixel = 0
@@ -1599,7 +1686,7 @@ sidebar.ClipsDescendants = true
 sidebar.Active = true
 sidebar.ZIndex = 20
 sidebar.Parent = guiMain
-Instance.new("UICorner", sidebar).CornerRadius = UDim.new(0, 0)
+Instance.new("UICorner", sidebar).CornerRadius = UDim.new(0, 14)
 
 local sbGrad = Instance.new("UIGradient")
 sbGrad.Color = ColorSequence.new{
@@ -1614,6 +1701,9 @@ sbStroke.Color = C.aurora
 sbStroke.Thickness = 1.4
 sbStroke.Transparency = 0.25
 sbStroke.Parent = sidebar
+
+-- Sidebar ambient particles (must come after sidebar exists)
+spawnAmbientParticles(sidebar, 14)
 
 -- Title (top)
 local sbTitle = Instance.new("TextLabel")
@@ -1671,7 +1761,7 @@ searchBox.ClearTextOnFocus = false
 searchBox.ZIndex = 22
 searchBox.Parent = searchHolder
 
--- Results list (fills middle)
+-- Results list
 local resultsScroll = Instance.new("ScrollingFrame")
 resultsScroll.Size = UDim2.new(1, -20, 1, -38 - 32 - 10 - 62)
 resultsScroll.Position = UDim2.new(0, 10, 0, 78)
@@ -1854,6 +1944,100 @@ ucDesc.ZIndex = 22
 ucDesc.Parent = userCard
 
 -- ═══════════════════════════════════════════════════════════════════
+--  BOOMBOX  ·  to the right of the sidebar, independent
+-- ═══════════════════════════════════════════════════════════════════
+local BB_SIZE = 58
+local BB_GAP  = 14
+
+local boombox = Instance.new("TextButton")
+boombox.Name = "Boombox"
+boombox.Size = UDim2.fromOffset(BB_SIZE, BB_SIZE)
+boombox.Position = UDim2.new(0, -BB_SIZE - 20, 0, SB_TOP)  -- starts off-screen, tweened in
+boombox.BackgroundColor3 = C.panel
+boombox.BackgroundTransparency = 0.15
+boombox.Text = ""
+boombox.AutoButtonColor = false
+boombox.BorderSizePixel = 0
+boombox.ClipsDescendants = true
+boombox.ZIndex = 20
+boombox.Parent = guiMain
+Instance.new("UICorner", boombox).CornerRadius = UDim.new(0, 14)
+
+local bbGrad = Instance.new("UIGradient")
+bbGrad.Color = ColorSequence.new{
+    ColorSequenceKeypoint.new(0, C.panel2),
+    ColorSequenceKeypoint.new(1, C.space),
+}
+bbGrad.Rotation = 90
+bbGrad.Parent = boombox
+
+local bbStroke = Instance.new("UIStroke")
+bbStroke.Color = C.aurora
+bbStroke.Thickness = 1.4
+bbStroke.Transparency = 0.25
+bbStroke.Parent = boombox
+
+local bbIcon = Instance.new("TextLabel")
+bbIcon.Size = UDim2.fromScale(1, 1)
+bbIcon.BackgroundTransparency = 1
+bbIcon.Text = "♫"
+bbIcon.TextColor3 = C.aurora
+bbIcon.TextSize = 26
+bbIcon.Font = FONT_ICON
+bbIcon.ZIndex = 21
+bbIcon.Parent = boombox
+
+local bbPulse = Instance.new("Frame")
+bbPulse.Size = UDim2.fromScale(1, 1)
+bbPulse.BackgroundTransparency = 1
+bbPulse.ZIndex = 20
+bbPulse.Parent = boombox
+
+-- Simple music state (placeholder — add SoundId later)
+local musicPlaying = false
+local musicTracks = {
+    -- { name = "track name", id = "rbxassetid://..." },
+}
+local currentTrack = 1
+
+boombox.MouseButton1Click:Connect(function()
+    if #musicTracks == 0 then
+        setStatus("no tracks loaded", C.warn, 1.5)
+        return
+    end
+    musicPlaying = not musicPlaying
+    if musicPlaying then
+        setStatus("now playing: " .. (musicTracks[currentTrack] and musicTracks[currentTrack].name or "?"), C.good, 2)
+    else
+        setStatus("music paused", C.sub, 1.5)
+    end
+    TweenService:Create(bbIcon, TweenInfo.new(0.2), {TextColor3 = musicPlaying and C.good or C.aurora}):Play()
+end)
+
+boombox.MouseEnter:Connect(function()
+    TweenService:Create(boombox, TweenInfo.new(0.15), {BackgroundTransparency = 0.05}):Play()
+    TweenService:Create(bbStroke, TweenInfo.new(0.15), {Transparency = 0.05}):Play()
+end)
+boombox.MouseLeave:Connect(function()
+    TweenService:Create(boombox, TweenInfo.new(0.15), {BackgroundTransparency = 0.15}):Play()
+    TweenService:Create(bbStroke, TweenInfo.new(0.15), {Transparency = 0.25}):Play()
+end)
+
+-- pulse icon
+task.spawn(function()
+    while boombox.Parent do
+        if musicPlaying then
+            TweenService:Create(bbIcon, TweenInfo.new(0.6, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {TextTransparency = 0.3}):Play()
+            task.wait(0.6)
+            TweenService:Create(bbIcon, TweenInfo.new(0.6, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {TextTransparency = 0}):Play()
+            task.wait(0.6)
+        else
+            task.wait(0.4)
+        end
+    end
+end)
+
+-- ═══════════════════════════════════════════════════════════════════
 --  RESIZE
 -- ═══════════════════════════════════════════════════════════════════
 local resizeState = nil
@@ -1939,6 +2123,7 @@ UserInputService.InputChanged:Connect(function(input)
             windowContainer.Size = UDim2.fromOffset(nx, ny)
             win.Size = UDim2.fromOffset(nx, ny)
             shadow.Size = UDim2.fromOffset(nx, ny)
+            resizeGlow(nx, ny)
         end
     end
 end)
@@ -1959,7 +2144,6 @@ RunService.RenderStepped:Connect(function(dt)
         local nx = expLerp(cx, dragState.target.X, 22, dt)
         local ny = expLerp(cy, dragState.target.Y, 22, dt)
         windowContainer.Position = UDim2.new(0.5, nx, 0.5, ny)
-        -- sidebar stays anchored to screen, no sync needed
     end
 end)
 
@@ -2142,23 +2326,30 @@ for id, data in pairs(tabButtons) do
 end
 
 -- ═══════════════════════════════════════════════════════════════════
---  SLIDE-IN ANIMATIONS
+--  SLIDE-IN
 -- ═══════════════════════════════════════════════════════════════════
 local FINAL_WIN_POS = UDim2.new(0.5, -DEF_W/2, 0.5, -DEF_H/2)
-local FINAL_SB_POS  = UDim2.new(0, 0, 0, 0)
-local OFF_SB_POS    = UDim2.new(0, -SB_W - 20, 0, 0)
+local FINAL_SB_POS  = UDim2.new(0, 0, 0, SB_TOP)
+local OFF_SB_POS    = UDim2.new(0, -SB_W - 20, 0, SB_TOP)
+local FINAL_BB_POS  = UDim2.new(0, SB_W + BB_GAP, 0, SB_TOP + 4)
+local OFF_BB_POS    = UDim2.new(0, -BB_SIZE - 20, 0, SB_TOP + 4)
 
 local function slideWindowIn()
     windowContainer.Position = UDim2.new(0.5, -DEF_W/2, 0.5, -DEF_H/2 + 140)
     windowContainer.Visible = true
     sidebar.Position = OFF_SB_POS
     sidebar.Visible = true
+    boombox.Position = OFF_BB_POS
+    boombox.Visible = true
 
     TweenService:Create(windowContainer, TweenInfo.new(0.42, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
         Position = FINAL_WIN_POS
     }):Play()
     TweenService:Create(sidebar, TweenInfo.new(0.42, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
         Position = FINAL_SB_POS
+    }):Play()
+    TweenService:Create(boombox, TweenInfo.new(0.48, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
+        Position = FINAL_BB_POS
     }):Play()
 end
 
@@ -2169,9 +2360,13 @@ local function slideWindowOut()
     TweenService:Create(sidebar, TweenInfo.new(0.3, Enum.EasingStyle.Quint, Enum.EasingDirection.In), {
         Position = OFF_SB_POS
     }):Play()
+    TweenService:Create(boombox, TweenInfo.new(0.3, Enum.EasingStyle.Quint, Enum.EasingDirection.In), {
+        Position = OFF_BB_POS
+    }):Play()
     task.wait(0.3)
     windowContainer.Visible = false
     sidebar.Visible = false
+    boombox.Visible = false
 end
 
 minBtn.MouseButton1Click:Connect(function()
@@ -2252,7 +2447,97 @@ RunService.Stepped:Connect(function()
 end)
 
 -- ═══════════════════════════════════════════════════════════════════
---  SPAM CROUCH  ·  fire CrouchIdle repeatedly (do NOT toggle)
+--  EASY BOUNCE
+-- ═══════════════════════════════════════════════════════════════════
+-- Track airtime: how long since the character left the ground.
+-- On landing (air->ground transition) if airtime > 1.5s AND surface
+-- angle > 10deg, apply an upward velocity proportional to the
+-- fall speed multiplied by the configured multiplier.
+local airStartTick = 0
+local wasAirborne = false
+local MIN_AIR = 1.5
+local MIN_SLOPE_COS_BOUNCE = math.cos(math.rad(10))  -- ~0.985
+
+local bounceRayParams = RaycastParams.new()
+bounceRayParams.FilterType = Enum.RaycastFilterType.Exclude
+bounceRayParams.IgnoreWater = true
+
+local function getGroundNormal(char, root)
+    bounceRayParams.FilterDescendantsInstances = { char }
+    local origin = Vector3.new(root.Position.X, root.Position.Y - 1.5, root.Position.Z)
+    local res = workspace:Raycast(origin, Vector3.new(0, -6, 0), bounceRayParams)
+    if res then return res.Normal end
+    return nil
+end
+
+local lastYVel = 0
+
+RunService.Heartbeat:Connect(function()
+    if not Features.easybounce or not Features.easybounce.enabled then
+        -- keep tracking airtime even when disabled so it starts fresh
+        local c = player.Character
+        if c then
+            local h = c:FindFirstChildOfClass("Humanoid")
+            if h then
+                if h.FloorMaterial == Enum.Material.Air then
+                    if not wasAirborne then wasAirborne = true; airStartTick = tick() end
+                else
+                    wasAirborne = false
+                end
+            end
+        end
+        return
+    end
+
+    local char = player.Character
+    if not char then return end
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if not hum then return end
+    local root = char:FindFirstChild("HumanoidRootPart")
+    if not root then return end
+
+    local airborne = hum.FloorMaterial == Enum.Material.Air
+
+    -- track vertical velocity while in air for magnitude reference
+    if airborne then
+        lastYVel = root.AssemblyLinearVelocity.Y
+    end
+
+    if airborne and not wasAirborne then
+        wasAirborne = true
+        airStartTick = tick()
+    elseif not airborne and wasAirborne then
+        -- just landed
+        local airtime = tick() - airStartTick
+        wasAirborne = false
+
+        if airtime >= MIN_AIR then
+            -- check the surface we landed on
+            local normal = getGroundNormal(char, root)
+            if normal and normal.Y <= MIN_SLOPE_COS_BOUNCE then
+                -- ramp detected (> 10° tilt)
+                local fall = math.abs(lastYVel)
+                if fall > 8 then
+                    local mult = Config.get("bounce_multiplier") or 1.6
+                    -- Base bounce speed is a fraction of fall speed times mult
+                    local bounceSpeed = fall * (mult - 1) + 15
+                    bounceSpeed = math.clamp(bounceSpeed, 20, 220)
+                    -- Apply upward velocity directly (Evade movement is custom but
+                    -- this offsets it for a bounce moment before normal physics resumes)
+                    root.AssemblyLinearVelocity = Vector3.new(
+                        root.AssemblyLinearVelocity.X,
+                        bounceSpeed,
+                        root.AssemblyLinearVelocity.Z
+                    )
+                    setStatus(string.format("bounce  ·  %.0f", bounceSpeed), C.warn, 1.2)
+                end
+            end
+        end
+    end
+end)
+
+-- ═══════════════════════════════════════════════════════════════════
+--  SPAM CROUCH
 -- ═══════════════════════════════════════════════════════════════════
 local spamCrouchTask = nil
 
@@ -2282,11 +2567,26 @@ local function lookupSpamEvent()
     return ev
 end
 
+-- Try firing with the game's identity if the executor supports it
 local function fireCrouch(state)
     local ev = lookupSpamEvent()
     if not ev then return false end
     local buf = buildCrouchBuffer()
-    return pcall(function() ev:FireServer({ buf, state }) end)
+
+    -- Attempt with elevated identity first, fall back to plain
+    local elevatedOK = false
+    if setthreadidentity then
+        local ok = pcall(function()
+            setthreadidentity(8)
+            ev:FireServer({ buf, state })
+        end)
+        if ok then elevatedOK = true end
+    end
+
+    if not elevatedOK then
+        pcall(function() ev:FireServer({ buf, state }) end)
+    end
+    return true
 end
 
 local function startSpamCrouch()
