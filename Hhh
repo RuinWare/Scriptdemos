@@ -49,6 +49,7 @@ Config.defaults = {
     use_asset_spawn = true,
     animations      = true,
     invis_menu      = false,
+    crouch_speed    = 0.08,   -- seconds between each spam fire
 }
 Config.data = {}
 for k, v in pairs(Config.defaults) do Config.data[k] = v end
@@ -149,7 +150,6 @@ winStroke.Transparency = 0.4
 winStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 winStroke.Parent = win
 
--- Star field
 local starField = Instance.new("Frame")
 starField.Size = UDim2.fromScale(1, 1)
 starField.BackgroundTransparency = 1
@@ -236,7 +236,7 @@ local subtitleText = Instance.new("TextLabel")
 subtitleText.Size = UDim2.new(1, -160, 0, 14)
 subtitleText.Position = UDim2.new(0, 57, 0, 30)
 subtitleText.BackgroundTransparency = 1
-subtitleText.Text = "v0.9"
+subtitleText.Text = "v1.0"
 subtitleText.TextColor3 = C.sub
 subtitleText.TextSize = 10
 subtitleText.Font = FONT_MONO
@@ -398,8 +398,17 @@ content.ZIndex = 5
 content.Parent = win
 
 local pages = {}
-local function newPage(id)
-    local p = Instance.new("Frame")
+local function newPage(id, scrollable)
+    local p
+    if scrollable then
+        p = Instance.new("ScrollingFrame")
+        p.ScrollBarThickness = 2
+        p.ScrollBarImageColor3 = C.border
+        p.CanvasSize = UDim2.new(0, 0, 0, 500)
+        p.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    else
+        p = Instance.new("Frame")
+    end
     p.Name = id .. "Page"
     p.Size = UDim2.fromScale(1, 1)
     p.BackgroundTransparency = 1
@@ -485,7 +494,7 @@ function Features.addListener(id, cb)
 end
 
 -- ═══════════════════════════════════════════════════════════════════
---  LIQUID GLASS TOGGLE  (no ColorSequence tweening)
+--  LIQUID GLASS TOGGLE
 -- ═══════════════════════════════════════════════════════════════════
 local function makeGlassToggle(parent, anchorPos, getState, setState)
     local track = Instance.new("Frame")
@@ -585,7 +594,6 @@ local function makeGlassToggle(parent, anchorPos, getState, setState)
         applyVisuals(getState(), true)
     end
 
-    -- initial paint without animation
     local ok, on = pcall(getState)
     if not ok then on = false end
     applyVisuals(on, false)
@@ -817,7 +825,6 @@ local function makeFeatureRow(parent, featureId, yPos)
     rowSub.ZIndex = 9
     rowSub.Parent = row
 
-    -- Liquid glass toggle
     local refreshToggle = makeGlassToggle(
         row,
         UDim2.new(1, -8, 0, 16),
@@ -826,7 +833,6 @@ local function makeFeatureRow(parent, featureId, yPos)
     )
     Features.addListener(featureId, function() refreshToggle() end)
 
-    -- Lock button
     local lockBtn = Instance.new("TextButton")
     lockBtn.Size = UDim2.fromOffset(24, 24)
     lockBtn.Position = UDim2.new(1, -114, 0, 17)
@@ -848,7 +854,6 @@ local function makeFeatureRow(parent, featureId, yPos)
     lockStroke.Transparency = 0.7
     lockStroke.Parent = lockBtn
 
-    -- Visibility toggle
     local visBtn = Instance.new("TextButton")
     visBtn.Size = UDim2.fromOffset(20, 20)
     visBtn.Position = UDim2.new(1, -140, 0, 19)
@@ -871,7 +876,6 @@ local function makeFeatureRow(parent, featureId, yPos)
     visStroke.Transparency = 0.9
     visStroke.Parent = visBtn
 
-    -- Row click (long-press = pin)
     local click = Instance.new("TextButton")
     click.Size = UDim2.new(1, 0, 1, 0)
     click.BackgroundTransparency = 1
@@ -943,6 +947,147 @@ local function makeFeatureRow(parent, featureId, yPos)
 end
 
 -- ═══════════════════════════════════════════════════════════════════
+--  SLIDER ROW  (movement-page settings)
+-- ═══════════════════════════════════════════════════════════════════
+local function makeSliderRow(parent, labelText, cfgKey, minVal, maxVal, onChange)
+    local row = Instance.new("Frame")
+    row.Size = UDim2.new(1, -32, 0, 64)
+    row.Position = UDim2.new(0, 16, 0, 0)
+    row.BackgroundColor3 = C.space
+    row.BackgroundTransparency = 0.35
+    row.BorderSizePixel = 0
+    row.ZIndex = 8
+    row.Parent = parent
+    Instance.new("UICorner", row).CornerRadius = UDim.new(0, 10)
+
+    local rowStroke = Instance.new("UIStroke")
+    rowStroke.Color = C.border
+    rowStroke.Thickness = 1
+    rowStroke.Transparency = 0.7
+    rowStroke.Parent = row
+
+    local lbl = Instance.new("TextLabel")
+    lbl.Size = UDim2.new(0.5, 0, 0, 18)
+    lbl.Position = UDim2.new(0, 12, 0, 8)
+    lbl.BackgroundTransparency = 1
+    lbl.Text = labelText
+    lbl.TextColor3 = C.text
+    lbl.TextSize = 12
+    lbl.Font = FONT_BOLD
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+    lbl.ZIndex = 9
+    lbl.Parent = row
+
+    local valLbl = Instance.new("TextLabel")
+    valLbl.Size = UDim2.new(0.5, -12, 0, 18)
+    valLbl.Position = UDim2.new(0.5, 0, 0, 8)
+    valLbl.BackgroundTransparency = 1
+    valLbl.Text = ""
+    valLbl.TextColor3 = C.aurora
+    valLbl.TextSize = 12
+    valLbl.Font = FONT_MONO
+    valLbl.TextXAlignment = Enum.TextXAlignment.Right
+    valLbl.ZIndex = 9
+    valLbl.Parent = row
+
+    local trackHolder = Instance.new("Frame")
+    trackHolder.Size = UDim2.new(1, -24, 0, 20)
+    trackHolder.Position = UDim2.new(0, 12, 0, 32)
+    trackHolder.BackgroundTransparency = 1
+    trackHolder.ZIndex = 9
+    trackHolder.Parent = row
+
+    local track = Instance.new("Frame")
+    track.Size = UDim2.new(1, 0, 0, 4)
+    track.Position = UDim2.new(0, 0, 0.5, -2)
+    track.BackgroundColor3 = C.panel2
+    track.BorderSizePixel = 0
+    track.ZIndex = 9
+    track.Parent = trackHolder
+    Instance.new("UICorner", track).CornerRadius = UDim.new(1, 0)
+
+    local fill = Instance.new("Frame")
+    fill.Size = UDim2.new(0, 0, 1, 0)
+    fill.BackgroundColor3 = C.aurora
+    fill.BorderSizePixel = 0
+    fill.ZIndex = 10
+    fill.Parent = track
+    Instance.new("UICorner", fill).CornerRadius = UDim.new(1, 0)
+
+    local knob = Instance.new("Frame")
+    knob.Size = UDim2.fromOffset(16, 16)
+    knob.AnchorPoint = Vector2.new(0.5, 0.5)
+    knob.Position = UDim2.new(0, 0, 0.5, 0)
+    knob.BackgroundColor3 = C.aurora
+    knob.BorderSizePixel = 0
+    knob.ZIndex = 11
+    knob.Parent = trackHolder
+    Instance.new("UICorner", knob).CornerRadius = UDim.new(1, 0)
+
+    local knobStroke = Instance.new("UIStroke")
+    knobStroke.Color = Color3.fromRGB(255, 255, 255)
+    knobStroke.Thickness = 1
+    knobStroke.Transparency = 0.35
+    knobStroke.Parent = knob
+
+    local function toFrac(v) return (v - minVal) / (maxVal - minVal) end
+    local function fromFrac(f) return minVal + f * (maxVal - minVal) end
+
+    local function render(value)
+        local f = math.clamp(toFrac(value), 0, 1)
+        fill.Size = UDim2.new(f, 0, 1, 0)
+        knob.Position = UDim2.new(f, 0, 0.5, 0)
+        valLbl.Text = string.format("%.2fs", value)
+    end
+
+    local isDragging = false
+    local function updateFromInput(input)
+        local trackPos = trackHolder.AbsolutePosition
+        local trackSize = trackHolder.AbsoluteSize
+        if trackSize.X <= 0 then return end
+        local f = math.clamp((input.Position.X - trackPos.X) / trackSize.X, 0, 1)
+        local v = fromFrac(f)
+        v = math.floor(v * 100 + 0.5) / 100
+        Config.set(cfgKey, v)
+        render(v)
+        if onChange then pcall(onChange, v) end
+    end
+
+    local hit = Instance.new("TextButton")
+    hit.Size = UDim2.fromScale(1, 1)
+    hit.BackgroundTransparency = 1
+    hit.Text = ""
+    hit.ZIndex = 12
+    hit.Parent = trackHolder
+
+    hit.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1
+        or input.UserInputType == Enum.UserInputType.Touch then
+            isDragging = true
+            updateFromInput(input)
+        end
+    end)
+    UserInputService.InputChanged:Connect(function(input)
+        if isDragging and (input.UserInputType == Enum.UserInputType.MouseMovement
+        or input.UserInputType == Enum.UserInputType.Touch) then
+            updateFromInput(input)
+        end
+    end)
+    UserInputService.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1
+        or input.UserInputType == Enum.UserInputType.Touch then
+            isDragging = false
+        end
+    end)
+
+    render(Config.get(cfgKey) or minVal)
+
+    return row, function()
+        render(Config.get(cfgKey) or minVal)
+    end
+end
+
+-- ═══════════════════════════════════════════════════════════════════
 --  REGISTER FEATURES
 -- ═══════════════════════════════════════════════════════════════════
 Features.register("autojump", {
@@ -951,16 +1096,33 @@ Features.register("autojump", {
     hudOffset = Vector2.new(-220, 200),
 })
 
+Features.register("spamcrouch", {
+    name = "Spam Crouch",
+    icon = "▼",
+    hudOffset = Vector2.new(-220, 264),
+})
+
 -- ═══════════════════════════════════════════════════════════════════
---  MOVEMENT PAGE
+--  MOVEMENT PAGE  (scrollable)
 -- ═══════════════════════════════════════════════════════════════════
-local movementPage = newPage("movement")
+local movementPage = newPage("movement", true)
+
 makeCategoryHeader(movementPage, "MOVEMENT", 14)
-makeFeatureRow(movementPage, "autojump", 36)
-makeCategoryHeader(movementPage, "PLAYER", 108)
-makeSoon(movementPage, 128)
-makeCategoryHeader(movementPage, "SETTINGS", 158)
-makeSoon(movementPage, 178)
+makeFeatureRow(movementPage, "autojump",   36)
+makeFeatureRow(movementPage, "spamcrouch", 102)
+
+makeCategoryHeader(movementPage, "PLAYER", 174)
+makeSoon(movementPage, 194)
+
+makeCategoryHeader(movementPage, "SETTINGS", 224)
+
+local crouchSliderRow, refreshCrouchSlider = makeSliderRow(
+    movementPage,
+    "Crouch Speed",
+    "crouch_speed",
+    0.02, 0.5
+)
+crouchSliderRow.Position = UDim2.new(0, 16, 0, 246)
 
 -- ═══════════════════════════════════════════════════════════════════
 --  MAP PAGE
@@ -1240,6 +1402,7 @@ end)
 resetBtn.MouseButton1Click:Connect(function()
     Config.reset()
     for key, cb in pairs(configCallbacks) do pcall(cb) end
+    if refreshCrouchSlider then pcall(refreshCrouchSlider) end
 end)
 cfgY = cfgY + 44
 cfgScroll.CanvasSize = UDim2.new(0, 0, 0, cfgY + 40)
@@ -1274,7 +1437,7 @@ local credVer = Instance.new("TextLabel")
 credVer.Size = UDim2.new(1, 0, 0, 16)
 credVer.Position = UDim2.new(0, 0, 0, 142)
 credVer.BackgroundTransparency = 1
-credVer.Text = "v0.9  ·  private build"
+credVer.Text = "v1.0  ·  private build"
 credVer.TextColor3 = C.sub
 credVer.TextSize = 10
 credVer.Font = FONT_MONO
@@ -1645,7 +1808,7 @@ bubble.MouseButton1Click:Connect(function()
 end)
 
 -- ═══════════════════════════════════════════════════════════════════
---  AUTO JUMP
+--  FEATURE LOGIC  ·  Auto Jump
 -- ═══════════════════════════════════════════════════════════════════
 local MAX_SLOPE_COS = math.cos(math.rad(35))
 local JUMP_COOLDOWN = 0.12
@@ -1658,7 +1821,6 @@ local lastJump = 0
 
 local function worstGroundNormal(char, root)
     jumpRayParams.FilterDescendantsInstances = { char }
-
     local origin = Vector3.new(root.Position.X, root.Position.Y - 1.5, root.Position.Z)
     local offsets = {
         Vector3.new(0, 0, 0),
@@ -1667,16 +1829,13 @@ local function worstGroundNormal(char, root)
         Vector3.new(0, 0, 1.2),
         Vector3.new(0, 0, -1.2),
     }
-
     local worstY = 1
     local got = false
     for _, off in ipairs(offsets) do
         local res = workspace:Raycast(origin + off, Vector3.new(0, -8, 0), jumpRayParams)
         if res then
             got = true
-            if res.Normal.Y < worstY then
-                worstY = res.Normal.Y
-            end
+            if res.Normal.Y < worstY then worstY = res.Normal.Y end
         end
     end
     return got, worstY
@@ -1684,37 +1843,80 @@ end
 
 RunService.Heartbeat:Connect(function()
     if not Features.autojump or not Features.autojump.enabled then return end
-
     local now = tick()
     if now - lastJump < JUMP_COOLDOWN then return end
-
     local char = player.Character
     if not char then return end
-
     local hum = char:FindFirstChildOfClass("Humanoid")
     if not hum then return end
-
     local state = hum:GetState()
     if state == Enum.HumanoidStateType.Jumping
     or state == Enum.HumanoidStateType.Freefall
-    or state == Enum.HumanoidStateType.Landed then
-        return
-    end
-
+    or state == Enum.HumanoidStateType.Landed then return end
     if hum.FloorMaterial == Enum.Material.Air then return end
-
     local root = char:FindFirstChild("HumanoidRootPart")
     if not root then return end
-
     local gotGround, worstY = worstGroundNormal(char, root)
-    if gotGround and worstY < MAX_SLOPE_COS then
-        return
-    end
-
-    pcall(function()
-        hum:ChangeState(Enum.HumanoidStateType.Jumping)
-    end)
+    if gotGround and worstY < MAX_SLOPE_COS then return end
+    pcall(function() hum:ChangeState(Enum.HumanoidStateType.Jumping) end)
     lastJump = now
+end)
+
+-- ═══════════════════════════════════════════════════════════════════
+--  FEATURE LOGIC  ·  Spam Crouch
+-- ═══════════════════════════════════════════════════════════════════
+local spamEvent
+pcall(function()
+    local events = game:GetService("ReplicatedStorage"):FindFirstChild("Events")
+    if events then
+        spamEvent = events:FindFirstChild("UpdateCharacterDataRegistry")
+    end
+end)
+
+-- Pre-build the byte buffer once and reuse it (immutable bytes)
+local crouchBuffer
+do
+    local bytes = { 15, 0 }
+    local b = buffer.create(#bytes)
+    for i = 1, #bytes do
+        buffer.writeu8(b, i - 1, bytes[i])
+    end
+    crouchBuffer = b
+end
+
+local spamCrouchTask = nil
+
+local function startSpamCrouch()
+    if spamCrouchTask then task.cancel(spamCrouchTask) end
+    if not spamEvent then return end
+    spamCrouchTask = task.spawn(function()
+        local useCrouchIdle = true
+        while Features.spamcrouch and Features.spamcrouch.enabled do
+            local state = useCrouchIdle and "CrouchIdle" or "Idle"
+            pcall(function()
+                spamEvent:FireServer({ crouchBuffer, state })
+            end)
+            useCrouchIdle = not useCrouchIdle
+            local spd = Config.get("crouch_speed") or 0.08
+            task.wait(spd)
+        end
+    end)
+end
+
+local function stopSpamCrouch()
+    if spamCrouchTask then
+        task.cancel(spamCrouchTask)
+        spamCrouchTask = nil
+    end
+    if spamEvent then
+        pcall(function()
+            spamEvent:FireServer({ crouchBuffer, "Idle" })
+        end)
+    end
+end
+
+Features.addListener("spamcrouch", function(enabled)
+    if enabled then startSpamCrouch() else stopSpamCrouch() end
 end)
 
 -- ═══════════════════════════════════════════════════════════════════
@@ -1779,18 +1981,14 @@ end
 
 local function clearSpawnLocations(container)
     for _, d in ipairs(container:GetDescendants()) do
-        if d:IsA("SpawnLocation") then
-            pcall(function() d:Destroy() end)
-        end
+        if d:IsA("SpawnLocation") then pcall(function() d:Destroy() end) end
     end
     for _, d in ipairs(workspace:GetDescendants()) do
         if d:IsA("SpawnLocation") then
             local insideChar = false
             local char = player.Character
             if char and d:IsDescendantOf(char) then insideChar = true end
-            if not insideChar then
-                pcall(function() d:Destroy() end)
-            end
+            if not insideChar then pcall(function() d:Destroy() end) end
         end
     end
 end
@@ -1873,25 +2071,21 @@ activateBtn.MouseButton1Click:Connect(function()
         setStatus("invalid asset id", C.bad)
         return
     end
-
     setStatus("loading " .. tostring(id) .. "...", C.aurora)
     local asset, err = loadAssetById(id)
     if not asset then
         setStatus("load failed: " .. tostring(err), C.bad)
         return
     end
-
     setStatus("swapping map...", C.aurora)
     local ok, repErr = replaceMap(asset)
     if not ok then
         setStatus(tostring(repErr), C.bad)
         return
     end
-
     task.wait(0.1)
     local where = teleportToSpawn(asset)
     setStatus("ready  ·  spawned at " .. where, C.good)
-
     task.delay(4, function()
         if statusText and statusText.Parent then
             setStatus("idle", C.sub)
@@ -1900,7 +2094,7 @@ activateBtn.MouseButton1Click:Connect(function()
 end)
 
 -- ═══════════════════════════════════════════════════════════════════
---  BOOT  (wrapped so an error can't kill the whole UI setup)
+--  BOOT
 -- ═══════════════════════════════════════════════════════════════════
 pcall(function()
     switchTab("map")
