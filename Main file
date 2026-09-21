@@ -3215,9 +3215,16 @@ RunService.Heartbeat:Connect(function()
 end)
 
 -- ═══════════════════════════════════════════════════════════════════
---  RESPAWN HANDLING  ·  camera-reanchored
+--  RESPAWN HANDLING  ·  gentle multi-teleport, no anchoring
 -- ═══════════════════════════════════════════════════════════════════
 local loadedMapInfo = nil
+local DEBUG_RESPAWN = true   -- flip to false once it works
+
+local function dlog(msg)
+    if DEBUG_RESPAWN then
+        print("[Reforged Respawn] " .. msg)
+    end
+end
 
 local function getMapTargetCF()
     if not loadedMapInfo then return nil end
@@ -3228,62 +3235,84 @@ local function getMapTargetCF()
     end
 end
 
+local function bindCamera(hum)
+    local cam = workspace.CurrentCamera
+    if not cam or not hum then return end
+    pcall(function() cam.CameraType = Enum.CameraType.Custom end)
+    pcall(function() cam.CameraSubject = hum end)
+end
+
 local function teleportCharToMap(char)
-    if not loadedMapInfo then return end
+    if not loadedMapInfo then
+        dlog("no loadedMapInfo, skipping")
+        return
+    end
     local targetCF = getMapTargetCF()
-    if not targetCF then return end
+    if not targetCF then
+        dlog("no targetCF, skipping")
+        return
+    end
+
+    dlog("starting for " .. char.Name)
 
     task.spawn(function()
-        local hum  = char:WaitForChild("Humanoid", 5)
-        if not hum then return end
-        local root = char:WaitForChild("HumanoidRootPart", 5)
-        if not root then return end
+        local hum  = char:WaitForChild("Humanoid", 8)
+        if not hum then dlog("no humanoid"); return end
+        local root = char:WaitForChild("HumanoidRootPart", 8)
+        if not root then dlog("no root"); return end
 
-        -- Hammer the position for 2.5s so the server can't yank us back
-        local endTime = tick() + 2.5
-        while tick() < endTime do
-            if not char or not char.Parent then return end
-            local r = char:FindFirstChild("HumanoidRootPart")
-            if r then
-                pcall(function() r.CFrame = targetCF end)
-                pcall(function() r.AssemblyLinearVelocity = Vector3.zero end)
-                pcall(function() r.AssemblyAngularVelocity = Vector3.zero end)
+        -- Let the game finish its own spawn sequence first. No anchoring.
+        task.wait(0.5)
+
+        if hum.Health <= 0 then
+            dlog("character is dead before teleport — bailing")
+            return
+        end
+
+        -- Do 4 gentle teleports spread out over ~1.6s. No anchor, no velocity
+        -- touching, no force-hammering. Just move and rebind the camera.
+        for i = 1, 4 do
+            local c = player.Character
+            if not c or c ~= char then
+                dlog("character changed on iteration " .. i .. " — bailing")
+                return
             end
-            task.wait()
+            local h = c:FindFirstChildOfClass("Humanoid")
+            if not h or h.Health <= 0 then
+                dlog("character died on iteration " .. i .. " — bailing")
+                return
+            end
+            local r = c:FindFirstChild("HumanoidRootPart")
+            if r then
+                pcall(function() c:PivotTo(targetCF) end)
+                bindCamera(h)
+            end
+            task.wait(0.4)
         end
 
-        -- Final snap + camera re-anchor so the camera catches up
-        local finalRoot = char:FindFirstChild("HumanoidRootPart")
-        if finalRoot then
-            pcall(function() finalRoot.CFrame = targetCF end)
-            pcall(function() finalRoot.AssemblyLinearVelocity = Vector3.zero end)
-        end
-        pcall(function() char:PivotTo(targetCF) end)
+        dlog("all teleports done")
 
-        local cam = workspace.CurrentCamera
-        if cam and hum then
-            pcall(function() cam.CameraSubject = hum end)
-            pcall(function() cam.CameraType = Enum.CameraType.Custom end)
+        -- ForceField for the fall
+        local c = player.Character
+        if c and c == char then
+            local ff = Instance.new("ForceField")
+            ff.Visible = false
+            ff.Parent = c
+            task.delay(8, function()
+                if ff and ff.Parent then ff:Destroy() end
+            end)
         end
-
-        -- Cushion the fall
-        local ff = Instance.new("ForceField")
-        ff.Visible = false
-        ff.Parent = char
-        task.delay(6, function()
-            if ff and ff.Parent then ff:Destroy() end
-        end)
     end)
 end
 
 player.CharacterAdded:Connect(function(char)
-    task.wait(0.1)
+    task.wait(0.05)
     teleportCharToMap(char)
 end)
 
 if player.Character then
     task.spawn(function()
-        task.wait(0.3)
+        task.wait(0.5)
         teleportCharToMap(player.Character)
     end)
 end
