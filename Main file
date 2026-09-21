@@ -34,10 +34,22 @@ local FONT_ICON  = Enum.Font.SourceSansBold
 local LOGO_ID    = "rbxassetid://127983099298280"
 local MAX_LAYER  = 2147483647
 
+-- ╔══════════════════════════════════════════════════════════════╗
+-- ║                                                              ║
+-- ║   ⚠️  EDIT ME  ⚠️   USER CARD  —  your name & description     ║
+-- ║                                                              ║
+-- ║   ▸ Change "description" to whatever you want.               ║
+-- ║   ▸ "username" auto-fills with your Roblox name.             ║
+-- ║   ▸ This shows in the sidebar above the FEATURES list.       ║
+-- ║                                                              ║
+-- ╚══════════════════════════════════════════════════════════════╝
 local USER_CARD = {
-    username    = player.Name,
-    description = "test",
+    username    = player.Name,     -- auto-filled, leave as-is
+    description = "test",          -- <<< CHANGE THIS LINE >>>
 }
+-- ╔══════════════════════════════════════════════════════════════╗
+-- ║   END USER CARD  —  nothing else to edit here                 ║
+-- ╚══════════════════════════════════════════════════════════════╝
 
 -- ═══════════════════════════════════════════════════════════════════
 --  CONFIG
@@ -3203,7 +3215,7 @@ RunService.Heartbeat:Connect(function()
 end)
 
 -- ═══════════════════════════════════════════════════════════════════
---  RESPAWN HANDLING
+--  RESPAWN HANDLING  ·  camera-reanchored
 -- ═══════════════════════════════════════════════════════════════════
 local loadedMapInfo = nil
 
@@ -3222,20 +3234,39 @@ local function teleportCharToMap(char)
     if not targetCF then return end
 
     task.spawn(function()
+        local hum  = char:WaitForChild("Humanoid", 5)
+        if not hum then return end
         local root = char:WaitForChild("HumanoidRootPart", 5)
         if not root then return end
 
+        -- Hammer the position for 2.5s so the server can't yank us back
         local endTime = tick() + 2.5
         while tick() < endTime do
             if not char or not char.Parent then return end
             local r = char:FindFirstChild("HumanoidRootPart")
             if r then
                 pcall(function() r.CFrame = targetCF end)
-                pcall(function() char:PivotTo(targetCF) end)
+                pcall(function() r.AssemblyLinearVelocity = Vector3.zero end)
+                pcall(function() r.AssemblyAngularVelocity = Vector3.zero end)
             end
             task.wait()
         end
 
+        -- Final snap + camera re-anchor so the camera catches up
+        local finalRoot = char:FindFirstChild("HumanoidRootPart")
+        if finalRoot then
+            pcall(function() finalRoot.CFrame = targetCF end)
+            pcall(function() finalRoot.AssemblyLinearVelocity = Vector3.zero end)
+        end
+        pcall(function() char:PivotTo(targetCF) end)
+
+        local cam = workspace.CurrentCamera
+        if cam and hum then
+            pcall(function() cam.CameraSubject = hum end)
+            pcall(function() cam.CameraType = Enum.CameraType.Custom end)
+        end
+
+        -- Cushion the fall
         local ff = Instance.new("ForceField")
         ff.Visible = false
         ff.Parent = char
