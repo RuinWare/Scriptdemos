@@ -1,5 +1,5 @@
 -- ═══════════════════════════════════════════════════════════════════
---   R E F O R G E D   ·   v1.8
+--   R E F O R G E D   ·   v1.9
 -- ═══════════════════════════════════════════════════════════════════
 local Players          = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
@@ -367,7 +367,7 @@ local subtitleText = Instance.new("TextLabel")
 subtitleText.Size = UDim2.new(1, -160, 0, 14)
 subtitleText.Position = UDim2.new(0, 57, 0, 30)
 subtitleText.BackgroundTransparency = 1
-subtitleText.Text = "v1.8"
+subtitleText.Text = "v1.9"
 subtitleText.TextColor3 = C.sub
 subtitleText.TextSize = 10
 subtitleText.Font = FONT_MONO
@@ -742,7 +742,7 @@ local function makeGlassToggle(parent, anchorPos, getState, setState)
 end
 
 -- ═══════════════════════════════════════════════════════════════════
---  FLOATING HUD PILL  (multi-touch safe)
+--  FLOATING HUD PILL
 -- ═══════════════════════════════════════════════════════════════════
 local function toggleFloating(featureId)
     local f = Features[featureId]
@@ -1395,6 +1395,7 @@ Features.register("efling", {
     hudOffset = Vector2.new(-240, 402),
 })
 
+-- Lag switch — momentary button that freezes the client render loop
 local lagFrozen = false
 local lagFreezeUntil = 0
 
@@ -1418,6 +1419,55 @@ Features.register("lagswitch", {
     hudOffset = Vector2.new(-240, 470),
 })
 
+-- Ladder Glitch — spawns a temp ladder in front of you, despawns after 10ms.
+-- The climb prompt persists briefly and can be triggered mid-air for the
+-- float glitch. Uses a cloned ladder from the map as a template.
+Features.register("ladderglitch", {
+    name = "Ladder Glitch", icon = "☰", category = "PLAYER", tab = "movement",
+    hint = "spawn temp ladder · despawns in 10ms",
+    isButton = true,
+    action = function()
+        local map = workspace:FindFirstChild("Map") or findChildCI(workspace, "map")
+        if not map then setStatus("no map", C.bad, 1.5); return end
+        local parts = findChildCI(map, "Parts")
+        if not parts then setStatus("no Parts", C.bad, 1.5); return end
+        local laddersFolder = findChildCI(parts, "Ladders")
+        if not laddersFolder then setStatus("no Ladders folder", C.bad, 1.5); return end
+        local children = laddersFolder:GetChildren()
+        if #children == 0 then setStatus("no ladder template", C.bad, 1.5); return end
+
+        local template = children[3] or children[1]
+        if not template then setStatus("no template", C.bad, 1.5); return end
+
+        local char = player.Character
+        if not char then return end
+        local root = char:FindFirstChild("HumanoidRootPart")
+        if not root then return end
+
+        local clone = template:Clone()
+        -- Place it 3 studs in front of the player
+        local targetCF = CFrame.new(root.Position + root.CFrame.LookVector * 3)
+
+        if clone:IsA("Model") then
+            clone.Parent = laddersFolder
+            pcall(function() clone:PivotTo(targetCF) end)
+        elseif clone:IsA("BasePart") then
+            clone.Anchored = true
+            clone.CFrame = targetCF
+            clone.Parent = laddersFolder
+        else
+            clone.Parent = laddersFolder
+        end
+
+        setStatus("ladder spawned", C.warn, 0.4)
+
+        task.delay(0.01, function()
+            pcall(function() clone:Destroy() end)
+        end)
+    end,
+    hudOffset = Vector2.new(-240, 538),
+})
+
 -- ═══════════════════════════════════════════════════════════════════
 --  MOVEMENT PAGE
 -- ═══════════════════════════════════════════════════════════════════
@@ -1429,13 +1479,14 @@ makeFeatureRow(movementPage, "hardbounce", 168)
 makeFeatureRow(movementPage, "autotrimp",  234)
 makeFeatureRow(movementPage, "efling",     300)
 makeCategoryHeader(movementPage, "PLAYER", 372)
-makeFeatureRow(movementPage, "lagswitch",  394)
-makeCategoryHeader(movementPage, "SETTINGS", 466)
+makeFeatureRow(movementPage, "lagswitch",    394)
+makeFeatureRow(movementPage, "ladderglitch", 460)
+makeCategoryHeader(movementPage, "SETTINGS", 532)
 local bounceSliderRow, refreshBounceSlider = makeSliderRow(
-    movementPage, "Bounce Multiplier", "bounce_multiplier", 1.04, 5.0, 488, "x", 2
+    movementPage, "Bounce Multiplier", "bounce_multiplier", 1.04, 5.0, 554, "x", 2
 )
 local lagSliderRow, refreshLagSlider = makeSliderRow(
-    movementPage, "Lag Duration", "lag_duration", 0.2, 1.2, 560, "s", 2
+    movementPage, "Lag Duration", "lag_duration", 0.2, 1.2, 626, "s", 2
 )
 
 -- ═══════════════════════════════════════════════════════════════════
@@ -2001,7 +2052,7 @@ local credVer = Instance.new("TextLabel")
 credVer.Size = UDim2.new(1, 0, 0, 16)
 credVer.Position = UDim2.new(0, 0, 0, 142)
 credVer.BackgroundTransparency = 1
-credVer.Text = "v1.8  ·  private build"
+credVer.Text = "v1.9  ·  private build"
 credVer.TextColor3 = C.sub
 credVer.TextSize = 10
 credVer.Font = FONT_MONO
@@ -2552,7 +2603,7 @@ RunService.RenderStepped:Connect(function(dt)
 end)
 
 -- ═══════════════════════════════════════════════════════════════════
---  BUBBLE  (multi-touch safe)
+--  BUBBLE
 -- ═══════════════════════════════════════════════════════════════════
 local bubble = Instance.new("TextButton")
 bubble.Size = UDim2.fromOffset(58, 58)
@@ -2962,12 +3013,10 @@ local function teleportCharToMap(char)
     if not targetCF then return end
 
     task.spawn(function()
-        -- Wait for the root to exist
         local root = char:WaitForChild("HumanoidRootPart", 5)
         if not root then return end
 
-        -- Keep teleporting for a window to beat the server's spawn positioning.
-        -- 2.5 seconds is enough to cover the server respawn + replication lag.
+        -- Hammer the position for 2.5s to beat the server's respawn positioning
         local endTime = tick() + 2.5
         while tick() < endTime do
             if not char or not char.Parent then return end
@@ -2979,7 +3028,6 @@ local function teleportCharToMap(char)
             task.wait()
         end
 
-        -- Cushion the fall with a short ForceField once we've settled
         local ff = Instance.new("ForceField")
         ff.Visible = false
         ff.Parent = char
@@ -3077,6 +3125,33 @@ local function clearTerrain()
     pcall(function() workspace.Terrain:Clear() end)
 end
 
+-- HARD-CODED extra paths cleared on every map swap.
+-- These are the sibling containers next to Parts.Map that normally
+-- hold interactive props, water, invisible colliders, and the "Model"
+-- sub-tree. No config option — always wiped.
+local function clearExtraMapPaths()
+    local map = workspace:FindFirstChild("Map") or findChildCI(workspace, "map")
+    if not map then return end
+
+    local function killPath(root, names)
+        local current = root
+        for _, name in ipairs(names) do
+            if not current then return end
+            current = findChildCI(current, name)
+        end
+        if current then
+            pcall(function() current:Destroy() end)
+        end
+    end
+
+    killPath(map, { "Parts", "Map", "Model" })
+    killPath(map, { "InvisParts" })
+    killPath(map, { "Parts", "Interactables" })
+    killPath(map, { "Parts", "Water" })
+    killPath(map, { "Parts", "Props" })
+    killPath(map, { "Parts", "ImmovableProps" })
+end
+
 local function findSpawnInAsset(asset)
     for _, d in ipairs(asset:GetDescendants()) do
         if d:IsA("SpawnLocation") then return d end
@@ -3105,6 +3180,9 @@ local function replaceMap(asset)
     if not inner then return false, err end
     if Config.get("clear_spawns") then clearSpawnLocations(inner) end
     if Config.get("clear_terrain") then clearTerrain() end
+    -- Always clear the hard-coded extra map paths
+    clearExtraMapPaths()
+    -- Then wipe the inner folder contents
     for _, child in ipairs(inner:GetChildren()) do
         pcall(function() child:Destroy() end)
     end
