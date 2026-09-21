@@ -1396,7 +1396,7 @@ Features.register("efling", {
     hudOffset = Vector2.new(-240, 402),
 })
 
--- Lag switch
+-- Lag switch — momentary button that freezes the client render loop
 local lagFrozen = false
 local lagFreezeUntil = 0
 
@@ -1425,7 +1425,6 @@ Features.register("lagswitch", {
 -- ═══════════════════════════════════════════════════════════════════
 local ladderGlideTask = nil
 local ladderGlideOrigin = nil
-local ladderWarningSeen = Presets.warnings_seen.ladder_glide and true or false
 local ladderWarningGui = nil
 
 local function startLadderGlide()
@@ -1456,7 +1455,7 @@ local function startLadderGlide()
             local rightCF = CFrame.new(ladderGlideOrigin.Position + Vector3.new(9000, 0, 0))
             pcall(function() c:PivotTo(rightCF) end)
 
-            -- Wait 7 seconds at the destination
+            -- Hold at the destination for 7 seconds
             local waited = 0
             while waited < 7 do
                 if not Features.ladderglide or not Features.ladderglide.enabled then break end
@@ -1466,7 +1465,7 @@ local function startLadderGlide()
 
             if not Features.ladderglide or not Features.ladderglide.enabled then break end
 
-            -- Teleport back to origin
+            -- Return to origin
             pcall(function() c:PivotTo(ladderGlideOrigin) end)
             task.wait(0.4)
         end
@@ -1503,8 +1502,8 @@ local function showLadderWarning()
     overlay.Parent = guiMain
 
     local panel = Instance.new("Frame")
-    panel.Size = UDim2.fromOffset(460, 340)
-    panel.Position = UDim2.new(0.5, -230, 0.5, -170)
+    panel.Size = UDim2.fromOffset(480, 360)
+    panel.Position = UDim2.new(0.5, -240, 0.5, -180)
     panel.BackgroundColor3 = C.panel
     panel.BorderSizePixel = 0
     panel.ZIndex = 201
@@ -1525,7 +1524,6 @@ local function showLadderWarning()
     panelStroke.Transparency = 0.15
     panelStroke.Parent = panel
 
-    -- top accent bar
     local topBar = Instance.new("Frame")
     topBar.Size = UDim2.new(1, 0, 0, 2)
     topBar.BackgroundColor3 = C.bad
@@ -1546,23 +1544,22 @@ local function showLadderWarning()
     header.Parent = panel
 
     local body = Instance.new("TextLabel")
-    body.Size = UDim2.new(1, -40, 0, 180)
+    body.Size = UDim2.new(1, -40, 0, 200)
     body.Position = UDim2.new(0, 20, 0, 62)
     body.BackgroundTransparency = 1
     body.Text = "Ladder glide is an autofarm feature that abuses a glitch involving a ladder and a functioning way of teleporting (e.g. Breacher, Swap gamemode, etc) — in this case, a teleporting script.\n\nFirstly, get on any ladder.\nSecondly, toggle this function."
     body.TextColor3 = C.text
     body.TextSize = 12
-    body.Font = FONT_BODY
+    body.Font = FONT_BOLD
     body.TextXAlignment = Enum.TextXAlignment.Left
     body.TextYAlignment = Enum.TextYAlignment.Top
     body.TextWrapped = true
     body.ZIndex = 202
     body.Parent = panel
 
-    -- Exit button
     local exitBtn = Instance.new("TextButton")
-    exitBtn.Size = UDim2.fromOffset(110, 44)
-    exitBtn.Position = UDim2.new(0, 20, 1, -62)
+    exitBtn.Size = UDim2.fromOffset(120, 46)
+    exitBtn.Position = UDim2.new(0, 20, 1, -66)
     exitBtn.BackgroundColor3 = C.space
     exitBtn.BackgroundTransparency = 0.3
     exitBtn.Text = "EXIT"
@@ -1587,10 +1584,9 @@ local function showLadderWarning()
         TweenService:Create(exitStroke, TweenInfo.new(0.15), {Transparency = 0.4}):Play()
     end)
 
-    -- Continue button
     local contBtn = Instance.new("TextButton")
-    contBtn.Size = UDim2.new(1, -160, 0, 44)
-    contBtn.Position = UDim2.new(0, 140, 1, -62)
+    contBtn.Size = UDim2.new(1, -160, 0, 46)
+    contBtn.Position = UDim2.new(0, 150, 1, -66)
     contBtn.BackgroundColor3 = C.aurora
     contBtn.Text = ""
     contBtn.AutoButtonColor = false
@@ -1609,7 +1605,7 @@ local function showLadderWarning()
     local contStroke = Instance.new("UIStroke")
     contStroke.Color = C.border
     contStroke.Thickness = 1.2
-    contStroke.Transparency = 0.4
+    contStroke.Transparency = 0.5
     contStroke.Parent = contBtn
 
     local contLabel = Instance.new("TextLabel")
@@ -1623,58 +1619,39 @@ local function showLadderWarning()
     contLabel.Parent = contBtn
 
     local function closeWarning()
-        if overlay and overlay.Parent then
-            overlay:Destroy()
-        end
+        if overlay and overlay.Parent then overlay:Destroy() end
         ladderWarningGui = nil
     end
 
-    -- Exit: cancel everything. Warning will show again on next toggle.
     exitBtn.MouseButton1Click:Connect(function()
         closeWarning()
-        -- Feature is already off (we deferred the revert). Nothing else to do.
     end)
 
-    -- 7-second countdown on continue
     local canContinue = false
     local countdown = 7
 
     task.spawn(function()
         while countdown > 0 do
             task.wait(1)
-            countdown = countdown - 1
-            if contLabel and contLabel.Parent then
-                if countdown > 0 then
-                    contLabel.Text = "C O N T I N U E   (" .. countdown .. ")"
-                else
-                    contLabel.Text = "C O N T I N U E"
-                    canContinue = true
-                    -- brighten the button when clickable
-                    TweenService:Create(contStroke, TweenInfo.new(0.2), {Transparency = 0.1}):Play()
-                end
+            countdown -= 1
+            if not (contLabel and contLabel.Parent) then break end
+            if countdown > 0 then
+                contLabel.Text = "C O N T I N U E   (" .. countdown .. ")"
             else
-                break
+                contLabel.Text = "C O N T I N U E"
+                canContinue = true
+                TweenService:Create(contStroke, TweenInfo.new(0.2), {Transparency = 0.15, Color = C.aurora}):Play()
             end
         end
     end)
 
-    -- Continue: mark seen + enable feature
     contBtn.MouseButton1Click:Connect(function()
         if not canContinue then return end
         Presets.warnings_seen = Presets.warnings_seen or {}
         Presets.warnings_seen.ladder_glide = true
-        ladderWarningSeen = true
         savePresets()
         closeWarning()
         Features.setEnabled("ladderglide", true)
-    end)
-
-    -- pulse on the exit that it's still accessible
-    task.spawn(function()
-        while overlay and overlay.Parent do
-            task.wait(0.5)
-            if not (overlay and overlay.Parent) then break end
-        end
     end)
 
     ladderWarningGui = overlay
@@ -1688,11 +1665,9 @@ Features.register("ladderglide", {
 
 Features.addListener("ladderglide", function(enabled)
     if enabled then
-        if not ladderWarningSeen then
-            -- revert immediately, then show warning
-            task.defer(function()
-                Features.setEnabled("ladderglide", false)
-            end)
+        if not (Presets.warnings_seen and Presets.warnings_seen.ladder_glide) then
+            -- Revert and show the warning
+            Features.setEnabled("ladderglide", false)
             showLadderWarning()
             return
         end
@@ -1713,8 +1688,8 @@ makeFeatureRow(movementPage, "hardbounce", 168)
 makeFeatureRow(movementPage, "autotrimp",  234)
 makeFeatureRow(movementPage, "efling",     300)
 makeCategoryHeader(movementPage, "PLAYER", 372)
-makeFeatureRow(movementPage, "lagswitch",   394)
-makeFeatureRow(movementPage, "ladderglide", 460)
+makeFeatureRow(movementPage, "lagswitch",    394)
+makeFeatureRow(movementPage, "ladderglide",  460)
 makeCategoryHeader(movementPage, "SETTINGS", 532)
 local bounceSliderRow, refreshBounceSlider = makeSliderRow(
     movementPage, "Bounce Multiplier", "bounce_multiplier", 1.04, 5.0, 554, "x", 2
@@ -3358,7 +3333,7 @@ local function clearTerrain()
     pcall(function() workspace.Terrain:Clear() end)
 end
 
--- Hardcoded extra paths wiped on every map swap.
+-- HARD-CODED extra paths cleared on every map swap.
 local function clearExtraMapPaths()
     local map = workspace:FindFirstChild("Map") or findChildCI(workspace, "map")
     if not map then return end
