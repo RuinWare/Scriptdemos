@@ -1,5 +1,5 @@
 -- ═══════════════════════════════════════════════════════════════════
---   R E F O R G E D   ·   v1.9
+--   R E F O R G E D   ·   v2.0
 -- ═══════════════════════════════════════════════════════════════════
 local Players          = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
@@ -10,23 +10,12 @@ local SoundService     = game:GetService("SoundService")
 local player = Players.LocalPlayer
 
 local C = {
-    void    = Color3.fromRGB(0, 0, 0),
-    space   = Color3.fromRGB(5, 6, 14),
-    panel   = Color3.fromRGB(10, 12, 20),
-    panel2  = Color3.fromRGB(16, 19, 32),
-    glass   = Color3.fromRGB(22, 27, 46),
-    nebula  = Color3.fromRGB(45, 22, 80),
-    border  = Color3.fromRGB(215, 225, 245),
-    aurora  = Color3.fromRGB(245, 248, 255),
-    aurora2 = Color3.fromRGB(205, 215, 240),
-    text    = Color3.fromRGB(240, 244, 255),
-    sub     = Color3.fromRGB(140, 155, 185),
-    good    = Color3.fromRGB(160, 255, 200),
-    bad     = Color3.fromRGB(255, 140, 160),
-    warn    = Color3.fromRGB(255, 215, 150),
-    star    = Color3.fromRGB(255, 255, 255),
+    void=Color3.fromRGB(0,0,0), space=Color3.fromRGB(5,6,14), panel=Color3.fromRGB(10,12,20),
+    panel2=Color3.fromRGB(16,19,32), glass=Color3.fromRGB(22,27,46), nebula=Color3.fromRGB(45,22,80),
+    border=Color3.fromRGB(215,225,245), aurora=Color3.fromRGB(245,248,255), aurora2=Color3.fromRGB(205,215,240),
+    text=Color3.fromRGB(240,244,255), sub=Color3.fromRGB(140,155,185), good=Color3.fromRGB(160,255,200),
+    bad=Color3.fromRGB(255,140,160), warn=Color3.fromRGB(255,215,150), star=Color3.fromRGB(255,255,255),
 }
-
 local FONT_TITLE = Enum.Font.GothamBold
 local FONT_BOLD  = Enum.Font.GothamBold
 local FONT_MONO  = Enum.Font.Code
@@ -34,246 +23,157 @@ local FONT_ICON  = Enum.Font.SourceSansBold
 local LOGO_ID    = "rbxassetid://127983099298280"
 local MAX_LAYER  = 2147483647
 
-local USER_CARD = {
-    username    = player.Name,
-    description = "test",
-}
+local USER_CARD = { username = player.Name, description = "test" }
 
--- ═══════════════════════════════════════════════════════════════════
---  CONFIG
--- ═══════════════════════════════════════════════════════════════════
+-- CONFIG
 local Config = {}
 Config.defaults = {
-    auto_smooth       = true,
-    strip_scripts     = true,
-    clear_spawns      = true,
-    clear_terrain     = true,
-    use_asset_spawn   = true,
-    invis_menu        = false,
-    bounce_multiplier = 1.6,
-    lag_duration      = 0.5,
+    auto_smooth=true, strip_scripts=true, clear_spawns=true, clear_terrain=true,
+    use_asset_spawn=true, invis_menu=false, bounce_multiplier=1.6, lag_duration=0.5,
 }
 Config.data = {}
-for k, v in pairs(Config.defaults) do Config.data[k] = v end
+for k,v in pairs(Config.defaults) do Config.data[k]=v end
 function Config.get(k) return Config.data[k] end
-function Config.set(k, v) Config.data[k] = v end
-function Config.reset()
-    for k, v in pairs(Config.defaults) do Config.data[k] = v end
-end
+function Config.set(k,v) Config.data[k]=v end
+function Config.reset() for k,v in pairs(Config.defaults) do Config.data[k]=v end end
 
--- ═══════════════════════════════════════════════════════════════════
---  PRESET STORE
--- ═══════════════════════════════════════════════════════════════════
-local Presets = { maps = {}, configs = {} }
-
+-- PRESET STORE (also holds "seen" flags)
+local Presets = { maps = {}, configs = {}, seen = {} }
 local function savePresets()
     pcall(function()
-        if writefile then
-            writefile("reforged_presets.json", HttpService:JSONEncode(Presets))
-        end
+        if writefile then writefile("reforged_presets.json", HttpService:JSONEncode(Presets)) end
     end)
 end
-
 local function loadPresets()
     pcall(function()
         if readfile and isfile and isfile("reforged_presets.json") then
-            local ok, data = pcall(function()
-                return HttpService:JSONDecode(readfile("reforged_presets.json"))
-            end)
-            if ok and type(data) == "table" then
+            local ok, data = pcall(function() return HttpService:JSONDecode(readfile("reforged_presets.json")) end)
+            if ok and type(data)=="table" then
                 Presets.maps = data.maps or {}
                 Presets.configs = data.configs or {}
+                Presets.seen = data.seen or {}
             end
         end
     end)
 end
 loadPresets()
 
--- ═══════════════════════════════════════════════════════════════════
---  CLEANUP + SCREENGUIS
--- ═══════════════════════════════════════════════════════════════════
+-- CLEANUP
 local pg = player:WaitForChild("PlayerGui")
 for _, s in ipairs(pg:GetChildren()) do
-    if s:IsA("ScreenGui") and (s.Name == "ReforgedMain" or s.Name == "ReforgedHud") then
-        s:Destroy()
-    end
+    if s:IsA("ScreenGui") and (s.Name=="ReforgedMain" or s.Name=="ReforgedHud" or s.Name=="ReforgedWarning") then s:Destroy() end
 end
 
 local guiMain = Instance.new("ScreenGui")
-guiMain.Name = "ReforgedMain"
-guiMain.ResetOnSpawn = false
-guiMain.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-guiMain.IgnoreGuiInset = true
-guiMain.DisplayOrder = MAX_LAYER
-guiMain.Parent = pg
+guiMain.Name="ReforgedMain"; guiMain.ResetOnSpawn=false
+guiMain.ZIndexBehavior=Enum.ZIndexBehavior.Sibling; guiMain.IgnoreGuiInset=true
+guiMain.DisplayOrder=MAX_LAYER; guiMain.Parent=pg
 
 local guiHud = Instance.new("ScreenGui")
-guiHud.Name = "ReforgedHud"
-guiHud.ResetOnSpawn = false
-guiHud.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-guiHud.IgnoreGuiInset = true
-guiHud.DisplayOrder = MAX_LAYER
-guiHud.Parent = pg
+guiHud.Name="ReforgedHud"; guiHud.ResetOnSpawn=false
+guiHud.ZIndexBehavior=Enum.ZIndexBehavior.Sibling; guiHud.IgnoreGuiInset=true
+guiHud.DisplayOrder=MAX_LAYER; guiHud.Parent=pg
 
 local setStatus, switchTab
 local Features = {}
 local spawnAmbientParticles
 
--- ═══════════════════════════════════════════════════════════════════
---  WINDOW
--- ═══════════════════════════════════════════════════════════════════
+-- WINDOW
 local MIN_W, MIN_H = 380, 380
 local DEF_W, DEF_H = 520, 460
 
 local windowContainer = Instance.new("Frame")
-windowContainer.Name = "WindowContainer"
-windowContainer.Size = UDim2.fromOffset(DEF_W, DEF_H)
-windowContainer.Position = UDim2.new(0.5, -DEF_W/2, 0.5, -DEF_H/2)
-windowContainer.BackgroundTransparency = 1
-windowContainer.ClipsDescendants = false
-windowContainer.ZIndex = 2
-windowContainer.Parent = guiMain
+windowContainer.Name="WindowContainer"; windowContainer.Size=UDim2.fromOffset(DEF_W,DEF_H)
+windowContainer.Position=UDim2.new(0.5,-DEF_W/2,0.5,-DEF_H/2)
+windowContainer.BackgroundTransparency=1; windowContainer.ClipsDescendants=false
+windowContainer.ZIndex=2; windowContainer.Parent=guiMain
 
-local winScale = Instance.new("UIScale")
-winScale.Scale = 1
-winScale.Parent = windowContainer
+local winScale = Instance.new("UIScale"); winScale.Scale=1; winScale.Parent=windowContainer
 
 local glowLayers = {}
-
 local function makeGlowLayer(offset, alpha, period)
     local g = Instance.new("Frame")
-    g.Size = UDim2.fromOffset(DEF_W + offset*2, DEF_H + offset*2)
-    g.Position = UDim2.new(0, -offset, 0, -offset)
-    g.BackgroundColor3 = C.aurora
-    g.BackgroundTransparency = alpha
-    g.BorderSizePixel = 0
-    g.ZIndex = 0
-    g.Parent = windowContainer
-    Instance.new("UICorner", g).CornerRadius = UDim.new(0, 22 + offset/3)
+    g.Size=UDim2.fromOffset(DEF_W+offset*2, DEF_H+offset*2)
+    g.Position=UDim2.new(0,-offset,0,-offset)
+    g.BackgroundColor3=C.aurora; g.BackgroundTransparency=alpha; g.BorderSizePixel=0
+    g.ZIndex=0; g.Parent=windowContainer
+    Instance.new("UICorner",g).CornerRadius=UDim.new(0, 22+offset/3)
     g:SetAttribute("GlowOffset", offset)
     table.insert(glowLayers, g)
     task.spawn(function()
-        local base = alpha
-        local peak = math.max(0.5, alpha - 0.25)
+        local base, peak = alpha, math.max(0.5, alpha-0.25)
         while g.Parent do
-            TweenService:Create(g, TweenInfo.new(period, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {BackgroundTransparency = peak}):Play()
+            TweenService:Create(g,TweenInfo.new(period,Enum.EasingStyle.Sine,Enum.EasingDirection.InOut),{BackgroundTransparency=peak}):Play()
             task.wait(period)
-            TweenService:Create(g, TweenInfo.new(period, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {BackgroundTransparency = base}):Play()
+            TweenService:Create(g,TweenInfo.new(period,Enum.EasingStyle.Sine,Enum.EasingDirection.InOut),{BackgroundTransparency=base}):Play()
             task.wait(period)
         end
     end)
     return g
 end
-
 makeGlowLayer(26, 0.94, 2.4)
 makeGlowLayer(14, 0.86, 2.0)
-makeGlowLayer(6,  0.72, 1.6)
-
-local function resizeGlow(w, h)
+makeGlowLayer(6, 0.72, 1.6)
+local function resizeGlow(w,h)
     for _, g in ipairs(glowLayers) do
         local off = g:GetAttribute("GlowOffset") or 0
-        g.Size = UDim2.fromOffset(w + off*2, h + off*2)
-        g.Position = UDim2.new(0, -off, 0, -off)
+        g.Size=UDim2.fromOffset(w+off*2, h+off*2); g.Position=UDim2.new(0,-off,0,-off)
     end
 end
 
 local shadow = Instance.new("Frame")
-shadow.Size = UDim2.fromOffset(DEF_W, DEF_H)
-shadow.Position = UDim2.new(0, 3, 0, 3)
-shadow.BackgroundColor3 = C.void
-shadow.BackgroundTransparency = 0.45
-shadow.BorderSizePixel = 0
-shadow.ZIndex = 1
-shadow.Parent = windowContainer
-Instance.new("UICorner", shadow).CornerRadius = UDim.new(0, 16)
+shadow.Size=UDim2.fromOffset(DEF_W,DEF_H); shadow.Position=UDim2.new(0,3,0,3)
+shadow.BackgroundColor3=C.void; shadow.BackgroundTransparency=0.45; shadow.BorderSizePixel=0
+shadow.ZIndex=1; shadow.Parent=windowContainer
+Instance.new("UICorner",shadow).CornerRadius=UDim.new(0,16)
 
 local win = Instance.new("Frame")
-win.Name = "Window"
-win.Size = UDim2.fromOffset(DEF_W, DEF_H)
-win.BackgroundColor3 = C.panel
-win.BorderSizePixel = 0
-win.ClipsDescendants = true
-win.Active = true
-win.ZIndex = 2
-win.Parent = windowContainer
-Instance.new("UICorner", win).CornerRadius = UDim.new(0, 16)
+win.Name="Window"; win.Size=UDim2.fromOffset(DEF_W,DEF_H); win.BackgroundColor3=C.panel
+win.BorderSizePixel=0; win.ClipsDescendants=true; win.Active=true; win.ZIndex=2; win.Parent=windowContainer
+Instance.new("UICorner",win).CornerRadius=UDim.new(0,16)
 
 local bgGrad = Instance.new("UIGradient")
-bgGrad.Color = ColorSequence.new{
-    ColorSequenceKeypoint.new(0.0, C.panel2),
-    ColorSequenceKeypoint.new(0.5, C.panel),
-    ColorSequenceKeypoint.new(1.0, C.space),
-}
-bgGrad.Rotation = 90
-bgGrad.Parent = win
+bgGrad.Color=ColorSequence.new{ColorSequenceKeypoint.new(0,C.panel2),ColorSequenceKeypoint.new(0.5,C.panel),ColorSequenceKeypoint.new(1,C.space)}
+bgGrad.Rotation=90; bgGrad.Parent=win
 
 local nebula = Instance.new("Frame")
-nebula.Size = UDim2.fromScale(1, 0.6)
-nebula.BackgroundColor3 = C.nebula
-nebula.BackgroundTransparency = 0.85
-nebula.BorderSizePixel = 0
-nebula.ZIndex = 3
-nebula.Parent = win
-
+nebula.Size=UDim2.fromScale(1,0.6); nebula.BackgroundColor3=C.nebula; nebula.BackgroundTransparency=0.85
+nebula.BorderSizePixel=0; nebula.ZIndex=3; nebula.Parent=win
 local nebGrad = Instance.new("UIGradient")
-nebGrad.Transparency = NumberSequence.new{
-    NumberSequenceKeypoint.new(0, 0),
-    NumberSequenceKeypoint.new(1, 1),
-}
-nebGrad.Rotation = 90
-nebGrad.Parent = nebula
+nebGrad.Transparency=NumberSequence.new{NumberSequenceKeypoint.new(0,0),NumberSequenceKeypoint.new(1,1)}
+nebGrad.Rotation=90; nebGrad.Parent=nebula
 
 local winStroke = Instance.new("UIStroke")
-winStroke.Color = C.aurora
-winStroke.Thickness = 1.8
-winStroke.Transparency = 0.1
-winStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-winStroke.Parent = win
+winStroke.Color=C.aurora; winStroke.Thickness=1.8; winStroke.Transparency=0.1
+winStroke.ApplyStrokeMode=Enum.ApplyStrokeMode.Border; winStroke.Parent=win
 
 local starField = Instance.new("Frame")
-starField.Size = UDim2.fromScale(1, 1)
-starField.BackgroundTransparency = 1
-starField.ZIndex = 3
-starField.Parent = win
+starField.Size=UDim2.fromScale(1,1); starField.BackgroundTransparency=1; starField.ZIndex=3; starField.Parent=win
 
 local stars = {}
-for i = 1, 70 do
+for i=1,70 do
     local s = Instance.new("Frame")
-    local size = math.random(1, 2)
-    s.Size = UDim2.fromOffset(size, size)
+    local size = math.random(1,2)
+    s.Size=UDim2.fromOffset(size,size)
     local px, py = math.random(), math.random()
-    s.Position = UDim2.new(px, 0, py, 0)
-    s.BackgroundColor3 = C.star
-    s.BackgroundTransparency = 0.2 + math.random() * 0.6
-    s.BorderSizePixel = 0
-    s.ZIndex = 4
-    s.Parent = starField
-    Instance.new("UICorner", s).CornerRadius = UDim.new(1, 0)
-    table.insert(stars, {
-        el = s, baseX = px, baseY = py,
-        speed = 0.008 + math.random() * 0.022,
-        sway  = 0.004 + math.random() * 0.010,
-        phase = math.random() * math.pi * 2,
-        twinkle = (i % 3 == 0),
-    })
+    s.Position=UDim2.new(px,0,py,0); s.BackgroundColor3=C.star
+    s.BackgroundTransparency=0.2+math.random()*0.6; s.BorderSizePixel=0; s.ZIndex=4; s.Parent=starField
+    Instance.new("UICorner",s).CornerRadius=UDim.new(1,0)
+    table.insert(stars,{el=s,baseX=px,baseY=py,speed=0.008+math.random()*0.022,sway=0.004+math.random()*0.010,phase=math.random()*math.pi*2,twinkle=(i%3==0)})
 end
-
 task.spawn(function()
-    local t = 0
+    local t=0
     while starField.Parent do
-        local dt = task.wait(0.03)
-        t += dt
+        local dt = task.wait(0.03); t += dt
         for _, st in ipairs(stars) do
             if not st.el.Parent then continue end
-            local nx = (st.baseX + t * st.speed) % 1.05 - 0.02
-            local ny = st.baseY + math.sin(t * 0.4 + st.phase) * st.sway
-            st.el.Position = UDim2.new(nx, 0, ny, 0)
+            local nx=(st.baseX+t*st.speed)%1.05-0.02
+            local ny=st.baseY+math.sin(t*0.4+st.phase)*st.sway
+            st.el.Position=UDim2.new(nx,0,ny,0)
         end
         for _, st in ipairs(stars) do
-            if st.twinkle and math.random() < 0.02 then
-                TweenService:Create(st.el, TweenInfo.new(0.9 + math.random() * 0.8, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {
-                    BackgroundTransparency = 0.1 + math.random() * 0.8
-                }):Play()
+            if st.twinkle and math.random()<0.02 then
+                TweenService:Create(st.el,TweenInfo.new(0.9+math.random()*0.8,Enum.EasingStyle.Sine,Enum.EasingDirection.InOut),{BackgroundTransparency=0.1+math.random()*0.8}):Play()
             end
         end
     end
@@ -281,319 +181,186 @@ end)
 
 function spawnAmbientParticles(parent, count)
     local layer = Instance.new("Frame")
-    layer.Name = "AmbientParticles"
-    layer.Size = UDim2.fromScale(1, 1)
-    layer.BackgroundTransparency = 1
-    layer.ClipsDescendants = true
-    layer.ZIndex = 5
-    layer.Parent = parent
-
+    layer.Name="AmbientParticles"; layer.Size=UDim2.fromScale(1,1); layer.BackgroundTransparency=1
+    layer.ClipsDescendants=true; layer.ZIndex=5; layer.Parent=parent
     local particles = {}
-    for i = 1, count do
+    for i=1,count do
         local p = Instance.new("Frame")
-        local sz = 2 + math.random() * 2
-        p.Size = UDim2.fromOffset(sz, sz)
-        p.BackgroundColor3 = C.star
-        p.BackgroundTransparency = 0.4
-        p.BorderSizePixel = 0
-        p.Position = UDim2.new(math.random(), 0, 1 + math.random() * 0.4, 0)
-        p.ZIndex = 6
-        p.Parent = layer
-        table.insert(particles, {
-            el = p,
-            x = p.Position.X.Scale,
-            y = p.Position.Y.Scale,
-            speed = 0.005 + math.random() * 0.012,
-            sway = 0.002 + math.random() * 0.004,
-            phase = math.random() * math.pi * 2,
-            drift = (math.random() - 0.5) * 0.004,
-        })
+        local sz = 2+math.random()*2
+        p.Size=UDim2.fromOffset(sz,sz); p.BackgroundColor3=C.star; p.BackgroundTransparency=0.4
+        p.BorderSizePixel=0; p.Position=UDim2.new(math.random(),0,1+math.random()*0.4,0); p.ZIndex=6; p.Parent=layer
+        table.insert(particles,{el=p,x=p.Position.X.Scale,y=p.Position.Y.Scale,speed=0.005+math.random()*0.012,sway=0.002+math.random()*0.004,phase=math.random()*math.pi*2,drift=(math.random()-0.5)*0.004})
     end
-
     task.spawn(function()
-        local t = 0
+        local t=0
         while layer.Parent do
-            local dt = task.wait(0.04)
-            t += dt
+            local dt = task.wait(0.04); t += dt
             for _, pt in ipairs(particles) do
                 if not pt.el.Parent then continue end
-                pt.y = pt.y - pt.speed * dt
-                local x = pt.x + math.sin(t * 0.6 + pt.phase) * pt.sway + pt.drift * dt
-                if pt.y < -0.05 then
-                    pt.y = 1.05 + math.random() * 0.2
-                    pt.x = math.random()
-                end
-                pt.el.Position = UDim2.new(x, 0, pt.y, 0)
+                pt.y = pt.y - pt.speed*dt
+                local x = pt.x + math.sin(t*0.6+pt.phase)*pt.sway + pt.drift*dt
+                if pt.y < -0.05 then pt.y = 1.05+math.random()*0.2; pt.x=math.random() end
+                pt.el.Position=UDim2.new(x,0,pt.y,0)
             end
         end
     end)
 end
-
 spawnAmbientParticles(win, 22)
 
--- ═══════════════════════════════════════════════════════════════════
---  TITLE BAR
--- ═══════════════════════════════════════════════════════════════════
+-- TITLE BAR
 local titleBar = Instance.new("Frame")
-titleBar.Name = "TitleBar"
-titleBar.Size = UDim2.new(1, 0, 0, 52)
-titleBar.BackgroundTransparency = 1
-titleBar.ZIndex = 7
-titleBar.Parent = win
+titleBar.Name="TitleBar"; titleBar.Size=UDim2.new(1,0,0,52); titleBar.BackgroundTransparency=1
+titleBar.ZIndex=7; titleBar.Parent=win
 
 local logoImg = Instance.new("ImageLabel")
-logoImg.Size = UDim2.fromOffset(34, 34)
-logoImg.Position = UDim2.new(0, 14, 0, 11)
-logoImg.BackgroundTransparency = 1
-logoImg.Image = LOGO_ID
-logoImg.ImageColor3 = Color3.fromRGB(255, 255, 255)
-logoImg.ScaleType = Enum.ScaleType.Fit
-logoImg.ZIndex = 8
-logoImg.Parent = titleBar
+logoImg.Size=UDim2.fromOffset(34,34); logoImg.Position=UDim2.new(0,14,0,11)
+logoImg.BackgroundTransparency=1; logoImg.Image=LOGO_ID; logoImg.ImageColor3=Color3.fromRGB(255,255,255)
+logoImg.ScaleType=Enum.ScaleType.Fit; logoImg.ZIndex=8; logoImg.Parent=titleBar
 
 local titleText = Instance.new("TextLabel")
-titleText.Size = UDim2.new(1, -160, 0, 26)
-titleText.Position = UDim2.new(0, 56, 0, 12)
-titleText.BackgroundTransparency = 1
-titleText.Text = "REFORGED"
-titleText.TextColor3 = C.text
-titleText.TextSize = 16
-titleText.Font = FONT_TITLE
-titleText.TextXAlignment = Enum.TextXAlignment.Left
-titleText.ZIndex = 8
-titleText.Parent = titleBar
+titleText.Size=UDim2.new(1,-160,0,26); titleText.Position=UDim2.new(0,56,0,12)
+titleText.BackgroundTransparency=1; titleText.Text="REFORGED"; titleText.TextColor3=C.text
+titleText.TextSize=16; titleText.Font=FONT_TITLE; titleText.TextXAlignment=Enum.TextXAlignment.Left
+titleText.ZIndex=8; titleText.Parent=titleBar
 
 local subtitleText = Instance.new("TextLabel")
-subtitleText.Size = UDim2.new(1, -160, 0, 14)
-subtitleText.Position = UDim2.new(0, 57, 0, 30)
-subtitleText.BackgroundTransparency = 1
-subtitleText.Text = "v1.9"
-subtitleText.TextColor3 = C.sub
-subtitleText.TextSize = 10
-subtitleText.Font = FONT_MONO
-subtitleText.TextXAlignment = Enum.TextXAlignment.Left
-subtitleText.ZIndex = 8
-subtitleText.Parent = titleBar
+subtitleText.Size=UDim2.new(1,-160,0,14); subtitleText.Position=UDim2.new(0,57,0,30)
+subtitleText.BackgroundTransparency=1; subtitleText.Text="v2.0"; subtitleText.TextColor3=C.sub
+subtitleText.TextSize=10; subtitleText.Font=FONT_MONO; subtitleText.TextXAlignment=Enum.TextXAlignment.Left
+subtitleText.ZIndex=8; subtitleText.Parent=titleBar
 
 local function makeCircleBtn(text, pos, hoverColor)
     local b = Instance.new("TextButton")
-    b.Size = UDim2.fromOffset(26, 26)
-    b.Position = pos
-    b.BackgroundColor3 = C.space
-    b.BackgroundTransparency = 0.4
-    b.Text = text
-    b.TextColor3 = C.sub
-    b.TextSize = 20
-    b.Font = FONT_BOLD
-    b.AutoButtonColor = false
-    b.BorderSizePixel = 0
-    b.ZIndex = 9
-    b.Parent = titleBar
-    Instance.new("UICorner", b).CornerRadius = UDim.new(1, 0)
+    b.Size=UDim2.fromOffset(26,26); b.Position=pos; b.BackgroundColor3=C.space
+    b.BackgroundTransparency=0.4; b.Text=text; b.TextColor3=C.sub; b.TextSize=20
+    b.Font=FONT_BOLD; b.AutoButtonColor=false; b.BorderSizePixel=0; b.ZIndex=9; b.Parent=titleBar
+    Instance.new("UICorner",b).CornerRadius=UDim.new(1,0)
     local st = Instance.new("UIStroke")
-    st.Color = C.border
-    st.Thickness = 1
-    st.Transparency = 0.55
-    st.Parent = b
+    st.Color=C.border; st.Thickness=1; st.Transparency=0.55; st.Parent=b
     b.MouseEnter:Connect(function()
-        TweenService:Create(b, TweenInfo.new(0.15), {BackgroundTransparency = 0.1, TextColor3 = hoverColor}):Play()
-        TweenService:Create(st, TweenInfo.new(0.15), {Transparency = 0.1, Color = hoverColor}):Play()
+        TweenService:Create(b,TweenInfo.new(0.15),{BackgroundTransparency=0.1,TextColor3=hoverColor}):Play()
+        TweenService:Create(st,TweenInfo.new(0.15),{Transparency=0.1,Color=hoverColor}):Play()
     end)
     b.MouseLeave:Connect(function()
-        TweenService:Create(b, TweenInfo.new(0.15), {BackgroundTransparency = 0.4, TextColor3 = C.sub}):Play()
-        TweenService:Create(st, TweenInfo.new(0.15), {Transparency = 0.55, Color = C.border}):Play()
+        TweenService:Create(b,TweenInfo.new(0.15),{BackgroundTransparency=0.4,TextColor3=C.sub}):Play()
+        TweenService:Create(st,TweenInfo.new(0.15),{Transparency=0.55,Color=C.border}):Play()
     end)
     return b
 end
+local minBtn = makeCircleBtn("−", UDim2.new(1,-70,0,13), C.aurora)
+local closeBtn = makeCircleBtn("×", UDim2.new(1,-38,0,13), C.bad)
 
-local minBtn = makeCircleBtn("−", UDim2.new(1, -70, 0, 13), C.aurora)
-local closeBtn = makeCircleBtn("×", UDim2.new(1, -38, 0, 13), C.bad)
-
--- ═══════════════════════════════════════════════════════════════════
---  TAB BAR
--- ═══════════════════════════════════════════════════════════════════
+-- TAB BAR
 local TAB_H = 52
-
 local tabBar = Instance.new("Frame")
-tabBar.Size = UDim2.new(1, 0, 0, TAB_H)
-tabBar.Position = UDim2.new(0, 0, 0, 52)
-tabBar.BackgroundTransparency = 1
-tabBar.ZIndex = 7
-tabBar.Parent = win
+tabBar.Size=UDim2.new(1,0,0,TAB_H); tabBar.Position=UDim2.new(0,0,0,52)
+tabBar.BackgroundTransparency=1; tabBar.ZIndex=7; tabBar.Parent=win
 
 local divider = Instance.new("Frame")
-divider.Size = UDim2.new(1, -32, 0, 1)
-divider.Position = UDim2.new(0, 16, 0, 52 + TAB_H)
-divider.BackgroundColor3 = C.border
-divider.BackgroundTransparency = 0.8
-divider.BorderSizePixel = 0
-divider.ZIndex = 7
-divider.Parent = win
+divider.Size=UDim2.new(1,-32,0,1); divider.Position=UDim2.new(0,16,0,52+TAB_H)
+divider.BackgroundColor3=C.border; divider.BackgroundTransparency=0.8; divider.BorderSizePixel=0
+divider.ZIndex=7; divider.Parent=win
 
 local indicator = Instance.new("Frame")
-indicator.Size = UDim2.new(1/6, -16, 0, 2)
-indicator.Position = UDim2.new(0, 8, 0, TAB_H - 2)
-indicator.BackgroundColor3 = C.aurora
-indicator.BorderSizePixel = 0
-indicator.ZIndex = 9
-indicator.Parent = tabBar
-Instance.new("UICorner", indicator).CornerRadius = UDim.new(1, 0)
+indicator.Size=UDim2.new(1/6,-16,0,2); indicator.Position=UDim2.new(0,8,0,TAB_H-2)
+indicator.BackgroundColor3=C.aurora; indicator.BorderSizePixel=0; indicator.ZIndex=9; indicator.Parent=tabBar
+Instance.new("UICorner",indicator).CornerRadius=UDim.new(1,0)
 
 local tabDefs = {
-    { id = "movement", label = "MOVEMENT", icon = "▲" },
-    { id = "map",      label = "MAP",      icon = "◆" },
-    { id = "visuals",  label = "VISUAL",   icon = "◉" },
-    { id = "extra",    label = "EXTRA",    icon = "★" },
-    { id = "config",   label = "CONFIG",   icon = "≡" },
-    { id = "credits",  label = "CREDITS",  icon = "●" },
+    {id="movement",label="MOVEMENT",icon="▲"},{id="map",label="MAP",icon="◆"},
+    {id="visuals",label="VISUAL",icon="◉"},{id="extra",label="EXTRA",icon="★"},
+    {id="config",label="CONFIG",icon="≡"},{id="credits",label="CREDITS",icon="●"},
 }
 local tabButtons = {}
 local activeTab = "map"
 
 for i, def in ipairs(tabDefs) do
     local tb = Instance.new("TextButton")
-    tb.Size = UDim2.new(1/6, 0, 1, 0)
-    tb.Position = UDim2.new((i-1)/6, 0, 0, 0)
-    tb.BackgroundTransparency = 1
-    tb.Text = ""
-    tb.AutoButtonColor = false
-    tb.ZIndex = 8
-    tb.Parent = tabBar
-
+    tb.Size=UDim2.new(1/6,0,1,0); tb.Position=UDim2.new((i-1)/6,0,0,0)
+    tb.BackgroundTransparency=1; tb.Text=""; tb.AutoButtonColor=false; tb.ZIndex=8; tb.Parent=tabBar
     local icon = Instance.new("TextLabel")
-    icon.Size = UDim2.new(1, 0, 0, 22)
-    icon.Position = UDim2.new(0, 0, 0, 6)
-    icon.BackgroundTransparency = 1
-    icon.Text = def.icon
-    icon.TextColor3 = C.sub
-    icon.TextSize = 18
-    icon.Font = FONT_ICON
-    icon.ZIndex = 9
-    icon.Parent = tb
-
+    icon.Size=UDim2.new(1,0,0,22); icon.Position=UDim2.new(0,0,0,6); icon.BackgroundTransparency=1
+    icon.Text=def.icon; icon.TextColor3=C.sub; icon.TextSize=18; icon.Font=FONT_ICON; icon.ZIndex=9; icon.Parent=tb
     local label = Instance.new("TextLabel")
-    label.Size = UDim2.new(1, 0, 0, 12)
-    label.Position = UDim2.new(0, 0, 0, 30)
-    label.BackgroundTransparency = 1
-    label.Text = def.label
-    label.TextColor3 = C.sub
-    label.TextSize = 9
-    label.Font = FONT_BOLD
-    label.ZIndex = 9
-    label.Parent = tb
-
-    tabButtons[def.id] = { btn = tb, icon = icon, label = label }
-
+    label.Size=UDim2.new(1,0,0,12); label.Position=UDim2.new(0,0,0,30); label.BackgroundTransparency=1
+    label.Text=def.label; label.TextColor3=C.sub; label.TextSize=9; label.Font=FONT_BOLD; label.ZIndex=9; label.Parent=tb
+    tabButtons[def.id] = {btn=tb,icon=icon,label=label}
     tb.MouseEnter:Connect(function()
-        if activeTab ~= def.id then
-            TweenService:Create(icon, TweenInfo.new(0.15), {TextColor3 = C.text}):Play()
-            TweenService:Create(label, TweenInfo.new(0.15), {TextColor3 = C.text}):Play()
+        if activeTab~=def.id then
+            TweenService:Create(icon,TweenInfo.new(0.15),{TextColor3=C.text}):Play()
+            TweenService:Create(label,TweenInfo.new(0.15),{TextColor3=C.text}):Play()
         end
     end)
     tb.MouseLeave:Connect(function()
-        if activeTab ~= def.id then
-            TweenService:Create(icon, TweenInfo.new(0.15), {TextColor3 = C.sub}):Play()
-            TweenService:Create(label, TweenInfo.new(0.15), {TextColor3 = C.sub}):Play()
+        if activeTab~=def.id then
+            TweenService:Create(icon,TweenInfo.new(0.15),{TextColor3=C.sub}):Play()
+            TweenService:Create(label,TweenInfo.new(0.15),{TextColor3=C.sub}):Play()
         end
     end)
 end
 
--- ═══════════════════════════════════════════════════════════════════
---  CONTENT + PAGES
--- ═══════════════════════════════════════════════════════════════════
+-- CONTENT
 local content = Instance.new("Frame")
-content.Name = "Content"
-content.Position = UDim2.new(0, 0, 0, 52 + TAB_H + 1)
-content.Size = UDim2.new(1, 0, 1, -(52 + TAB_H + 1) - 40)
-content.BackgroundTransparency = 1
-content.ZIndex = 7
-content.Parent = win
+content.Name="Content"; content.Position=UDim2.new(0,0,0,52+TAB_H+1)
+content.Size=UDim2.new(1,0,1,-(52+TAB_H+1)-40); content.BackgroundTransparency=1
+content.ZIndex=7; content.Parent=win
 
 local pages = {}
 local function newPage(id, scrollable)
     local p
     if scrollable then
         p = Instance.new("ScrollingFrame")
-        p.ScrollBarThickness = 2
-        p.ScrollBarImageColor3 = C.border
-        p.CanvasSize = UDim2.new(0, 0, 0, 0)
-        p.AutomaticCanvasSize = Enum.AutomaticSize.Y
+        p.ScrollBarThickness=2; p.ScrollBarImageColor3=C.border
+        p.CanvasSize=UDim2.new(0,0,0,0); p.AutomaticCanvasSize=Enum.AutomaticSize.Y
     else
         p = Instance.new("Frame")
     end
-    p.Name = id .. "Page"
-    p.Size = UDim2.fromScale(1, 1)
-    p.BackgroundTransparency = 1
-    p.Visible = false
-    p.ZIndex = 8
-    p.Parent = content
-    pages[id] = p
-    return p
+    p.Name=id.."Page"; p.Size=UDim2.fromScale(1,1); p.BackgroundTransparency=1
+    p.Visible=false; p.ZIndex=8; p.Parent=content; pages[id]=p; return p
 end
 
 local function makeCategoryHeader(parent, text, yPos)
     local h = Instance.new("TextLabel")
-    h.Size = UDim2.new(1, -32, 0, 16)
-    h.Position = UDim2.new(0, 16, 0, yPos)
-    h.BackgroundTransparency = 1
-    h.Text = "-- " .. text .. " --"
-    h.TextColor3 = C.sub
-    h.TextSize = 10
-    h.Font = FONT_MONO
-    h.TextXAlignment = Enum.TextXAlignment.Left
-    h.ZIndex = 9
-    h.Parent = parent
-    return h
+    h.Size=UDim2.new(1,-32,0,16); h.Position=UDim2.new(0,16,0,yPos); h.BackgroundTransparency=1
+    h.Text="-- "..text.." --"; h.TextColor3=C.sub; h.TextSize=10; h.Font=FONT_MONO
+    h.TextXAlignment=Enum.TextXAlignment.Left; h.ZIndex=9; h.Parent=parent; return h
 end
 
 local function makeSoon(parent, yPos)
     local s = Instance.new("TextLabel")
-    s.Size = UDim2.new(1, -32, 0, 20)
-    s.Position = UDim2.new(0, 16, 0, yPos)
-    s.BackgroundTransparency = 1
-    s.Text = "coming soon"
-    s.TextColor3 = C.sub
-    s.TextSize = 10
-    s.Font = FONT_MONO
-    s.TextXAlignment = Enum.TextXAlignment.Left
-    s.ZIndex = 9
-    s.Parent = parent
-    return s
+    s.Size=UDim2.new(1,-32,0,20); s.Position=UDim2.new(0,16,0,yPos); s.BackgroundTransparency=1
+    s.Text="coming soon"; s.TextColor3=C.sub; s.TextSize=10; s.Font=FONT_MONO
+    s.TextXAlignment=Enum.TextXAlignment.Left; s.ZIndex=9; s.Parent=parent; return s
 end
 
--- ═══════════════════════════════════════════════════════════════════
---  FEATURE REGISTRY
--- ═══════════════════════════════════════════════════════════════════
+-- FEATURE REGISTRY
 function Features.register(id, opts)
     Features[id] = {
-        id = id,
-        name = opts.name or id,
-        icon = opts.icon or "●",
-        category = opts.category or "MOVEMENT",
-        tab = opts.tab or "movement",
-        hint = opts.hint or "tap = toggle  ·  hold = pin to HUD",
-        enabled = false,
-        locked = false,
-        pillVisible = true,
-        hudOffset = opts.hudOffset or Vector2.new(-180, 200),
-        listeners = {},
-        isButton = opts.isButton or false,
-        action = opts.action,
+        id=id, name=opts.name or id, icon=opts.icon or "●", category=opts.category or "MOVEMENT",
+        tab=opts.tab or "movement", hint=opts.hint or "tap = toggle  ·  hold = pin to HUD",
+        enabled=false, locked=false, pillVisible=true,
+        hudOffset=opts.hudOffset or Vector2.new(-180,200), listeners={},
+        isButton=opts.isButton or false, action=opts.action, gate=opts.gate,
     }
     return Features[id]
 end
 
 local FORCE_OFF = {
-    autojump   = { "autotrimp" },
-    easybounce = { "hardbounce", "autotrimp", "efling" },
-    hardbounce = { "easybounce", "autotrimp", "efling" },
-    autotrimp  = { "autojump", "easybounce", "hardbounce", "efling" },
-    efling     = { "autojump", "easybounce", "hardbounce", "autotrimp" },
+    autojump={"autotrimp"}, easybounce={"hardbounce","autotrimp","efling"},
+    hardbounce={"easybounce","autotrimp","efling"},
+    autotrimp={"autojump","easybounce","hardbounce","efling"},
+    efling={"autojump","easybounce","hardbounce","autotrimp"},
 }
-
 function Features.setEnabled(id, state)
     local f = Features[id]
     if not f or f.enabled == state then return end
+    if state and f.gate then
+        local ok = f.gate()
+        if not ok then
+            for _, cb in ipairs(f.listeners) do pcall(cb, f.enabled) end
+            return
+        end
+    end
     f.enabled = state
     if state then
         local block = FORCE_OFF[id]
@@ -607,359 +374,192 @@ function Features.setEnabled(id, state)
     end
     for _, cb in ipairs(f.listeners) do pcall(cb, state) end
 end
-
 function Features.toggle(id)
-    local f = Features[id]
-    if not f then return end
+    local f = Features[id]; if not f then return end
     Features.setEnabled(id, not f.enabled)
 end
-
 function Features.addListener(id, cb)
-    local f = Features[id]
-    if f then table.insert(f.listeners, cb) end
+    local f = Features[id]; if f then table.insert(f.listeners, cb) end
 end
 
--- ═══════════════════════════════════════════════════════════════════
---  LIQUID GLASS TOGGLE
--- ═══════════════════════════════════════════════════════════════════
+-- LIQUID GLASS TOGGLE
 local function makeGlassToggle(parent, anchorPos, getState, setState)
     local track = Instance.new("Frame")
-    track.Size = UDim2.fromOffset(44, 26)
-    track.AnchorPoint = Vector2.new(1, 0)
-    track.Position = anchorPos
-    track.BackgroundColor3 = Color3.fromRGB(60, 66, 84)
-    track.BackgroundTransparency = 0.35
-    track.BorderSizePixel = 0
-    track.ZIndex = 9
-    track.Parent = parent
-    Instance.new("UICorner", track).CornerRadius = UDim.new(1, 0)
-
+    track.Size=UDim2.fromOffset(44,26); track.AnchorPoint=Vector2.new(1,0); track.Position=anchorPos
+    track.BackgroundColor3=Color3.fromRGB(60,66,84); track.BackgroundTransparency=0.35
+    track.BorderSizePixel=0; track.ZIndex=9; track.Parent=parent
+    Instance.new("UICorner",track).CornerRadius=UDim.new(1,0)
     local trackGrad = Instance.new("UIGradient")
-    trackGrad.Color = ColorSequence.new{
-        ColorSequenceKeypoint.new(0, Color3.fromRGB(110, 118, 140)),
-        ColorSequenceKeypoint.new(1, Color3.fromRGB(45, 50, 68)),
-    }
-    trackGrad.Rotation = 90
-    trackGrad.Parent = track
-
+    trackGrad.Color=ColorSequence.new{ColorSequenceKeypoint.new(0,Color3.fromRGB(110,118,140)),ColorSequenceKeypoint.new(1,Color3.fromRGB(45,50,68))}
+    trackGrad.Rotation=90; trackGrad.Parent=track
     local trackGlass = Instance.new("Frame")
-    trackGlass.Size = UDim2.new(1, -6, 0.4, 0)
-    trackGlass.Position = UDim2.new(0, 3, 0, 2)
-    trackGlass.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-    trackGlass.BackgroundTransparency = 0.85
-    trackGlass.BorderSizePixel = 0
-    trackGlass.ZIndex = 10
-    trackGlass.Parent = track
-    Instance.new("UICorner", trackGlass).CornerRadius = UDim.new(1, 0)
-
+    trackGlass.Size=UDim2.new(1,-6,0.4,0); trackGlass.Position=UDim2.new(0,3,0,2)
+    trackGlass.BackgroundColor3=Color3.fromRGB(255,255,255); trackGlass.BackgroundTransparency=0.85
+    trackGlass.BorderSizePixel=0; trackGlass.ZIndex=10; trackGlass.Parent=track
+    Instance.new("UICorner",trackGlass).CornerRadius=UDim.new(1,0)
     local trackStroke = Instance.new("UIStroke")
-    trackStroke.Color = Color3.fromRGB(255, 255, 255)
-    trackStroke.Thickness = 1
-    trackStroke.Transparency = 0.65
-    trackStroke.Parent = track
-
+    trackStroke.Color=Color3.fromRGB(255,255,255); trackStroke.Thickness=1; trackStroke.Transparency=0.65; trackStroke.Parent=track
     local knob = Instance.new("Frame")
-    knob.Size = UDim2.fromOffset(22, 22)
-    knob.Position = UDim2.new(0, 2, 0, 2)
-    knob.BackgroundColor3 = Color3.fromRGB(250, 252, 255)
-    knob.BorderSizePixel = 0
-    knob.ZIndex = 11
-    knob.Parent = track
-    Instance.new("UICorner", knob).CornerRadius = UDim.new(1, 0)
-
+    knob.Size=UDim2.fromOffset(22,22); knob.Position=UDim2.new(0,2,0,2)
+    knob.BackgroundColor3=Color3.fromRGB(250,252,255); knob.BorderSizePixel=0; knob.ZIndex=11; knob.Parent=track
+    Instance.new("UICorner",knob).CornerRadius=UDim.new(1,0)
     local knobGrad = Instance.new("UIGradient")
-    knobGrad.Color = ColorSequence.new{
-        ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 255, 255)),
-        ColorSequenceKeypoint.new(1, Color3.fromRGB(212, 218, 235)),
-    }
-    knobGrad.Rotation = 90
-    knobGrad.Parent = knob
-
+    knobGrad.Color=ColorSequence.new{ColorSequenceKeypoint.new(0,Color3.fromRGB(255,255,255)),ColorSequenceKeypoint.new(1,Color3.fromRGB(212,218,235))}
+    knobGrad.Rotation=90; knobGrad.Parent=knob
     local knobHi = Instance.new("Frame")
-    knobHi.Size = UDim2.new(0.55, 0, 0.3, 0)
-    knobHi.Position = UDim2.new(0.225, 0, 0.1, 0)
-    knobHi.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-    knobHi.BackgroundTransparency = 0.1
-    knobHi.BorderSizePixel = 0
-    knobHi.ZIndex = 12
-    knobHi.Parent = knob
-    Instance.new("UICorner", knobHi).CornerRadius = UDim.new(1, 0)
-
+    knobHi.Size=UDim2.new(0.55,0,0.3,0); knobHi.Position=UDim2.new(0.225,0,0.1,0)
+    knobHi.BackgroundColor3=Color3.fromRGB(255,255,255); knobHi.BackgroundTransparency=0.1
+    knobHi.BorderSizePixel=0; knobHi.ZIndex=12; knobHi.Parent=knob
+    Instance.new("UICorner",knobHi).CornerRadius=UDim.new(1,0)
     local knobStroke = Instance.new("UIStroke")
-    knobStroke.Color = Color3.fromRGB(255, 255, 255)
-    knobStroke.Thickness = 1
-    knobStroke.Transparency = 0.35
-    knobStroke.Parent = knob
-
+    knobStroke.Color=Color3.fromRGB(255,255,255); knobStroke.Thickness=1; knobStroke.Transparency=0.35; knobStroke.Parent=knob
     local function applyVisuals(on, anim)
         local info = TweenInfo.new(anim and 0.28 or 0.001, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
         if on then
-            TweenService:Create(knob, info, {Position = UDim2.new(1, -24, 0, 2)}):Play()
-            TweenService:Create(track, info, {BackgroundTransparency = 0.05}):Play()
-            track.BackgroundColor3 = C.aurora
-            trackGrad.Color = ColorSequence.new{
-                ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 255, 255)),
-                ColorSequenceKeypoint.new(1, Color3.fromRGB(220, 228, 245)),
-            }
-            trackStroke.Transparency = 0.25
-            trackStroke.Color = C.aurora
+            TweenService:Create(knob,info,{Position=UDim2.new(1,-24,0,2)}):Play()
+            TweenService:Create(track,info,{BackgroundTransparency=0.05}):Play()
+            track.BackgroundColor3=C.aurora
+            trackGrad.Color=ColorSequence.new{ColorSequenceKeypoint.new(0,Color3.fromRGB(255,255,255)),ColorSequenceKeypoint.new(1,Color3.fromRGB(220,228,245))}
+            trackStroke.Transparency=0.25; trackStroke.Color=C.aurora
         else
-            TweenService:Create(knob, info, {Position = UDim2.new(0, 2, 0, 2)}):Play()
-            TweenService:Create(track, info, {BackgroundTransparency = 0.35}):Play()
-            track.BackgroundColor3 = Color3.fromRGB(60, 66, 84)
-            trackGrad.Color = ColorSequence.new{
-                ColorSequenceKeypoint.new(0, Color3.fromRGB(110, 118, 140)),
-                ColorSequenceKeypoint.new(1, Color3.fromRGB(45, 50, 68)),
-            }
-            trackStroke.Transparency = 0.65
-            trackStroke.Color = Color3.fromRGB(255, 255, 255)
+            TweenService:Create(knob,info,{Position=UDim2.new(0,2,0,2)}):Play()
+            TweenService:Create(track,info,{BackgroundTransparency=0.35}):Play()
+            track.BackgroundColor3=Color3.fromRGB(60,66,84)
+            trackGrad.Color=ColorSequence.new{ColorSequenceKeypoint.new(0,Color3.fromRGB(110,118,140)),ColorSequenceKeypoint.new(1,Color3.fromRGB(45,50,68))}
+            trackStroke.Transparency=0.65; trackStroke.Color=Color3.fromRGB(255,255,255)
         end
     end
-
     local function refresh()
         local ok, on = pcall(getState)
         applyVisuals(ok and on or false, true)
     end
-
     local ok, on = pcall(getState)
     applyVisuals(ok and on or false, false)
-
     local click = Instance.new("TextButton")
-    click.Size = UDim2.fromScale(1, 1)
-    click.BackgroundTransparency = 1
-    click.Text = ""
-    click.ZIndex = 13
-    click.Parent = track
+    click.Size=UDim2.fromScale(1,1); click.BackgroundTransparency=1; click.Text=""; click.ZIndex=13; click.Parent=track
     click.MouseButton1Click:Connect(function()
         local current = false
-        local ok2, val = pcall(getState)
-        if ok2 then current = val end
+        local ok2, val = pcall(getState); if ok2 then current = val end
         pcall(setState, not current)
         refresh()
     end)
-
     return refresh
 end
 
--- ═══════════════════════════════════════════════════════════════════
---  FLOATING HUD PILL
--- ═══════════════════════════════════════════════════════════════════
+-- FLOATING HUD PILL
 local function toggleFloating(featureId)
-    local f = Features[featureId]
-    if not f then return end
-
+    local f = Features[featureId]; if not f then return end
     if f.floating and f.floating.Parent then
-        f.floating:Destroy()
-        f.floating = nil
-        f.refreshFloating = nil
-        return
+        f.floating:Destroy(); f.floating=nil; f.refreshFloating=nil; return
     end
-
     local btn = Instance.new("TextButton")
-    btn.Size = UDim2.fromOffset(138, 58)
-    btn.Position = UDim2.new(0.5, f.hudOffset.X, 0.5, f.hudOffset.Y)
-    btn.BackgroundColor3 = C.space
-    btn.BackgroundTransparency = 0.25
-    btn.Text = ""
-    btn.AutoButtonColor = false
-    btn.BorderSizePixel = 0
-    btn.ZIndex = 30
-    btn.ClipsDescendants = true
-    btn.Parent = guiHud
-    Instance.new("UICorner", btn).CornerRadius = UDim.new(1, 0)
-
-    local btnScale = Instance.new("UIScale")
-    btnScale.Scale = 1
-    btnScale.Parent = btn
-
+    btn.Size=UDim2.fromOffset(138,58); btn.Position=UDim2.new(0.5,f.hudOffset.X,0.5,f.hudOffset.Y)
+    btn.BackgroundColor3=C.space; btn.BackgroundTransparency=0.25; btn.Text=""
+    btn.AutoButtonColor=false; btn.BorderSizePixel=0; btn.ZIndex=30; btn.ClipsDescendants=true; btn.Parent=guiHud
+    Instance.new("UICorner",btn).CornerRadius=UDim.new(1,0)
+    local btnScale = Instance.new("UIScale"); btnScale.Scale=1; btnScale.Parent=btn
     local particleLayer = Instance.new("Frame")
-    particleLayer.Size = UDim2.fromScale(1, 1)
-    particleLayer.BackgroundTransparency = 1
-    particleLayer.ClipsDescendants = true
-    particleLayer.ZIndex = 30
-    particleLayer.Parent = btn
-    for i = 1, 10 do
+    particleLayer.Size=UDim2.fromScale(1,1); particleLayer.BackgroundTransparency=1
+    particleLayer.ClipsDescendants=true; particleLayer.ZIndex=30; particleLayer.Parent=btn
+    for i=1,10 do
         local p = Instance.new("Frame")
-        p.Size = UDim2.fromOffset(1, 1)
-        p.BackgroundColor3 = C.star
-        p.BackgroundTransparency = 0.3 + math.random() * 0.5
-        p.BorderSizePixel = 0
-        p.Position = UDim2.new(math.random(), 0, math.random(), 0)
-        p.ZIndex = 31
-        p.Parent = particleLayer
-        Instance.new("UICorner", p).CornerRadius = UDim.new(1, 0)
+        p.Size=UDim2.fromOffset(1,1); p.BackgroundColor3=C.star
+        p.BackgroundTransparency=0.3+math.random()*0.5; p.BorderSizePixel=0
+        p.Position=UDim2.new(math.random(),0,math.random(),0); p.ZIndex=31; p.Parent=particleLayer
+        Instance.new("UICorner",p).CornerRadius=UDim.new(1,0)
     end
     task.spawn(function()
         while btn.Parent do
             task.wait(0.04)
             for _, p in ipairs(particleLayer:GetChildren()) do
                 if p:IsA("Frame") then
-                    local nx = (p.Position.X.Scale + 0.006) % 1.02 - 0.01
-                    p.Position = UDim2.new(nx, 0, p.Position.Y.Scale, 0)
+                    local nx = (p.Position.X.Scale+0.006)%1.02-0.01
+                    p.Position=UDim2.new(nx,0,p.Position.Y.Scale,0)
                 end
             end
         end
     end)
-
     local btnGrad = Instance.new("UIGradient")
-    btnGrad.Color = ColorSequence.new{
-        ColorSequenceKeypoint.new(0, Color3.fromRGB(28, 34, 54)),
-        ColorSequenceKeypoint.new(1, Color3.fromRGB(8, 10, 22)),
-    }
-    btnGrad.Rotation = 90
-    btnGrad.Parent = btn
-
+    btnGrad.Color=ColorSequence.new{ColorSequenceKeypoint.new(0,Color3.fromRGB(28,34,54)),ColorSequenceKeypoint.new(1,Color3.fromRGB(8,10,22))}
+    btnGrad.Rotation=90; btnGrad.Parent=btn
     local glassHi = Instance.new("Frame")
-    glassHi.Size = UDim2.new(1, -8, 0.35, 0)
-    glassHi.Position = UDim2.new(0, 4, 0, 3)
-    glassHi.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-    glassHi.BackgroundTransparency = 0.92
-    glassHi.BorderSizePixel = 0
-    glassHi.ZIndex = 31
-    glassHi.Parent = btn
-    Instance.new("UICorner", glassHi).CornerRadius = UDim.new(1, 0)
-
+    glassHi.Size=UDim2.new(1,-8,0.35,0); glassHi.Position=UDim2.new(0,4,0,3)
+    glassHi.BackgroundColor3=Color3.fromRGB(255,255,255); glassHi.BackgroundTransparency=0.92
+    glassHi.BorderSizePixel=0; glassHi.ZIndex=31; glassHi.Parent=btn
+    Instance.new("UICorner",glassHi).CornerRadius=UDim.new(1,0)
     local stroke = Instance.new("UIStroke")
-    stroke.Color = C.border
-    stroke.Thickness = 1.6
-    stroke.Transparency = 0.3
-    stroke.Parent = btn
-
+    stroke.Color=C.border; stroke.Thickness=1.6; stroke.Transparency=0.3; stroke.Parent=btn
     local iconImg = Instance.new("ImageLabel")
-    iconImg.Size = UDim2.fromOffset(38, 38)
-    iconImg.Position = UDim2.new(0, 10, 0.5, -19)
-    iconImg.BackgroundColor3 = C.panel2
-    iconImg.BackgroundTransparency = 0.4
-    iconImg.Image = LOGO_ID
-    iconImg.ImageColor3 = Color3.fromRGB(255, 255, 255)
-    iconImg.ScaleType = Enum.ScaleType.Fit
-    iconImg.ZIndex = 32
-    iconImg.Parent = btn
-    Instance.new("UICorner", iconImg).CornerRadius = UDim.new(1, 0)
-
+    iconImg.Size=UDim2.fromOffset(38,38); iconImg.Position=UDim2.new(0,10,0.5,-19)
+    iconImg.BackgroundColor3=C.panel2; iconImg.BackgroundTransparency=0.4; iconImg.Image=LOGO_ID
+    iconImg.ImageColor3=Color3.fromRGB(255,255,255); iconImg.ScaleType=Enum.ScaleType.Fit
+    iconImg.ZIndex=32; iconImg.Parent=btn
+    Instance.new("UICorner",iconImg).CornerRadius=UDim.new(1,0)
     local iconStroke = Instance.new("UIStroke")
-    iconStroke.Color = C.border
-    iconStroke.Thickness = 1
-    iconStroke.Transparency = 0.5
-    iconStroke.Parent = iconImg
-
+    iconStroke.Color=C.border; iconStroke.Thickness=1; iconStroke.Transparency=0.5; iconStroke.Parent=iconImg
     local nameLbl = Instance.new("TextLabel")
-    nameLbl.Size = UDim2.new(1, -58, 0, 16)
-    nameLbl.Position = UDim2.new(0, 54, 0, 12)
-    nameLbl.BackgroundTransparency = 1
-    nameLbl.Text = f.name
-    nameLbl.TextColor3 = C.sub
-    nameLbl.TextSize = 12
-    nameLbl.Font = FONT_BOLD
-    nameLbl.TextXAlignment = Enum.TextXAlignment.Left
-    nameLbl.ZIndex = 32
-    nameLbl.Parent = btn
-
+    nameLbl.Size=UDim2.new(1,-58,0,16); nameLbl.Position=UDim2.new(0,54,0,12); nameLbl.BackgroundTransparency=1
+    nameLbl.Text=f.name; nameLbl.TextColor3=C.sub; nameLbl.TextSize=12; nameLbl.Font=FONT_BOLD
+    nameLbl.TextXAlignment=Enum.TextXAlignment.Left; nameLbl.ZIndex=32; nameLbl.Parent=btn
     local catLbl = Instance.new("TextLabel")
-    catLbl.Size = UDim2.new(1, -58, 0, 12)
-    catLbl.Position = UDim2.new(0, 54, 0, 30)
-    catLbl.BackgroundTransparency = 1
-    catLbl.Text = f.category:lower()
-    catLbl.TextColor3 = C.sub
-    catLbl.TextSize = 9
-    catLbl.Font = FONT_MONO
-    catLbl.TextXAlignment = Enum.TextXAlignment.Left
-    catLbl.ZIndex = 32
-    catLbl.Parent = btn
-
+    catLbl.Size=UDim2.new(1,-58,0,12); catLbl.Position=UDim2.new(0,54,0,30); catLbl.BackgroundTransparency=1
+    catLbl.Text=f.category:lower(); catLbl.TextColor3=C.sub; catLbl.TextSize=9; catLbl.Font=FONT_MONO
+    catLbl.TextXAlignment=Enum.TextXAlignment.Left; catLbl.ZIndex=32; catLbl.Parent=btn
     f.floating = btn
-
     local function updateVisual()
         if not btn.Parent then return end
         if not f.pillVisible then
-            btn.BackgroundTransparency = 1
-            stroke.Transparency = 1
-            iconImg.BackgroundTransparency = 1
-            iconImg.ImageTransparency = 1
-            iconStroke.Transparency = 1
-            glassHi.BackgroundTransparency = 1
-            nameLbl.TextTransparency = 1
-            catLbl.TextTransparency = 1
+            btn.BackgroundTransparency=1; stroke.Transparency=1; iconImg.BackgroundTransparency=1
+            iconImg.ImageTransparency=1; iconStroke.Transparency=1; glassHi.BackgroundTransparency=1
+            nameLbl.TextTransparency=1; catLbl.TextTransparency=1
             for _, p in ipairs(particleLayer:GetChildren()) do
-                if p:IsA("Frame") then p.BackgroundTransparency = 1 end
+                if p:IsA("Frame") then p.BackgroundTransparency=1 end
             end
             return
         end
-        btn.BackgroundTransparency = 0.25
-        iconImg.BackgroundTransparency = 0.4
-        iconImg.ImageTransparency = 0
-        glassHi.BackgroundTransparency = 0.92
-        nameLbl.TextTransparency = 0
-        catLbl.TextTransparency = 0
+        btn.BackgroundTransparency=0.25; iconImg.BackgroundTransparency=0.4; iconImg.ImageTransparency=0
+        glassHi.BackgroundTransparency=0.92; nameLbl.TextTransparency=0; catLbl.TextTransparency=0
         for _, p in ipairs(particleLayer:GetChildren()) do
-            if p:IsA("Frame") then p.BackgroundTransparency = 0.3 + math.random() * 0.5 end
+            if p:IsA("Frame") then p.BackgroundTransparency=0.3+math.random()*0.5 end
         end
         if f.isButton or f.enabled then
-            stroke.Color = f.locked and C.warn or C.aurora
-            stroke.Transparency = 0.1
-            nameLbl.TextColor3 = C.aurora
-            iconStroke.Color = C.aurora
-            iconStroke.Transparency = 0.3
+            stroke.Color=f.locked and C.warn or C.aurora; stroke.Transparency=0.1
+            nameLbl.TextColor3=C.aurora; iconStroke.Color=C.aurora; iconStroke.Transparency=0.3
         else
-            stroke.Color = f.locked and C.warn or C.border
-            stroke.Transparency = 0.35
-            nameLbl.TextColor3 = C.sub
-            iconStroke.Color = C.border
-            iconStroke.Transparency = 0.5
+            stroke.Color=f.locked and C.warn or C.border; stroke.Transparency=0.35
+            nameLbl.TextColor3=C.sub; iconStroke.Color=C.border; iconStroke.Transparency=0.5
         end
     end
     updateVisual()
     Features.addListener(featureId, updateVisual)
     f.refreshFloating = updateVisual
-
-    btnScale.Scale = 0.5
-    TweenService:Create(btnScale, TweenInfo.new(0.3, Enum.EasingStyle.Back), {Scale = 1}):Play()
-
+    btnScale.Scale=0.5
+    TweenService:Create(btnScale,TweenInfo.new(0.3,Enum.EasingStyle.Back),{Scale=1}):Play()
     local drag = nil
     btn.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1
-        or input.UserInputType == Enum.UserInputType.Touch then
+        if input.UserInputType==Enum.UserInputType.MouseButton1 or input.UserInputType==Enum.UserInputType.Touch then
             if drag then return end
-            drag = {
-                sourceInput = input,
-                isTouch = (input.UserInputType == Enum.UserInputType.Touch),
-                startMouse = input.Position,
-                startPos = Vector2.new(btn.Position.X.Offset, btn.Position.Y.Offset),
-                startTime = tick(),
-                moved = false,
-            }
+            drag={sourceInput=input,isTouch=(input.UserInputType==Enum.UserInputType.Touch),startMouse=input.Position,startPos=Vector2.new(btn.Position.X.Offset,btn.Position.Y.Offset),startTime=tick(),moved=false}
         end
     end)
-
     UserInputService.InputChanged:Connect(function(input)
         if not drag then return end
         local matches
-        if drag.isTouch then
-            matches = (input == drag.sourceInput)
-        else
-            matches = (input.UserInputType == Enum.UserInputType.MouseMovement)
-        end
+        if drag.isTouch then matches = (input==drag.sourceInput)
+        else matches = (input.UserInputType==Enum.UserInputType.MouseMovement) end
         if not matches then return end
-
         local delta = input.Position - drag.startMouse
-        if math.abs(delta.X) > 10 or math.abs(delta.Y) > 10 then
-            drag.moved = true
-        end
+        if math.abs(delta.X)>10 or math.abs(delta.Y)>10 then drag.moved=true end
         if not f.locked and f.pillVisible and drag.moved then
-            btn.Position = UDim2.new(0.5, drag.startPos.X + delta.X, 0.5, drag.startPos.Y + delta.Y)
+            btn.Position=UDim2.new(0.5,drag.startPos.X+delta.X,0.5,drag.startPos.Y+delta.Y)
         end
     end)
-
     UserInputService.InputEnded:Connect(function(input)
         if not drag then return end
         local matches
-        if drag.isTouch then
-            matches = (input == drag.sourceInput)
-        else
-            matches = (input.UserInputType == Enum.UserInputType.MouseButton1)
-        end
+        if drag.isTouch then matches=(input==drag.sourceInput)
+        else matches=(input.UserInputType==Enum.UserInputType.MouseButton1) end
         if not matches then return end
-
         local held = tick() - drag.startTime
         if not drag.moved and held < 0.35 then
             if f.isButton then
@@ -968,206 +568,98 @@ local function toggleFloating(featureId)
                 Features.toggle(featureId)
             end
         elseif drag.moved and not f.locked and f.pillVisible then
-            f.hudOffset = Vector2.new(btn.Position.X.Offset, btn.Position.Y.Offset)
+            f.hudOffset=Vector2.new(btn.Position.X.Offset, btn.Position.Y.Offset)
         end
         drag = nil
     end)
 end
 
--- ═══════════════════════════════════════════════════════════════════
---  FEATURE ROW
--- ═══════════════════════════════════════════════════════════════════
+-- FEATURE ROW
 local function makeFeatureRow(parent, featureId, yPos)
-    local f = Features[featureId]
-    if not f then return end
-
+    local f = Features[featureId]; if not f then return end
     local row = Instance.new("Frame")
-    row.Size = UDim2.new(1, -32, 0, 58)
-    row.Position = UDim2.new(0, 16, 0, yPos)
-    row.BackgroundColor3 = Color3.fromRGB(20, 24, 40)
-    row.BackgroundTransparency = 0.55
-    row.BorderSizePixel = 0
-    row.ClipsDescendants = true
-    row.ZIndex = 9
-    row.Parent = parent
-    Instance.new("UICorner", row).CornerRadius = UDim.new(0, 12)
-
+    row.Size=UDim2.new(1,-32,0,58); row.Position=UDim2.new(0,16,0,yPos)
+    row.BackgroundColor3=Color3.fromRGB(20,24,40); row.BackgroundTransparency=0.55
+    row.BorderSizePixel=0; row.ClipsDescendants=true; row.ZIndex=9; row.Parent=parent
+    Instance.new("UICorner",row).CornerRadius=UDim.new(0,12)
     local rGrad = Instance.new("UIGradient")
-    rGrad.Color = ColorSequence.new{
-        ColorSequenceKeypoint.new(0, Color3.fromRGB(40, 48, 72)),
-        ColorSequenceKeypoint.new(1, Color3.fromRGB(12, 16, 28)),
-    }
-    rGrad.Rotation = 90
-    rGrad.Transparency = NumberSequence.new{
-        NumberSequenceKeypoint.new(0, 0.35),
-        NumberSequenceKeypoint.new(1, 0.65),
-    }
-    rGrad.Parent = row
-
+    rGrad.Color=ColorSequence.new{ColorSequenceKeypoint.new(0,Color3.fromRGB(40,48,72)),ColorSequenceKeypoint.new(1,Color3.fromRGB(12,16,28))}
+    rGrad.Rotation=90
+    rGrad.Transparency=NumberSequence.new{NumberSequenceKeypoint.new(0,0.35),NumberSequenceKeypoint.new(1,0.65)}
+    rGrad.Parent=row
     local rGlass = Instance.new("Frame")
-    rGlass.Size = UDim2.new(1, -8, 0.3, 0)
-    rGlass.Position = UDim2.new(0, 4, 0, 2)
-    rGlass.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-    rGlass.BackgroundTransparency = 0.94
-    rGlass.BorderSizePixel = 0
-    rGlass.ZIndex = 9
-    rGlass.Parent = row
-    Instance.new("UICorner", rGlass).CornerRadius = UDim.new(1, 0)
-
+    rGlass.Size=UDim2.new(1,-8,0.3,0); rGlass.Position=UDim2.new(0,4,0,2)
+    rGlass.BackgroundColor3=Color3.fromRGB(255,255,255); rGlass.BackgroundTransparency=0.94
+    rGlass.BorderSizePixel=0; rGlass.ZIndex=9; rGlass.Parent=row
+    Instance.new("UICorner",rGlass).CornerRadius=UDim.new(1,0)
     local rowStroke = Instance.new("UIStroke")
-    rowStroke.Color = C.border
-    rowStroke.Thickness = 1
-    rowStroke.Transparency = 0.65
-    rowStroke.Parent = row
-
+    rowStroke.Color=C.border; rowStroke.Thickness=1; rowStroke.Transparency=0.65; rowStroke.Parent=row
     local rowName = Instance.new("TextLabel")
-    rowName.Size = UDim2.new(1, -180, 0, 18)
-    rowName.Position = UDim2.new(0, 16, 0, 10)
-    rowName.BackgroundTransparency = 1
-    rowName.Text = f.name
-    rowName.TextColor3 = C.text
-    rowName.TextSize = 13
-    rowName.Font = FONT_BOLD
-    rowName.TextXAlignment = Enum.TextXAlignment.Left
-    rowName.ZIndex = 10
-    rowName.Parent = row
-
+    rowName.Size=UDim2.new(1,-180,0,18); rowName.Position=UDim2.new(0,16,0,10); rowName.BackgroundTransparency=1
+    rowName.Text=f.name; rowName.TextColor3=C.text; rowName.TextSize=13; rowName.Font=FONT_BOLD
+    rowName.TextXAlignment=Enum.TextXAlignment.Left; rowName.ZIndex=10; rowName.Parent=row
     local rowSub = Instance.new("TextLabel")
-    rowSub.Size = UDim2.new(1, -180, 0, 14)
-    rowSub.Position = UDim2.new(0, 16, 0, 28)
-    rowSub.BackgroundTransparency = 1
-    rowSub.Text = f.hint
-    rowSub.TextColor3 = C.sub
-    rowSub.TextSize = 9
-    rowSub.Font = FONT_MONO
-    rowSub.TextXAlignment = Enum.TextXAlignment.Left
-    rowSub.ZIndex = 10
-    rowSub.Parent = row
-
+    rowSub.Size=UDim2.new(1,-180,0,14); rowSub.Position=UDim2.new(0,16,0,28); rowSub.BackgroundTransparency=1
+    rowSub.Text=f.hint; rowSub.TextColor3=C.sub; rowSub.TextSize=9; rowSub.Font=FONT_MONO
+    rowSub.TextXAlignment=Enum.TextXAlignment.Left; rowSub.ZIndex=10; rowSub.Parent=row
     if f.isButton then
         local pressBtn = Instance.new("Frame")
-        pressBtn.Size = UDim2.fromOffset(58, 26)
-        pressBtn.AnchorPoint = Vector2.new(1, 0)
-        pressBtn.Position = UDim2.new(1, -14, 0, 16)
-        pressBtn.BackgroundColor3 = Color3.fromRGB(60, 66, 84)
-        pressBtn.BackgroundTransparency = 0.25
-        pressBtn.BorderSizePixel = 0
-        pressBtn.ZIndex = 9
-        pressBtn.Parent = row
-        Instance.new("UICorner", pressBtn).CornerRadius = UDim.new(0, 8)
-
+        pressBtn.Size=UDim2.fromOffset(58,26); pressBtn.AnchorPoint=Vector2.new(1,0); pressBtn.Position=UDim2.new(1,-14,0,16)
+        pressBtn.BackgroundColor3=Color3.fromRGB(60,66,84); pressBtn.BackgroundTransparency=0.25
+        pressBtn.BorderSizePixel=0; pressBtn.ZIndex=9; pressBtn.Parent=row
+        Instance.new("UICorner",pressBtn).CornerRadius=UDim.new(0,8)
         local pbGrad = Instance.new("UIGradient")
-        pbGrad.Color = ColorSequence.new{
-            ColorSequenceKeypoint.new(0, Color3.fromRGB(110, 118, 140)),
-            ColorSequenceKeypoint.new(1, Color3.fromRGB(45, 50, 68)),
-        }
-        pbGrad.Rotation = 90
-        pbGrad.Parent = pressBtn
-
+        pbGrad.Color=ColorSequence.new{ColorSequenceKeypoint.new(0,Color3.fromRGB(110,118,140)),ColorSequenceKeypoint.new(1,Color3.fromRGB(45,50,68))}
+        pbGrad.Rotation=90; pbGrad.Parent=pressBtn
         local pbStroke = Instance.new("UIStroke")
-        pbStroke.Color = C.aurora
-        pbStroke.Thickness = 1
-        pbStroke.Transparency = 0.45
-        pbStroke.Parent = pressBtn
-
+        pbStroke.Color=C.aurora; pbStroke.Thickness=1; pbStroke.Transparency=0.45; pbStroke.Parent=pressBtn
         local pbLabel = Instance.new("TextLabel")
-        pbLabel.Size = UDim2.fromScale(1, 1)
-        pbLabel.BackgroundTransparency = 1
-        pbLabel.Text = "PRESS"
-        pbLabel.TextColor3 = C.text
-        pbLabel.TextSize = 10
-        pbLabel.Font = FONT_BOLD
-        pbLabel.ZIndex = 10
-        pbLabel.Parent = pressBtn
-
+        pbLabel.Size=UDim2.fromScale(1,1); pbLabel.BackgroundTransparency=1; pbLabel.Text="PRESS"
+        pbLabel.TextColor3=C.text; pbLabel.TextSize=10; pbLabel.Font=FONT_BOLD; pbLabel.ZIndex=10; pbLabel.Parent=pressBtn
         f._flashButton = function()
-            TweenService:Create(pbStroke, TweenInfo.new(0.1), {Transparency = 0, Color = C.aurora}):Play()
-            TweenService:Create(pbLabel, TweenInfo.new(0.1), {TextColor3 = C.aurora}):Play()
-            task.delay(0.18, function()
-                TweenService:Create(pbStroke, TweenInfo.new(0.25), {Transparency = 0.45, Color = C.aurora}):Play()
-                TweenService:Create(pbLabel, TweenInfo.new(0.25), {TextColor3 = C.text}):Play()
+            TweenService:Create(pbStroke,TweenInfo.new(0.1),{Transparency=0,Color=C.aurora}):Play()
+            TweenService:Create(pbLabel,TweenInfo.new(0.1),{TextColor3=C.aurora}):Play()
+            task.delay(0.18,function()
+                TweenService:Create(pbStroke,TweenInfo.new(0.25),{Transparency=0.45,Color=C.aurora}):Play()
+                TweenService:Create(pbLabel,TweenInfo.new(0.25),{TextColor3=C.text}):Play()
             end)
         end
     else
-        local refreshToggle = makeGlassToggle(
-            row,
-            UDim2.new(1, -14, 0, 16),
+        local refreshToggle = makeGlassToggle(row, UDim2.new(1,-14,0,16),
             function() return f.enabled end,
-            function(v) Features.setEnabled(featureId, v) end
-        )
+            function(v) Features.setEnabled(featureId, v) end)
         Features.addListener(featureId, function() refreshToggle() end)
     end
-
     local lockBtn = Instance.new("TextButton")
-    lockBtn.Size = UDim2.fromOffset(22, 22)
-    lockBtn.Position = UDim2.new(1, -110, 0, 18)
-    lockBtn.BackgroundColor3 = C.panel2
-    lockBtn.BackgroundTransparency = 0.6
-    lockBtn.Text = "○"
-    lockBtn.TextColor3 = C.sub
-    lockBtn.TextSize = 12
-    lockBtn.Font = FONT_ICON
-    lockBtn.AutoButtonColor = false
-    lockBtn.BorderSizePixel = 0
-    lockBtn.ZIndex = 13
-    lockBtn.Parent = row
-    Instance.new("UICorner", lockBtn).CornerRadius = UDim.new(0, 6)
-
+    lockBtn.Size=UDim2.fromOffset(22,22); lockBtn.Position=UDim2.new(1,-110,0,18)
+    lockBtn.BackgroundColor3=C.panel2; lockBtn.BackgroundTransparency=0.6; lockBtn.Text="○"
+    lockBtn.TextColor3=C.sub; lockBtn.TextSize=12; lockBtn.Font=FONT_ICON
+    lockBtn.AutoButtonColor=false; lockBtn.BorderSizePixel=0; lockBtn.ZIndex=13; lockBtn.Parent=row
+    Instance.new("UICorner",lockBtn).CornerRadius=UDim.new(0,6)
     local lockStroke = Instance.new("UIStroke")
-    lockStroke.Color = C.border
-    lockStroke.Thickness = 1
-    lockStroke.Transparency = 0.75
-    lockStroke.Parent = lockBtn
-
+    lockStroke.Color=C.border; lockStroke.Thickness=1; lockStroke.Transparency=0.75; lockStroke.Parent=lockBtn
     local visBtn = Instance.new("TextButton")
-    visBtn.Size = UDim2.fromOffset(18, 18)
-    visBtn.Position = UDim2.new(1, -134, 0, 20)
-    visBtn.BackgroundColor3 = C.panel2
-    visBtn.BackgroundTransparency = 0.9
-    visBtn.Text = "○"
-    visBtn.TextColor3 = C.sub
-    visBtn.TextTransparency = 0.5
-    visBtn.TextSize = 10
-    visBtn.Font = FONT_ICON
-    visBtn.AutoButtonColor = false
-    visBtn.BorderSizePixel = 0
-    visBtn.ZIndex = 13
-    visBtn.Parent = row
-    Instance.new("UICorner", visBtn).CornerRadius = UDim.new(1, 0)
-
+    visBtn.Size=UDim2.fromOffset(18,18); visBtn.Position=UDim2.new(1,-134,0,20)
+    visBtn.BackgroundColor3=C.panel2; visBtn.BackgroundTransparency=0.9; visBtn.Text="○"
+    visBtn.TextColor3=C.sub; visBtn.TextTransparency=0.5; visBtn.TextSize=10; visBtn.Font=FONT_ICON
+    visBtn.AutoButtonColor=false; visBtn.BorderSizePixel=0; visBtn.ZIndex=13; visBtn.Parent=row
+    Instance.new("UICorner",visBtn).CornerRadius=UDim.new(1,0)
     local visStroke = Instance.new("UIStroke")
-    visStroke.Color = C.border
-    visStroke.Thickness = 1
-    visStroke.Transparency = 0.9
-    visStroke.Parent = visBtn
-
+    visStroke.Color=C.border; visStroke.Thickness=1; visStroke.Transparency=0.9; visStroke.Parent=visBtn
     local click = Instance.new("TextButton")
-    click.Size = UDim2.new(1, 0, 1, 0)
-    click.BackgroundTransparency = 1
-    click.Text = ""
-    click.ZIndex = 12
-    click.Parent = row
-
+    click.Size=UDim2.new(1,0,1,0); click.BackgroundTransparency=1; click.Text=""; click.ZIndex=12; click.Parent=row
     local holdStart, holdTask, longPressed = nil, nil, false
-
     click.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1
-        or input.UserInputType == Enum.UserInputType.Touch then
-            holdStart = tick()
-            longPressed = false
+        if input.UserInputType==Enum.UserInputType.MouseButton1 or input.UserInputType==Enum.UserInputType.Touch then
+            holdStart=tick(); longPressed=false
             if holdTask then task.cancel(holdTask) end
-            holdTask = task.delay(0.6, function()
-                if holdStart then
-                    longPressed = true
-                    toggleFloating(featureId)
-                end
+            holdTask = task.delay(0.6,function()
+                if holdStart then longPressed=true; toggleFloating(featureId) end
             end)
         end
     end)
-
     click.InputEnded:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1
-        or input.UserInputType == Enum.UserInputType.Touch then
+        if input.UserInputType==Enum.UserInputType.MouseButton1 or input.UserInputType==Enum.UserInputType.Touch then
             if not longPressed then
                 if f.isButton then
                     if f.action then pcall(f.action) end
@@ -1176,301 +668,452 @@ local function makeFeatureRow(parent, featureId, yPos)
                     Features.toggle(featureId)
                 end
             end
-            holdStart = nil
-            if holdTask then task.cancel(holdTask); holdTask = nil end
+            holdStart=nil
+            if holdTask then task.cancel(holdTask); holdTask=nil end
         end
     end)
-
     lockBtn.MouseButton1Click:Connect(function()
         f.locked = not f.locked
         if f.locked then
-            lockBtn.Text = "●"
-            TweenService:Create(lockBtn, TweenInfo.new(0.15), {TextColor3 = C.warn, BackgroundTransparency = 0.2}):Play()
-            TweenService:Create(lockStroke, TweenInfo.new(0.15), {Color = C.warn, Transparency = 0.2}):Play()
+            lockBtn.Text="●"
+            TweenService:Create(lockBtn,TweenInfo.new(0.15),{TextColor3=C.warn,BackgroundTransparency=0.2}):Play()
+            TweenService:Create(lockStroke,TweenInfo.new(0.15),{Color=C.warn,Transparency=0.2}):Play()
         else
-            lockBtn.Text = "○"
-            TweenService:Create(lockBtn, TweenInfo.new(0.15), {TextColor3 = C.sub, BackgroundTransparency = 0.6}):Play()
-            TweenService:Create(lockStroke, TweenInfo.new(0.15), {Color = C.border, Transparency = 0.75}):Play()
+            lockBtn.Text="○"
+            TweenService:Create(lockBtn,TweenInfo.new(0.15),{TextColor3=C.sub,BackgroundTransparency=0.6}):Play()
+            TweenService:Create(lockStroke,TweenInfo.new(0.15),{Color=C.border,Transparency=0.75}):Play()
         end
         if f.refreshFloating then f.refreshFloating() end
     end)
-
     visBtn.MouseButton1Click:Connect(function()
         f.pillVisible = not f.pillVisible
         if f.pillVisible then
-            visBtn.Text = "○"
-            TweenService:Create(visBtn, TweenInfo.new(0.15), {TextColor3 = C.sub, TextTransparency = 0.5}):Play()
+            visBtn.Text="○"
+            TweenService:Create(visBtn,TweenInfo.new(0.15),{TextColor3=C.sub,TextTransparency=0.5}):Play()
         else
-            visBtn.Text = "●"
-            TweenService:Create(visBtn, TweenInfo.new(0.15), {TextColor3 = C.warn, TextTransparency = 0.1}):Play()
+            visBtn.Text="●"
+            TweenService:Create(visBtn,TweenInfo.new(0.15),{TextColor3=C.warn,TextTransparency=0.1}):Play()
         end
         if f.refreshFloating then f.refreshFloating() end
     end)
     visBtn.MouseEnter:Connect(function()
-        TweenService:Create(visStroke, TweenInfo.new(0.15), {Transparency = 0.4}):Play()
+        TweenService:Create(visStroke,TweenInfo.new(0.15),{Transparency=0.4}):Play()
     end)
     visBtn.MouseLeave:Connect(function()
-        TweenService:Create(visStroke, TweenInfo.new(0.15), {Transparency = 0.9}):Play()
+        TweenService:Create(visStroke,TweenInfo.new(0.15),{Transparency=0.9}):Play()
     end)
-
     return row
 end
 
--- ═══════════════════════════════════════════════════════════════════
---  SLIDER ROW
--- ═══════════════════════════════════════════════════════════════════
+-- SLIDER ROW
 local function makeSliderRow(parent, labelText, cfgKey, minVal, maxVal, yPos, suffix, decimals)
-    suffix = suffix or "s"
-    decimals = decimals or 2
-    local fmt = "%." .. decimals .. "f" .. suffix
-
+    suffix = suffix or "s"; decimals = decimals or 2
+    local fmt = "%."..decimals.."f"..suffix
     local row = Instance.new("Frame")
-    row.Size = UDim2.new(1, -32, 0, 64)
-    row.Position = UDim2.new(0, 16, 0, yPos)
-    row.BackgroundColor3 = Color3.fromRGB(20, 24, 40)
-    row.BackgroundTransparency = 0.55
-    row.BorderSizePixel = 0
-    row.ZIndex = 9
-    row.Parent = parent
-    Instance.new("UICorner", row).CornerRadius = UDim.new(0, 12)
-
+    row.Size=UDim2.new(1,-32,0,64); row.Position=UDim2.new(0,16,0,yPos)
+    row.BackgroundColor3=Color3.fromRGB(20,24,40); row.BackgroundTransparency=0.55
+    row.BorderSizePixel=0; row.ZIndex=9; row.Parent=parent
+    Instance.new("UICorner",row).CornerRadius=UDim.new(0,12)
     local rGrad = Instance.new("UIGradient")
-    rGrad.Color = ColorSequence.new{
-        ColorSequenceKeypoint.new(0, Color3.fromRGB(40, 48, 72)),
-        ColorSequenceKeypoint.new(1, Color3.fromRGB(12, 16, 28)),
-    }
-    rGrad.Rotation = 90
-    rGrad.Transparency = NumberSequence.new{
-        NumberSequenceKeypoint.new(0, 0.35),
-        NumberSequenceKeypoint.new(1, 0.65),
-    }
-    rGrad.Parent = row
-
+    rGrad.Color=ColorSequence.new{ColorSequenceKeypoint.new(0,Color3.fromRGB(40,48,72)),ColorSequenceKeypoint.new(1,Color3.fromRGB(12,16,28))}
+    rGrad.Rotation=90
+    rGrad.Transparency=NumberSequence.new{NumberSequenceKeypoint.new(0,0.35),NumberSequenceKeypoint.new(1,0.65)}
+    rGrad.Parent=row
     local rowStroke = Instance.new("UIStroke")
-    rowStroke.Color = C.border
-    rowStroke.Thickness = 1
-    rowStroke.Transparency = 0.65
-    rowStroke.Parent = row
-
+    rowStroke.Color=C.border; rowStroke.Thickness=1; rowStroke.Transparency=0.65; rowStroke.Parent=row
     local lbl = Instance.new("TextLabel")
-    lbl.Size = UDim2.new(0.5, 0, 0, 18)
-    lbl.Position = UDim2.new(0, 16, 0, 8)
-    lbl.BackgroundTransparency = 1
-    lbl.Text = labelText
-    lbl.TextColor3 = C.text
-    lbl.TextSize = 12
-    lbl.Font = FONT_BOLD
-    lbl.TextXAlignment = Enum.TextXAlignment.Left
-    lbl.ZIndex = 10
-    lbl.Parent = row
-
+    lbl.Size=UDim2.new(0.5,0,0,18); lbl.Position=UDim2.new(0,16,0,8); lbl.BackgroundTransparency=1
+    lbl.Text=labelText; lbl.TextColor3=C.text; lbl.TextSize=12; lbl.Font=FONT_BOLD
+    lbl.TextXAlignment=Enum.TextXAlignment.Left; lbl.ZIndex=10; lbl.Parent=row
     local valLbl = Instance.new("TextLabel")
-    valLbl.Size = UDim2.new(0.5, -16, 0, 18)
-    valLbl.Position = UDim2.new(0.5, 0, 0, 8)
-    valLbl.BackgroundTransparency = 1
-    valLbl.Text = ""
-    valLbl.TextColor3 = C.aurora
-    valLbl.TextSize = 12
-    valLbl.Font = FONT_MONO
-    valLbl.TextXAlignment = Enum.TextXAlignment.Right
-    valLbl.ZIndex = 10
-    valLbl.Parent = row
-
+    valLbl.Size=UDim2.new(0.5,-16,0,18); valLbl.Position=UDim2.new(0.5,0,0,8); valLbl.BackgroundTransparency=1
+    valLbl.Text=""; valLbl.TextColor3=C.aurora; valLbl.TextSize=12; valLbl.Font=FONT_MONO
+    valLbl.TextXAlignment=Enum.TextXAlignment.Right; valLbl.ZIndex=10; valLbl.Parent=row
     local trackHolder = Instance.new("Frame")
-    trackHolder.Size = UDim2.new(1, -32, 0, 20)
-    trackHolder.Position = UDim2.new(0, 16, 0, 34)
-    trackHolder.BackgroundTransparency = 1
-    trackHolder.ZIndex = 10
-    trackHolder.Parent = row
-
+    trackHolder.Size=UDim2.new(1,-32,0,20); trackHolder.Position=UDim2.new(0,16,0,34)
+    trackHolder.BackgroundTransparency=1; trackHolder.ZIndex=10; trackHolder.Parent=row
     local track = Instance.new("Frame")
-    track.Size = UDim2.new(1, 0, 0, 4)
-    track.Position = UDim2.new(0, 0, 0.5, -2)
-    track.BackgroundColor3 = C.panel2
-    track.BorderSizePixel = 0
-    track.ZIndex = 10
-    track.Parent = trackHolder
-    Instance.new("UICorner", track).CornerRadius = UDim.new(1, 0)
-
+    track.Size=UDim2.new(1,0,0,4); track.Position=UDim2.new(0,0,0.5,-2)
+    track.BackgroundColor3=C.panel2; track.BorderSizePixel=0; track.ZIndex=10; track.Parent=trackHolder
+    Instance.new("UICorner",track).CornerRadius=UDim.new(1,0)
     local fill = Instance.new("Frame")
-    fill.Size = UDim2.new(0, 0, 1, 0)
-    fill.BackgroundColor3 = C.aurora
-    fill.BorderSizePixel = 0
-    fill.ZIndex = 11
-    fill.Parent = track
-    Instance.new("UICorner", fill).CornerRadius = UDim.new(1, 0)
-
+    fill.Size=UDim2.new(0,0,1,0); fill.BackgroundColor3=C.aurora; fill.BorderSizePixel=0; fill.ZIndex=11; fill.Parent=track
+    Instance.new("UICorner",fill).CornerRadius=UDim.new(1,0)
     local knob = Instance.new("Frame")
-    knob.Size = UDim2.fromOffset(16, 16)
-    knob.AnchorPoint = Vector2.new(0.5, 0.5)
-    knob.Position = UDim2.new(0, 0, 0.5, 0)
-    knob.BackgroundColor3 = C.aurora
-    knob.BorderSizePixel = 0
-    knob.ZIndex = 12
-    knob.Parent = trackHolder
-    Instance.new("UICorner", knob).CornerRadius = UDim.new(1, 0)
-
+    knob.Size=UDim2.fromOffset(16,16); knob.AnchorPoint=Vector2.new(0.5,0.5); knob.Position=UDim2.new(0,0,0.5,0)
+    knob.BackgroundColor3=C.aurora; knob.BorderSizePixel=0; knob.ZIndex=12; knob.Parent=trackHolder
+    Instance.new("UICorner",knob).CornerRadius=UDim.new(1,0)
     local knobStroke = Instance.new("UIStroke")
-    knobStroke.Color = Color3.fromRGB(255, 255, 255)
-    knobStroke.Thickness = 1
-    knobStroke.Transparency = 0.35
-    knobStroke.Parent = knob
-
+    knobStroke.Color=Color3.fromRGB(255,255,255); knobStroke.Thickness=1; knobStroke.Transparency=0.35; knobStroke.Parent=knob
     local function render(value)
-        local f = math.clamp((value - minVal) / (maxVal - minVal), 0, 1)
-        fill.Size = UDim2.new(f, 0, 1, 0)
-        knob.Position = UDim2.new(f, 0, 0.5, 0)
+        local f = math.clamp((value-minVal)/(maxVal-minVal),0,1)
+        fill.Size=UDim2.new(f,0,1,0); knob.Position=UDim2.new(f,0,0.5,0)
         valLbl.Text = string.format(fmt, value)
     end
-
     local isDragging = false
     local function updateFromInput(input)
-        local tp = trackHolder.AbsolutePosition
-        local ts = trackHolder.AbsoluteSize
-        if ts.X <= 0 then return end
-        local f = math.clamp((input.Position.X - tp.X) / ts.X, 0, 1)
-        local v = minVal + f * (maxVal - minVal)
-        local mult = 10 ^ decimals
-        v = math.floor(v * mult + 0.5) / mult
-        Config.set(cfgKey, v)
-        render(v)
+        local tp = trackHolder.AbsolutePosition; local ts = trackHolder.AbsoluteSize
+        if ts.X<=0 then return end
+        local f = math.clamp((input.Position.X-tp.X)/ts.X,0,1)
+        local v = minVal + f*(maxVal-minVal)
+        local mult = 10^decimals
+        v = math.floor(v*mult+0.5)/mult
+        Config.set(cfgKey, v); render(v)
     end
-
     local hit = Instance.new("TextButton")
-    hit.Size = UDim2.fromScale(1, 1)
-    hit.BackgroundTransparency = 1
-    hit.Text = ""
-    hit.ZIndex = 13
-    hit.Parent = trackHolder
-
+    hit.Size=UDim2.fromScale(1,1); hit.BackgroundTransparency=1; hit.Text=""; hit.ZIndex=13; hit.Parent=trackHolder
     hit.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1
-        or input.UserInputType == Enum.UserInputType.Touch then
-            isDragging = true
-            updateFromInput(input)
+        if input.UserInputType==Enum.UserInputType.MouseButton1 or input.UserInputType==Enum.UserInputType.Touch then
+            isDragging=true; updateFromInput(input)
         end
     end)
     UserInputService.InputChanged:Connect(function(input)
-        if isDragging and (input.UserInputType == Enum.UserInputType.MouseMovement
-        or input.UserInputType == Enum.UserInputType.Touch) then
+        if isDragging and (input.UserInputType==Enum.UserInputType.MouseMovement or input.UserInputType==Enum.UserInputType.Touch) then
             updateFromInput(input)
         end
     end)
     UserInputService.InputEnded:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1
-        or input.UserInputType == Enum.UserInputType.Touch then
-            isDragging = false
+        if input.UserInputType==Enum.UserInputType.MouseButton1 or input.UserInputType==Enum.UserInputType.Touch then
+            isDragging=false
         end
     end)
-
     render(Config.get(cfgKey) or minVal)
     return row, function() render(Config.get(cfgKey) or minVal) end
 end
 
 -- ═══════════════════════════════════════════════════════════════════
---  REGISTER FEATURES
+--  MUST-READ WARNING POPUP
 -- ═══════════════════════════════════════════════════════════════════
-Features.register("autojump", {
-    name = "Auto Jump", icon = "▲", category = "MOVEMENT", tab = "movement",
-    hudOffset = Vector2.new(-240, 130),
-})
-Features.register("easybounce", {
-    name = "Easy Bounce", icon = "◈", category = "MOVEMENT", tab = "movement",
-    hint = "bounce on ramps (>10°) after 1.5s airtime",
-    hudOffset = Vector2.new(-240, 198),
-})
-Features.register("hardbounce", {
-    name = "Hard Bounce", icon = "◭", category = "MOVEMENT", tab = "movement",
-    hint = "bounce on any surface after 1.5s airtime",
-    hudOffset = Vector2.new(-240, 266),
-})
-Features.register("autotrimp", {
-    name = "Auto Trimp", icon = "✦", category = "MOVEMENT", tab = "movement",
-    hint = "auto jump + easy bounce combo",
-    hudOffset = Vector2.new(-240, 334),
-})
-Features.register("efling", {
-    name = "E-Fling", icon = "⟁", category = "MOVEMENT", tab = "movement",
-    hint = "Basic E-Fling Mechanic",
-    hudOffset = Vector2.new(-240, 402),
-})
+local warningGui = Instance.new("ScreenGui")
+warningGui.Name = "ReforgedWarning"
+warningGui.ResetOnSpawn = false
+warningGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+warningGui.IgnoreGuiInset = true
+warningGui.DisplayOrder = MAX_LAYER
+warningGui.Enabled = false
+warningGui.Parent = pg
 
--- Lag switch — momentary button that freezes the client render loop
+local backdrop = Instance.new("Frame")
+backdrop.Size = UDim2.fromScale(1, 1)
+backdrop.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+backdrop.BackgroundTransparency = 0.4
+backdrop.BorderSizePixel = 0
+backdrop.ZIndex = 1
+backdrop.Parent = warningGui
+
+local warnPanel = Instance.new("Frame")
+warnPanel.Size = UDim2.fromOffset(460, 340)
+warnPanel.Position = UDim2.new(0.5, -230, 0.5, -170)
+warnPanel.BackgroundColor3 = C.panel
+warnPanel.BorderSizePixel = 0
+warnPanel.ZIndex = 2
+warnPanel.Parent = warningGui
+Instance.new("UICorner", warnPanel).CornerRadius = UDim.new(0, 16)
+
+local warnGrad = Instance.new("UIGradient")
+warnGrad.Color = ColorSequence.new{
+    ColorSequenceKeypoint.new(0, C.panel2),
+    ColorSequenceKeypoint.new(1, C.space),
+}
+warnGrad.Rotation = 90
+warnGrad.Parent = warnPanel
+
+local warnStroke = Instance.new("UIStroke")
+warnStroke.Color = C.bad
+warnStroke.Thickness = 1.5
+warnStroke.Transparency = 0.2
+warnStroke.Parent = warnPanel
+
+local warnHeader = Instance.new("TextLabel")
+warnHeader.Size = UDim2.new(1, -60, 0, 32)
+warnHeader.Position = UDim2.new(0, 20, 0, 18)
+warnHeader.BackgroundTransparency = 1
+warnHeader.Text = "MUST READ"
+warnHeader.TextColor3 = C.bad
+warnHeader.TextSize = 18
+warnHeader.Font = FONT_TITLE
+warnHeader.TextXAlignment = Enum.TextXAlignment.Left
+warnHeader.ZIndex = 3
+warnHeader.Parent = warnPanel
+
+local warnDivider = Instance.new("Frame")
+warnDivider.Size = UDim2.new(1, -40, 0, 1)
+warnDivider.Position = UDim2.new(0, 20, 0, 56)
+warnDivider.BackgroundColor3 = C.border
+warnDivider.BackgroundTransparency = 0.7
+warnDivider.BorderSizePixel = 0
+warnDivider.ZIndex = 3
+warnDivider.Parent = warnPanel
+
+local warnBody = Instance.new("TextLabel")
+warnBody.Size = UDim2.new(1, -40, 0, 170)
+warnBody.Position = UDim2.new(0, 20, 0, 72)
+warnBody.BackgroundTransparency = 1
+warnBody.Text = "Ladder Glide is an autofarm feature that lets you abuse a ladder glitch combined with any working teleport method (Breacher, Swap gamemode, teleport scripts, etc.).\n\nHow to use:\n  1. Get on any ladder in the map\n  2. Toggle this feature on\n  3. It will teleport you 7000 studs right, wait 7 seconds, then teleport you back — repeating until you disable it.\n  4. When you toggle it off, you snap back to where you started."
+warnBody.TextColor3 = C.text
+warnBody.TextSize = 12
+warnBody.Font = FONT_MONO
+warnBody.TextXAlignment = Enum.TextXAlignment.Left
+warnBody.TextYAlignment = Enum.TextYAlignment.Top
+warnBody.TextWrapped = true
+warnBody.ZIndex = 3
+warnBody.Parent = warnPanel
+
+local warnExitBtn = Instance.new("TextButton")
+warnExitBtn.Size = UDim2.fromOffset(26, 26)
+warnExitBtn.Position = UDim2.new(1, -40, 0, 20)
+warnExitBtn.BackgroundColor3 = C.space
+warnExitBtn.BackgroundTransparency = 0.4
+warnExitBtn.Text = "×"
+warnExitBtn.TextColor3 = C.sub
+warnExitBtn.TextSize = 20
+warnExitBtn.Font = FONT_BOLD
+warnExitBtn.AutoButtonColor = false
+warnExitBtn.BorderSizePixel = 0
+warnExitBtn.ZIndex = 4
+warnExitBtn.Parent = warnPanel
+Instance.new("UICorner", warnExitBtn).CornerRadius = UDim.new(1, 0)
+local warnExitStroke = Instance.new("UIStroke")
+warnExitStroke.Color = C.border
+warnExitStroke.Thickness = 1
+warnExitStroke.Transparency = 0.55
+warnExitStroke.Parent = warnExitBtn
+warnExitBtn.MouseEnter:Connect(function()
+    TweenService:Create(warnExitBtn,TweenInfo.new(0.15),{BackgroundTransparency=0.1,TextColor3=C.bad}):Play()
+    TweenService:Create(warnExitStroke,TweenInfo.new(0.15),{Transparency=0.1,Color=C.bad}):Play()
+end)
+warnExitBtn.MouseLeave:Connect(function()
+    TweenService:Create(warnExitBtn,TweenInfo.new(0.15),{BackgroundTransparency=0.4,TextColor3=C.sub}):Play()
+    TweenService:Create(warnExitStroke,TweenInfo.new(0.15),{Transparency=0.55,Color=C.border}):Play()
+end)
+
+-- Continue button — full-width bar with countdown
+local continueBtn = Instance.new("TextButton")
+continueBtn.Size = UDim2.new(1, -40, 0, 52)
+continueBtn.Position = UDim2.new(0, 20, 1, -72)
+continueBtn.BackgroundColor3 = C.aurora
+continueBtn.AutoButtonColor = false
+continueBtn.Text = ""
+continueBtn.BorderSizePixel = 0
+continueBtn.ZIndex = 3
+continueBtn.Parent = warnPanel
+Instance.new("UICorner", continueBtn).CornerRadius = UDim.new(0, 10)
+
+local continueGrad = Instance.new("UIGradient")
+continueGrad.Color = ColorSequence.new{
+    ColorSequenceKeypoint.new(0, C.aurora),
+    ColorSequenceKeypoint.new(1, C.aurora2),
+}
+continueGrad.Parent = continueBtn
+
+local continueStroke = Instance.new("UIStroke")
+continueStroke.Color = C.border
+continueStroke.Thickness = 1.2
+continueStroke.Transparency = 0.5
+continueStroke.Parent = continueBtn
+
+local continueLabel = Instance.new("TextLabel")
+continueLabel.Size = UDim2.fromScale(1, 1)
+continueLabel.BackgroundTransparency = 1
+continueLabel.Text = ""
+continueLabel.TextColor3 = C.void
+continueLabel.TextSize = 14
+continueLabel.Font = FONT_BOLD
+continueLabel.ZIndex = 4
+continueLabel.Parent = continueBtn
+
+local continueActive = false
+local continueCountdownTask = nil
+local pendingConfirm = nil
+
+local function closeWarning()
+    warningGui.Enabled = false
+    if continueCountdownTask then
+        pcall(task.cancel, continueCountdownTask)
+        continueCountdownTask = nil
+    end
+    continueActive = false
+    pendingConfirm = nil
+end
+
+warnExitBtn.MouseButton1Click:Connect(function()
+    closeWarning()
+end)
+
+continueBtn.MouseButton1Click:Connect(function()
+    if not continueActive then return end
+    -- Mark as seen permanently
+    Presets.seen.ladder_glide_warning = true
+    savePresets()
+    closeWarning()
+    if pendingConfirm then pcall(pendingConfirm) end
+end)
+
+-- Shake animation on the continue button while disabled
+local function playContinueShake()
+    local orig = continueBtn.Position
+    task.spawn(function()
+        for i = 1, 6 do
+            continueBtn.Position = UDim2.new(0, 20 + (i%2==0 and -3 or 3), 1, -72)
+            task.wait(0.05)
+        end
+        continueBtn.Position = orig
+    end)
+end
+
+continueBtn.MouseButton1Click:Connect(function()
+    if not continueActive then
+        playContinueShake()
+    end
+end)
+
+-- Show the warning popup. onConfirm runs after user clicks CONTINUE.
+local function showWarning(onConfirm)
+    pendingConfirm = onConfirm
+    warningGui.Enabled = true
+    continueActive = false
+
+    -- Reset button visuals
+    continueBtn.BackgroundColor3 = C.aurora
+    continueGrad.Color = ColorSequence.new{
+        ColorSequenceKeypoint.new(0, C.aurora),
+        ColorSequenceKeypoint.new(1, C.aurora2),
+    }
+    continueStroke.Transparency = 0.5
+    continueLabel.TextColor3 = C.void
+
+    local remaining = 7
+    continueLabel.Text = "C O N T I N U E   " .. tostring(remaining)
+
+    if continueCountdownTask then pcall(task.cancel, continueCountdownTask) end
+    continueCountdownTask = task.spawn(function()
+        while remaining > 0 do
+            task.wait(1)
+            if not warningGui.Enabled then return end
+            remaining -= 1
+            if remaining > 0 then
+                continueLabel.Text = "C O N T I N U E   " .. tostring(remaining)
+            else
+                continueLabel.Text = "C O N T I N U E"
+                continueActive = true
+            end
+        end
+    end)
+end
+
+-- ═══════════════════════════════════════════════════════════════════
+--  LADDER GLIDE STATE
+-- ═══════════════════════════════════════════════════════════════════
+local glideOriginal = nil
+local glideTask = nil
+
+local function glideSnapBack()
+    if not glideOriginal then return end
+    local char = player.Character
+    if not char then return end
+    local r = char:FindFirstChild("HumanoidRootPart")
+    if r then
+        pcall(function() r.CFrame = glideOriginal end)
+        pcall(function() char:PivotTo(glideOriginal) end)
+    end
+end
+
+local function glideStop()
+    if glideTask then
+        pcall(task.cancel, glideTask)
+        glideTask = nil
+    end
+    glideSnapBack()
+    glideOriginal = nil
+end
+
+local function glideStart()
+    local char = player.Character
+    if not char then return end
+    local r = char:FindFirstChild("HumanoidRootPart")
+    if not r then return end
+
+    glideOriginal = r.CFrame
+
+    if glideTask then pcall(task.cancel, glideTask) end
+    glideTask = task.spawn(function()
+        while Features.ladderglide and Features.ladderglide.enabled do
+            local c = player.Character
+            if not c then break end
+            local hrp = c:FindFirstChild("HumanoidRootPart")
+            if not hrp then break end
+
+            local dest = CFrame.new(glideOriginal.Position + Vector3.new(7000, 0, 0))
+            pcall(function() hrp.CFrame = dest end)
+            pcall(function() c:PivotTo(dest) end)
+            setStatus("glide  ·  out", C.warn, 1.0)
+
+            task.wait(7)
+            if not (Features.ladderglide and Features.ladderglide.enabled) then break end
+
+            pcall(function() hrp.CFrame = glideOriginal end)
+            pcall(function() c:PivotTo(glideOriginal) end)
+            setStatus("glide  ·  back", C.good, 1.0)
+
+            task.wait(7)
+        end
+    end)
+end
+
+-- REGISTER FEATURES
+Features.register("autojump", {name="Auto Jump", icon="▲", category="MOVEMENT", tab="movement", hudOffset=Vector2.new(-240,130)})
+Features.register("easybounce", {name="Easy Bounce", icon="◈", category="MOVEMENT", tab="movement", hint="bounce on ramps (>10°) after 1.5s airtime", hudOffset=Vector2.new(-240,198)})
+Features.register("hardbounce", {name="Hard Bounce", icon="◭", category="MOVEMENT", tab="movement", hint="bounce on any surface after 1.5s airtime", hudOffset=Vector2.new(-240,266)})
+Features.register("autotrimp", {name="Auto Trimp", icon="✦", category="MOVEMENT", tab="movement", hint="auto jump + easy bounce combo", hudOffset=Vector2.new(-240,334)})
+Features.register("efling", {name="E-Fling", icon="⟁", category="MOVEMENT", tab="movement", hint="Basic E-Fling Mechanic", hudOffset=Vector2.new(-240,402)})
+
 local lagFrozen = false
 local lagFreezeUntil = 0
-
 RunService.RenderStepped:Connect(function()
     if lagFrozen then
         while tick() < lagFreezeUntil do end
         lagFrozen = false
     end
 end)
-
 Features.register("lagswitch", {
-    name = "Lag Switch", icon = "⧖", category = "PLAYER", tab = "movement",
-    hint = "tap to freeze client briefly (trimp assist)",
-    isButton = true,
-    action = function()
+    name="Lag Switch", icon="⧖", category="PLAYER", tab="movement",
+    hint="tap to freeze client briefly (trimp assist)",
+    isButton=true,
+    action=function()
         local dur = Config.get("lag_duration") or 0.5
         lagFreezeUntil = tick() + dur
         lagFrozen = true
         setStatus(string.format("lag  ·  %.2fs", dur), C.warn, dur + 0.3)
     end,
-    hudOffset = Vector2.new(-240, 470),
+    hudOffset=Vector2.new(-240, 470),
 })
 
--- Ladder Glitch — spawns a temp ladder in front of you, despawns after 10ms.
--- The climb prompt persists briefly and can be triggered mid-air for the
--- float glitch. Uses a cloned ladder from the map as a template.
-Features.register("ladderglitch", {
-    name = "Ladder Glitch", icon = "☰", category = "PLAYER", tab = "movement",
-    hint = "spawn temp ladder · despawns in 10ms",
-    isButton = true,
-    action = function()
-        local map = workspace:FindFirstChild("Map") or findChildCI(workspace, "map")
-        if not map then setStatus("no map", C.bad, 1.5); return end
-        local parts = findChildCI(map, "Parts")
-        if not parts then setStatus("no Parts", C.bad, 1.5); return end
-        local laddersFolder = findChildCI(parts, "Ladders")
-        if not laddersFolder then setStatus("no Ladders folder", C.bad, 1.5); return end
-        local children = laddersFolder:GetChildren()
-        if #children == 0 then setStatus("no ladder template", C.bad, 1.5); return end
-
-        local template = children[3] or children[1]
-        if not template then setStatus("no template", C.bad, 1.5); return end
-
-        local char = player.Character
-        if not char then return end
-        local root = char:FindFirstChild("HumanoidRootPart")
-        if not root then return end
-
-        local clone = template:Clone()
-        -- Place it 3 studs in front of the player
-        local targetCF = CFrame.new(root.Position + root.CFrame.LookVector * 3)
-
-        if clone:IsA("Model") then
-            clone.Parent = laddersFolder
-            pcall(function() clone:PivotTo(targetCF) end)
-        elseif clone:IsA("BasePart") then
-            clone.Anchored = true
-            clone.CFrame = targetCF
-            clone.Parent = laddersFolder
-        else
-            clone.Parent = laddersFolder
+Features.register("ladderglide", {
+    name="Ladder Glide", icon="⇌", category="PLAYER", tab="movement",
+    hint="autofarm · ladder + teleport abuse",
+    gate = function()
+        if Presets.seen.ladder_glide_warning then
+            return true
         end
-
-        setStatus("ladder spawned", C.warn, 0.4)
-
-        task.delay(0.01, function()
-            pcall(function() clone:Destroy() end)
+        showWarning(function()
+            Features.setEnabled("ladderglide", true)
+            glideStart()
         end)
+        return false
     end,
-    hudOffset = Vector2.new(-240, 538),
+    hudOffset=Vector2.new(-240, 538),
 })
 
--- ═══════════════════════════════════════════════════════════════════
---  MOVEMENT PAGE
--- ═══════════════════════════════════════════════════════════════════
+-- Ladder glide enable/disable side effects
+Features.addListener("ladderglide", function(on)
+    if on then
+        glideStart()
+    else
+        glideStop()
+    end
+end)
+
+-- MOVEMENT PAGE
 local movementPage = newPage("movement", true)
 makeCategoryHeader(movementPage, "MOVEMENT", 14)
 makeFeatureRow(movementPage, "autojump",   36)
@@ -1480,427 +1123,213 @@ makeFeatureRow(movementPage, "autotrimp",  234)
 makeFeatureRow(movementPage, "efling",     300)
 makeCategoryHeader(movementPage, "PLAYER", 372)
 makeFeatureRow(movementPage, "lagswitch",    394)
-makeFeatureRow(movementPage, "ladderglitch", 460)
+makeFeatureRow(movementPage, "ladderglide",  460)
 makeCategoryHeader(movementPage, "SETTINGS", 532)
-local bounceSliderRow, refreshBounceSlider = makeSliderRow(
-    movementPage, "Bounce Multiplier", "bounce_multiplier", 1.04, 5.0, 554, "x", 2
-)
-local lagSliderRow, refreshLagSlider = makeSliderRow(
-    movementPage, "Lag Duration", "lag_duration", 0.2, 1.2, 626, "s", 2
-)
+local bounceSliderRow, refreshBounceSlider = makeSliderRow(movementPage, "Bounce Multiplier", "bounce_multiplier", 1.04, 5.0, 554, "x", 2)
+local lagSliderRow, refreshLagSlider = makeSliderRow(movementPage, "Lag Duration", "lag_duration", 0.2, 1.2, 626, "s", 2)
 
--- ═══════════════════════════════════════════════════════════════════
---  MAP PAGE
--- ═══════════════════════════════════════════════════════════════════
+-- MAP PAGE
 local mapPage = newPage("map", true)
 makeCategoryHeader(mapPage, "MAP CHANGER", 14)
 
 local boxHolder = Instance.new("Frame")
-boxHolder.Size = UDim2.new(1, -32, 0, 44)
-boxHolder.Position = UDim2.new(0, 16, 0, 36)
-boxHolder.BackgroundColor3 = Color3.fromRGB(20, 24, 40)
-boxHolder.BackgroundTransparency = 0.55
-boxHolder.BorderSizePixel = 0
-boxHolder.ZIndex = 8
-boxHolder.Parent = mapPage
-Instance.new("UICorner", boxHolder).CornerRadius = UDim.new(0, 10)
+boxHolder.Size=UDim2.new(1,-32,0,44); boxHolder.Position=UDim2.new(0,16,0,36)
+boxHolder.BackgroundColor3=Color3.fromRGB(20,24,40); boxHolder.BackgroundTransparency=0.55
+boxHolder.BorderSizePixel=0; boxHolder.ZIndex=8; boxHolder.Parent=mapPage
+Instance.new("UICorner",boxHolder).CornerRadius=UDim.new(0,10)
 local boxStroke = Instance.new("UIStroke")
-boxStroke.Color = C.border
-boxStroke.Thickness = 1
-boxStroke.Transparency = 0.55
-boxStroke.Parent = boxHolder
+boxStroke.Color=C.border; boxStroke.Thickness=1; boxStroke.Transparency=0.55; boxStroke.Parent=boxHolder
 
 local idBox = Instance.new("TextBox")
-idBox.Size = UDim2.new(1, -24, 1, 0)
-idBox.Position = UDim2.new(0, 12, 0, 0)
-idBox.BackgroundTransparency = 1
-idBox.Text = ""
-idBox.PlaceholderText = "Asset ID"
-idBox.PlaceholderColor3 = C.sub
-idBox.TextColor3 = C.text
-idBox.TextSize = 14
-idBox.Font = FONT_MONO
-idBox.TextXAlignment = Enum.TextXAlignment.Left
-idBox.ClearTextOnFocus = false
-idBox.ZIndex = 9
-idBox.Parent = boxHolder
+idBox.Size=UDim2.new(1,-24,1,0); idBox.Position=UDim2.new(0,12,0,0); idBox.BackgroundTransparency=1
+idBox.Text=""; idBox.PlaceholderText="Asset ID"; idBox.PlaceholderColor3=C.sub
+idBox.TextColor3=C.text; idBox.TextSize=14; idBox.Font=FONT_MONO
+idBox.TextXAlignment=Enum.TextXAlignment.Left; idBox.ClearTextOnFocus=false; idBox.ZIndex=9; idBox.Parent=boxHolder
 
 local activateBtn = Instance.new("TextButton")
-activateBtn.Size = UDim2.new(1, -32, 0, 50)
-activateBtn.Position = UDim2.new(0, 16, 0, 94)
-activateBtn.BackgroundColor3 = C.aurora
-activateBtn.Text = ""
-activateBtn.AutoButtonColor = false
-activateBtn.BorderSizePixel = 0
-activateBtn.ZIndex = 8
-activateBtn.Parent = mapPage
-Instance.new("UICorner", activateBtn).CornerRadius = UDim.new(0, 12)
-
+activateBtn.Size=UDim2.new(1,-32,0,50); activateBtn.Position=UDim2.new(0,16,0,94)
+activateBtn.BackgroundColor3=C.aurora; activateBtn.Text=""; activateBtn.AutoButtonColor=false
+activateBtn.BorderSizePixel=0; activateBtn.ZIndex=8; activateBtn.Parent=mapPage
+Instance.new("UICorner",activateBtn).CornerRadius=UDim.new(0,12)
 local actGrad = Instance.new("UIGradient")
-actGrad.Color = ColorSequence.new{
-    ColorSequenceKeypoint.new(0, C.aurora),
-    ColorSequenceKeypoint.new(1, C.aurora2),
-}
-actGrad.Parent = activateBtn
-
+actGrad.Color=ColorSequence.new{ColorSequenceKeypoint.new(0,C.aurora),ColorSequenceKeypoint.new(1,C.aurora2)}
+actGrad.Parent=activateBtn
 local actStroke = Instance.new("UIStroke")
-actStroke.Color = C.border
-actStroke.Thickness = 1.2
-actStroke.Transparency = 0.5
-actStroke.Parent = activateBtn
-
+actStroke.Color=C.border; actStroke.Thickness=1.2; actStroke.Transparency=0.5; actStroke.Parent=activateBtn
 local actLabel = Instance.new("TextLabel")
-actLabel.Size = UDim2.fromScale(1, 1)
-actLabel.BackgroundTransparency = 1
-actLabel.Text = "A C T I V A T E"
-actLabel.TextColor3 = C.void
-actLabel.TextSize = 14
-actLabel.Font = FONT_BOLD
-actLabel.ZIndex = 9
-actLabel.Parent = activateBtn
-
-activateBtn.MouseEnter:Connect(function()
-    TweenService:Create(actStroke, TweenInfo.new(0.15), {Transparency = 0.1}):Play()
-end)
-activateBtn.MouseLeave:Connect(function()
-    TweenService:Create(actStroke, TweenInfo.new(0.15), {Transparency = 0.5}):Play()
-end)
+actLabel.Size=UDim2.fromScale(1,1); actLabel.BackgroundTransparency=1; actLabel.Text="A C T I V A T E"
+actLabel.TextColor3=C.void; actLabel.TextSize=14; actLabel.Font=FONT_BOLD; actLabel.ZIndex=9; actLabel.Parent=activateBtn
+activateBtn.MouseEnter:Connect(function() TweenService:Create(actStroke,TweenInfo.new(0.15),{Transparency=0.1}):Play() end)
+activateBtn.MouseLeave:Connect(function() TweenService:Create(actStroke,TweenInfo.new(0.15),{Transparency=0.5}):Play() end)
 
 makeCategoryHeader(mapPage, "MAP PRESETS", 158)
-
 local mpNameHolder = Instance.new("Frame")
-mpNameHolder.Size = UDim2.new(1, -32, 0, 36)
-mpNameHolder.Position = UDim2.new(0, 16, 0, 180)
-mpNameHolder.BackgroundColor3 = Color3.fromRGB(20, 24, 40)
-mpNameHolder.BackgroundTransparency = 0.55
-mpNameHolder.BorderSizePixel = 0
-mpNameHolder.ZIndex = 8
-mpNameHolder.Parent = mapPage
-Instance.new("UICorner", mpNameHolder).CornerRadius = UDim.new(0, 8)
-
+mpNameHolder.Size=UDim2.new(1,-32,0,36); mpNameHolder.Position=UDim2.new(0,16,0,180)
+mpNameHolder.BackgroundColor3=Color3.fromRGB(20,24,40); mpNameHolder.BackgroundTransparency=0.55
+mpNameHolder.BorderSizePixel=0; mpNameHolder.ZIndex=8; mpNameHolder.Parent=mapPage
+Instance.new("UICorner",mpNameHolder).CornerRadius=UDim.new(0,8)
 local mpNameBox = Instance.new("TextBox")
-mpNameBox.Size = UDim2.new(1, -100, 1, 0)
-mpNameBox.Position = UDim2.new(0, 12, 0, 0)
-mpNameBox.BackgroundTransparency = 1
-mpNameBox.Text = ""
-mpNameBox.PlaceholderText = "preset name..."
-mpNameBox.PlaceholderColor3 = C.sub
-mpNameBox.TextColor3 = C.text
-mpNameBox.TextSize = 12
-mpNameBox.Font = FONT_MONO
-mpNameBox.TextXAlignment = Enum.TextXAlignment.Left
-mpNameBox.ClearTextOnFocus = false
-mpNameBox.ZIndex = 9
-mpNameBox.Parent = mpNameHolder
-
+mpNameBox.Size=UDim2.new(1,-100,1,0); mpNameBox.Position=UDim2.new(0,12,0,0); mpNameBox.BackgroundTransparency=1
+mpNameBox.Text=""; mpNameBox.PlaceholderText="preset name..."; mpNameBox.PlaceholderColor3=C.sub
+mpNameBox.TextColor3=C.text; mpNameBox.TextSize=12; mpNameBox.Font=FONT_MONO
+mpNameBox.TextXAlignment=Enum.TextXAlignment.Left; mpNameBox.ClearTextOnFocus=false; mpNameBox.ZIndex=9; mpNameBox.Parent=mpNameHolder
 local mpSaveBtn = Instance.new("TextButton")
-mpSaveBtn.Size = UDim2.fromOffset(72, 26)
-mpSaveBtn.AnchorPoint = Vector2.new(1, 0.5)
-mpSaveBtn.Position = UDim2.new(1, -5, 0.5, 0)
-mpSaveBtn.BackgroundColor3 = C.aurora
-mpSaveBtn.Text = "SAVE"
-mpSaveBtn.TextColor3 = C.void
-mpSaveBtn.TextSize = 11
-mpSaveBtn.Font = FONT_BOLD
-mpSaveBtn.AutoButtonColor = false
-mpSaveBtn.BorderSizePixel = 0
-mpSaveBtn.ZIndex = 9
-mpSaveBtn.Parent = mpNameHolder
-Instance.new("UICorner", mpSaveBtn).CornerRadius = UDim.new(0, 6)
+mpSaveBtn.Size=UDim2.fromOffset(72,26); mpSaveBtn.AnchorPoint=Vector2.new(1,0.5); mpSaveBtn.Position=UDim2.new(1,-5,0.5,0)
+mpSaveBtn.BackgroundColor3=C.aurora; mpSaveBtn.Text="SAVE"; mpSaveBtn.TextColor3=C.void
+mpSaveBtn.TextSize=11; mpSaveBtn.Font=FONT_BOLD; mpSaveBtn.AutoButtonColor=false
+mpSaveBtn.BorderSizePixel=0; mpSaveBtn.ZIndex=9; mpSaveBtn.Parent=mpNameHolder
+Instance.new("UICorner",mpSaveBtn).CornerRadius=UDim.new(0,6)
 
 local mpListHolder = Instance.new("Frame")
-mpListHolder.Size = UDim2.new(1, -32, 0, 0)
-mpListHolder.Position = UDim2.new(0, 16, 0, 224)
-mpListHolder.BackgroundTransparency = 1
-mpListHolder.AutomaticSize = Enum.AutomaticSize.Y
-mpListHolder.ZIndex = 8
-mpListHolder.Parent = mapPage
+mpListHolder.Size=UDim2.new(1,-32,0,0); mpListHolder.Position=UDim2.new(0,16,0,224)
+mpListHolder.BackgroundTransparency=1; mpListHolder.AutomaticSize=Enum.AutomaticSize.Y
+mpListHolder.ZIndex=8; mpListHolder.Parent=mapPage
 
 local function rebuildMapPresets()
     for _, c in ipairs(mpListHolder:GetChildren()) do c:Destroy() end
     local y = 0
     if #Presets.maps == 0 then
         local none = Instance.new("TextLabel")
-        none.Size = UDim2.new(1, 0, 0, 22)
-        none.BackgroundTransparency = 1
-        none.Text = "no presets saved"
-        none.TextColor3 = C.sub
-        none.TextSize = 10
-        none.Font = FONT_MONO
-        none.TextXAlignment = Enum.TextXAlignment.Left
-        none.ZIndex = 9
-        none.Parent = mpListHolder
+        none.Size=UDim2.new(1,0,0,22); none.BackgroundTransparency=1; none.Text="no presets saved"
+        none.TextColor3=C.sub; none.TextSize=10; none.Font=FONT_MONO
+        none.TextXAlignment=Enum.TextXAlignment.Left; none.ZIndex=9; none.Parent=mpListHolder
         return
     end
     for idx, p in ipairs(Presets.maps) do
         local item = Instance.new("Frame")
-        item.Size = UDim2.new(1, 0, 0, 34)
-        item.Position = UDim2.new(0, 0, 0, y)
-        item.BackgroundColor3 = Color3.fromRGB(20, 24, 40)
-        item.BackgroundTransparency = 0.55
-        item.BorderSizePixel = 0
-        item.ZIndex = 9
-        item.Parent = mpListHolder
-        Instance.new("UICorner", item).CornerRadius = UDim.new(0, 8)
-
+        item.Size=UDim2.new(1,0,0,34); item.Position=UDim2.new(0,0,0,y)
+        item.BackgroundColor3=Color3.fromRGB(20,24,40); item.BackgroundTransparency=0.55
+        item.BorderSizePixel=0; item.ZIndex=9; item.Parent=mpListHolder
+        Instance.new("UICorner",item).CornerRadius=UDim.new(0,8)
         local nm = Instance.new("TextButton")
-        nm.Size = UDim2.new(1, -40, 1, 0)
-        nm.BackgroundTransparency = 1
-        nm.Text = p.name .. "  ·  " .. p.id
-        nm.TextColor3 = C.text
-        nm.TextSize = 11
-        nm.Font = FONT_MONO
-        nm.TextXAlignment = Enum.TextXAlignment.Left
-        nm.ZIndex = 10
-        nm.Parent = item
+        nm.Size=UDim2.new(1,-40,1,0); nm.BackgroundTransparency=1
+        nm.Text=p.name.."  ·  "..p.id; nm.TextColor3=C.text; nm.TextSize=11; nm.Font=FONT_MONO
+        nm.TextXAlignment=Enum.TextXAlignment.Left; nm.ZIndex=10; nm.Parent=item
         nm.MouseButton1Click:Connect(function()
-            idBox.Text = p.id
-            setStatus("loaded preset: " .. p.name, C.good, 1.5)
+            idBox.Text=p.id; setStatus("loaded preset: "..p.name, C.good, 1.5)
         end)
-
         local del = Instance.new("TextButton")
-        del.Size = UDim2.fromOffset(24, 24)
-        del.AnchorPoint = Vector2.new(1, 0.5)
-        del.Position = UDim2.new(1, -5, 0.5, 0)
-        del.BackgroundColor3 = C.space
-        del.BackgroundTransparency = 0.5
-        del.Text = "×"
-        del.TextColor3 = C.bad
-        del.TextSize = 14
-        del.Font = FONT_BOLD
-        del.AutoButtonColor = false
-        del.BorderSizePixel = 0
-        del.ZIndex = 10
-        del.Parent = item
-        Instance.new("UICorner", del).CornerRadius = UDim.new(1, 0)
+        del.Size=UDim2.fromOffset(24,24); del.AnchorPoint=Vector2.new(1,0.5); del.Position=UDim2.new(1,-5,0.5,0)
+        del.BackgroundColor3=C.space; del.BackgroundTransparency=0.5; del.Text="×"; del.TextColor3=C.bad
+        del.TextSize=14; del.Font=FONT_BOLD; del.AutoButtonColor=false; del.BorderSizePixel=0; del.ZIndex=10; del.Parent=item
+        Instance.new("UICorner",del).CornerRadius=UDim.new(1,0)
         del.MouseButton1Click:Connect(function()
-            table.remove(Presets.maps, idx)
-            savePresets()
-            rebuildMapPresets()
+            table.remove(Presets.maps, idx); savePresets(); rebuildMapPresets()
         end)
-
         y = y + 40
     end
 end
 rebuildMapPresets()
 
 mpSaveBtn.MouseButton1Click:Connect(function()
-    local name = (mpNameBox.Text:gsub("^%s+", ""):gsub("%s+$", ""))
-    local id = idBox.Text:gsub("%s+", "")
-    if name == "" or id == "" then
-        setStatus("name and id required", C.bad, 1.5)
-        return
-    end
-    table.insert(Presets.maps, { name = name, id = id })
-    savePresets()
-    rebuildMapPresets()
-    mpNameBox.Text = ""
-    setStatus("saved: " .. name, C.good, 1.5)
+    local name = (mpNameBox.Text:gsub("^%s+",""):gsub("%s+$",""))
+    local id = idBox.Text:gsub("%s+","")
+    if name=="" or id=="" then setStatus("name and id required", C.bad, 1.5); return end
+    table.insert(Presets.maps, {name=name, id=id}); savePresets(); rebuildMapPresets()
+    mpNameBox.Text=""; setStatus("saved: "..name, C.good, 1.5)
 end)
 
 makeCategoryHeader(mapPage, "SHADERS", 400)
 makeSoon(mapPage, 420)
 
--- ═══════════════════════════════════════════════════════════════════
---  PLACEHOLDER PAGES
--- ═══════════════════════════════════════════════════════════════════
+-- PLACEHOLDER PAGES
 local function makePlaceholder(page, icon, title, subtitle)
     local i = Instance.new("TextLabel")
-    i.Size = UDim2.new(1, 0, 0, 60)
-    i.Position = UDim2.new(0, 0, 0, 50)
-    i.BackgroundTransparency = 1
-    i.Text = icon
-    i.TextColor3 = C.sub
-    i.TextSize = 44
-    i.Font = FONT_ICON
-    i.ZIndex = 8
-    i.Parent = page
-
+    i.Size=UDim2.new(1,0,0,60); i.Position=UDim2.new(0,0,0,50); i.BackgroundTransparency=1
+    i.Text=icon; i.TextColor3=C.sub; i.TextSize=44; i.Font=FONT_ICON; i.ZIndex=8; i.Parent=page
     local t = Instance.new("TextLabel")
-    t.Size = UDim2.new(1, 0, 0, 20)
-    t.Position = UDim2.new(0, 0, 0, 118)
-    t.BackgroundTransparency = 1
-    t.Text = title
-    t.TextColor3 = C.text
-    t.TextSize = 13
-    t.Font = FONT_BOLD
-    t.ZIndex = 8
-    t.Parent = page
-
+    t.Size=UDim2.new(1,0,0,20); t.Position=UDim2.new(0,0,0,118); t.BackgroundTransparency=1
+    t.Text=title; t.TextColor3=C.text; t.TextSize=13; t.Font=FONT_BOLD; t.ZIndex=8; t.Parent=page
     local s = Instance.new("TextLabel")
-    s.Size = UDim2.new(1, 0, 0, 16)
-    s.Position = UDim2.new(0, 0, 0, 140)
-    s.BackgroundTransparency = 1
-    s.Text = subtitle
-    s.TextColor3 = C.sub
-    s.TextSize = 10
-    s.Font = FONT_MONO
-    s.ZIndex = 8
-    s.Parent = page
+    s.Size=UDim2.new(1,0,0,16); s.Position=UDim2.new(0,0,0,140); s.BackgroundTransparency=1
+    s.Text=subtitle; s.TextColor3=C.sub; s.TextSize=10; s.Font=FONT_MONO; s.ZIndex=8; s.Parent=page
 end
+local visualsPage = newPage("visuals"); makePlaceholder(visualsPage, "◉", "VISUALS", "coming soon")
+local extraPage = newPage("extra"); makePlaceholder(extraPage, "★", "EXTRA", "coming soon")
 
-local visualsPage = newPage("visuals")
-makePlaceholder(visualsPage, "◉", "VISUALS", "coming soon")
-local extraPage = newPage("extra")
-makePlaceholder(extraPage, "★", "EXTRA", "coming soon")
-
--- ═══════════════════════════════════════════════════════════════════
---  CONFIG PAGE
--- ═══════════════════════════════════════════════════════════════════
+-- CONFIG PAGE
 local configPage = newPage("config")
 local cfgScroll = Instance.new("ScrollingFrame")
-cfgScroll.Size = UDim2.fromScale(1, 1)
-cfgScroll.BackgroundTransparency = 1
-cfgScroll.BorderSizePixel = 0
-cfgScroll.ScrollBarThickness = 2
-cfgScroll.ScrollBarImageColor3 = C.border
-cfgScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
-cfgScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
-cfgScroll.ZIndex = 8
-cfgScroll.Parent = configPage
+cfgScroll.Size=UDim2.fromScale(1,1); cfgScroll.BackgroundTransparency=1; cfgScroll.BorderSizePixel=0
+cfgScroll.ScrollBarThickness=2; cfgScroll.ScrollBarImageColor3=C.border
+cfgScroll.CanvasSize=UDim2.new(0,0,0,0); cfgScroll.AutomaticCanvasSize=Enum.AutomaticSize.Y
+cfgScroll.ZIndex=8; cfgScroll.Parent=configPage
 
 local cfgY = 14
 local function cfgSectionHeader(text)
     local h = Instance.new("TextLabel")
-    h.Size = UDim2.new(1, -32, 0, 16)
-    h.Position = UDim2.new(0, 16, 0, cfgY)
-    h.BackgroundTransparency = 1
-    h.Text = "-- " .. text .. " --"
-    h.TextColor3 = C.sub
-    h.TextSize = 10
-    h.Font = FONT_MONO
-    h.TextXAlignment = Enum.TextXAlignment.Left
-    h.ZIndex = 9
-    h.Parent = cfgScroll
+    h.Size=UDim2.new(1,-32,0,16); h.Position=UDim2.new(0,16,0,cfgY); h.BackgroundTransparency=1
+    h.Text="-- "..text.." --"; h.TextColor3=C.sub; h.TextSize=10; h.Font=FONT_MONO
+    h.TextXAlignment=Enum.TextXAlignment.Left; h.ZIndex=9; h.Parent=cfgScroll
     cfgY = cfgY + 22
 end
 
 local configCallbacks = {}
-
 local function makeConfigToggle(labelText, cfgKey, subtitle, onChange)
     local row = Instance.new("Frame")
-    row.Size = UDim2.new(1, -32, 0, 48)
-    row.Position = UDim2.new(0, 16, 0, cfgY)
-    row.BackgroundColor3 = Color3.fromRGB(20, 24, 40)
-    row.BackgroundTransparency = 0.55
-    row.BorderSizePixel = 0
-    row.ZIndex = 9
-    row.Parent = cfgScroll
-    Instance.new("UICorner", row).CornerRadius = UDim.new(0, 10)
+    row.Size=UDim2.new(1,-32,0,48); row.Position=UDim2.new(0,16,0,cfgY)
+    row.BackgroundColor3=Color3.fromRGB(20,24,40); row.BackgroundTransparency=0.55
+    row.BorderSizePixel=0; row.ZIndex=9; row.Parent=cfgScroll
+    Instance.new("UICorner",row).CornerRadius=UDim.new(0,10)
     local rowStroke = Instance.new("UIStroke")
-    rowStroke.Color = C.border
-    rowStroke.Thickness = 1
-    rowStroke.Transparency = 0.65
-    rowStroke.Parent = row
-
+    rowStroke.Color=C.border; rowStroke.Thickness=1; rowStroke.Transparency=0.65; rowStroke.Parent=row
     local lbl = Instance.new("TextLabel")
-    lbl.Size = UDim2.new(1, -80, 0, 20)
-    lbl.Position = UDim2.new(0, 16, 0, 8)
-    lbl.BackgroundTransparency = 1
-    lbl.Text = labelText
-    lbl.TextColor3 = C.text
-    lbl.TextSize = 12
-    lbl.Font = FONT_BOLD
-    lbl.TextXAlignment = Enum.TextXAlignment.Left
-    lbl.ZIndex = 10
-    lbl.Parent = row
-
+    lbl.Size=UDim2.new(1,-80,0,20); lbl.Position=UDim2.new(0,16,0,8); lbl.BackgroundTransparency=1
+    lbl.Text=labelText; lbl.TextColor3=C.text; lbl.TextSize=12; lbl.Font=FONT_BOLD
+    lbl.TextXAlignment=Enum.TextXAlignment.Left; lbl.ZIndex=10; lbl.Parent=row
     local sub = Instance.new("TextLabel")
-    sub.Size = UDim2.new(1, -80, 0, 14)
-    sub.Position = UDim2.new(0, 16, 0, 26)
-    sub.BackgroundTransparency = 1
-    sub.Text = subtitle or ""
-    sub.TextColor3 = C.sub
-    sub.TextSize = 9
-    sub.Font = FONT_MONO
-    sub.TextXAlignment = Enum.TextXAlignment.Left
-    sub.ZIndex = 10
-    sub.Parent = row
-
-    local refreshToggle = makeGlassToggle(
-        row,
-        UDim2.new(1, -14, 0, 11),
+    sub.Size=UDim2.new(1,-80,0,14); sub.Position=UDim2.new(0,16,0,26); sub.BackgroundTransparency=1
+    sub.Text=subtitle or ""; sub.TextColor3=C.sub; sub.TextSize=9; sub.Font=FONT_MONO
+    sub.TextXAlignment=Enum.TextXAlignment.Left; sub.ZIndex=10; sub.Parent=row
+    local refreshToggle = makeGlassToggle(row, UDim2.new(1,-14,0,11),
         function() return Config.get(cfgKey) and true or false end,
         function(v)
             Config.set(cfgKey, v)
             if onChange then pcall(onChange, v) end
-        end
-    )
-
+        end)
     configCallbacks[cfgKey] = function()
         refreshToggle()
         if onChange then pcall(onChange, Config.get(cfgKey)) end
     end
-
     cfgY = cfgY + 56
 end
 
 cfgSectionHeader("MAP LOADING")
-makeConfigToggle("Auto-smooth surfaces", "auto_smooth",     "smooths every part on the map for e-dashing")
-makeConfigToggle("Strip scripts",        "strip_scripts",   "removes every script inside the loaded asset")
-makeConfigToggle("Clear spawn areas",    "clear_spawns",    "wipes old SpawnLocations from the map")
-makeConfigToggle("Clear terrain",        "clear_terrain",   "clears all voxels from workspace.Terrain")
-makeConfigToggle("Use asset spawn",      "use_asset_spawn", "spawns at the asset's own spawn point if it has one")
+makeConfigToggle("Auto-smooth surfaces", "auto_smooth", "smooths every part on the map for e-dashing")
+makeConfigToggle("Strip scripts", "strip_scripts", "removes every script inside the loaded asset")
+makeConfigToggle("Clear spawn areas", "clear_spawns", "wipes old SpawnLocations from the map")
+makeConfigToggle("Clear terrain", "clear_terrain", "clears all voxels from workspace.Terrain")
+makeConfigToggle("Use asset spawn", "use_asset_spawn", "spawns at the asset's own spawn point if it has one")
 
 cfgY = cfgY + 8
 cfgSectionHeader("INTERFACE")
 local applyInvisMenuRef = function() end
-makeConfigToggle("Invis Menu", "invis_menu",
-    "hides RF bubble · still tappable to open",
-    function(on) applyInvisMenuRef(on) end
-)
+makeConfigToggle("Invis Menu", "invis_menu", "hides RF bubble · still tappable to open", function(on) applyInvisMenuRef(on) end)
 
 cfgY = cfgY + 8
 cfgSectionHeader("CONFIGS")
-
 local cpNameHolder = Instance.new("Frame")
-cpNameHolder.Size = UDim2.new(1, -32, 0, 36)
-cpNameHolder.Position = UDim2.new(0, 16, 0, cfgY)
-cpNameHolder.BackgroundColor3 = Color3.fromRGB(20, 24, 40)
-cpNameHolder.BackgroundTransparency = 0.55
-cpNameHolder.BorderSizePixel = 0
-cpNameHolder.ZIndex = 9
-cpNameHolder.Parent = cfgScroll
-Instance.new("UICorner", cpNameHolder).CornerRadius = UDim.new(0, 8)
+cpNameHolder.Size=UDim2.new(1,-32,0,36); cpNameHolder.Position=UDim2.new(0,16,0,cfgY)
+cpNameHolder.BackgroundColor3=Color3.fromRGB(20,24,40); cpNameHolder.BackgroundTransparency=0.55
+cpNameHolder.BorderSizePixel=0; cpNameHolder.ZIndex=9; cpNameHolder.Parent=cfgScroll
+Instance.new("UICorner",cpNameHolder).CornerRadius=UDim.new(0,8)
 cfgY = cfgY + 44
-
 local cpNameBox = Instance.new("TextBox")
-cpNameBox.Size = UDim2.new(1, -100, 1, 0)
-cpNameBox.Position = UDim2.new(0, 12, 0, 0)
-cpNameBox.BackgroundTransparency = 1
-cpNameBox.Text = ""
-cpNameBox.PlaceholderText = "config name..."
-cpNameBox.PlaceholderColor3 = C.sub
-cpNameBox.TextColor3 = C.text
-cpNameBox.TextSize = 12
-cpNameBox.Font = FONT_MONO
-cpNameBox.TextXAlignment = Enum.TextXAlignment.Left
-cpNameBox.ClearTextOnFocus = false
-cpNameBox.ZIndex = 10
-cpNameBox.Parent = cpNameHolder
-
+cpNameBox.Size=UDim2.new(1,-100,1,0); cpNameBox.Position=UDim2.new(0,12,0,0); cpNameBox.BackgroundTransparency=1
+cpNameBox.Text=""; cpNameBox.PlaceholderText="config name..."; cpNameBox.PlaceholderColor3=C.sub
+cpNameBox.TextColor3=C.text; cpNameBox.TextSize=12; cpNameBox.Font=FONT_MONO
+cpNameBox.TextXAlignment=Enum.TextXAlignment.Left; cpNameBox.ClearTextOnFocus=false; cpNameBox.ZIndex=10; cpNameBox.Parent=cpNameHolder
 local cpSaveBtn = Instance.new("TextButton")
-cpSaveBtn.Size = UDim2.fromOffset(72, 26)
-cpSaveBtn.AnchorPoint = Vector2.new(1, 0.5)
-cpSaveBtn.Position = UDim2.new(1, -5, 0.5, 0)
-cpSaveBtn.BackgroundColor3 = C.aurora
-cpSaveBtn.Text = "SAVE"
-cpSaveBtn.TextColor3 = C.void
-cpSaveBtn.TextSize = 11
-cpSaveBtn.Font = FONT_BOLD
-cpSaveBtn.AutoButtonColor = false
-cpSaveBtn.BorderSizePixel = 0
-cpSaveBtn.ZIndex = 10
-cpSaveBtn.Parent = cpNameHolder
-Instance.new("UICorner", cpSaveBtn).CornerRadius = UDim.new(0, 6)
+cpSaveBtn.Size=UDim2.fromOffset(72,26); cpSaveBtn.AnchorPoint=Vector2.new(1,0.5); cpSaveBtn.Position=UDim2.new(1,-5,0.5,0)
+cpSaveBtn.BackgroundColor3=C.aurora; cpSaveBtn.Text="SAVE"; cpSaveBtn.TextColor3=C.void
+cpSaveBtn.TextSize=11; cpSaveBtn.Font=FONT_BOLD; cpSaveBtn.AutoButtonColor=false
+cpSaveBtn.BorderSizePixel=0; cpSaveBtn.ZIndex=10; cpSaveBtn.Parent=cpNameHolder
+Instance.new("UICorner",cpSaveBtn).CornerRadius=UDim.new(0,6)
 
 local cpListHolder = Instance.new("Frame")
-cpListHolder.Size = UDim2.new(1, -32, 0, 0)
-cpListHolder.Position = UDim2.new(0, 16, 0, cfgY)
-cpListHolder.BackgroundTransparency = 1
-cpListHolder.AutomaticSize = Enum.AutomaticSize.Y
-cpListHolder.ZIndex = 9
-cpListHolder.Parent = cfgScroll
+cpListHolder.Size=UDim2.new(1,-32,0,0); cpListHolder.Position=UDim2.new(0,16,0,cfgY)
+cpListHolder.BackgroundTransparency=1; cpListHolder.AutomaticSize=Enum.AutomaticSize.Y
+cpListHolder.ZIndex=9; cpListHolder.Parent=cfgScroll
 
 local cpListHeight = 0
 local function rebuildConfigPresets()
@@ -1908,72 +1337,38 @@ local function rebuildConfigPresets()
     local y = 0
     if #Presets.configs == 0 then
         local none = Instance.new("TextLabel")
-        none.Size = UDim2.new(1, 0, 0, 22)
-        none.BackgroundTransparency = 1
-        none.Text = "no configs saved"
-        none.TextColor3 = C.sub
-        none.TextSize = 10
-        none.Font = FONT_MONO
-        none.TextXAlignment = Enum.TextXAlignment.Left
-        none.ZIndex = 10
-        none.Parent = cpListHolder
-        cpListHeight = 22
-        return
+        none.Size=UDim2.new(1,0,0,22); none.BackgroundTransparency=1; none.Text="no configs saved"
+        none.TextColor3=C.sub; none.TextSize=10; none.Font=FONT_MONO
+        none.TextXAlignment=Enum.TextXAlignment.Left; none.ZIndex=10; none.Parent=cpListHolder
+        cpListHeight = 22; return
     end
     for idx, p in ipairs(Presets.configs) do
         local item = Instance.new("Frame")
-        item.Size = UDim2.new(1, 0, 0, 34)
-        item.Position = UDim2.new(0, 0, 0, y)
-        item.BackgroundColor3 = Color3.fromRGB(20, 24, 40)
-        item.BackgroundTransparency = 0.55
-        item.BorderSizePixel = 0
-        item.ZIndex = 9
-        item.Parent = cpListHolder
-        Instance.new("UICorner", item).CornerRadius = UDim.new(0, 8)
-
+        item.Size=UDim2.new(1,0,0,34); item.Position=UDim2.new(0,0,0,y)
+        item.BackgroundColor3=Color3.fromRGB(20,24,40); item.BackgroundTransparency=0.55
+        item.BorderSizePixel=0; item.ZIndex=9; item.Parent=cpListHolder
+        Instance.new("UICorner",item).CornerRadius=UDim.new(0,8)
         local nm = Instance.new("TextButton")
-        nm.Size = UDim2.new(1, -40, 1, 0)
-        nm.BackgroundTransparency = 1
-        nm.Text = p.name
-        nm.TextColor3 = C.text
-        nm.TextSize = 11
-        nm.Font = FONT_MONO
-        nm.TextXAlignment = Enum.TextXAlignment.Left
-        nm.ZIndex = 10
-        nm.Parent = item
+        nm.Size=UDim2.new(1,-40,1,0); nm.BackgroundTransparency=1; nm.Text=p.name
+        nm.TextColor3=C.text; nm.TextSize=11; nm.Font=FONT_MONO
+        nm.TextXAlignment=Enum.TextXAlignment.Left; nm.ZIndex=10; nm.Parent=item
         nm.MouseButton1Click:Connect(function()
             for k, v in pairs(p.data) do
-                if Config.defaults[k] ~= nil then
-                    Config.set(k, v)
-                end
+                if Config.defaults[k] ~= nil then Config.set(k, v) end
             end
             for _, cb in pairs(configCallbacks) do pcall(cb) end
             if refreshBounceSlider then pcall(refreshBounceSlider) end
             if refreshLagSlider then pcall(refreshLagSlider) end
-            setStatus("loaded config: " .. p.name, C.good, 1.5)
+            setStatus("loaded config: "..p.name, C.good, 1.5)
         end)
-
         local del = Instance.new("TextButton")
-        del.Size = UDim2.fromOffset(24, 24)
-        del.AnchorPoint = Vector2.new(1, 0.5)
-        del.Position = UDim2.new(1, -5, 0.5, 0)
-        del.BackgroundColor3 = C.space
-        del.BackgroundTransparency = 0.5
-        del.Text = "×"
-        del.TextColor3 = C.bad
-        del.TextSize = 14
-        del.Font = FONT_BOLD
-        del.AutoButtonColor = false
-        del.BorderSizePixel = 0
-        del.ZIndex = 10
-        del.Parent = item
-        Instance.new("UICorner", del).CornerRadius = UDim.new(1, 0)
+        del.Size=UDim2.fromOffset(24,24); del.AnchorPoint=Vector2.new(1,0.5); del.Position=UDim2.new(1,-5,0.5,0)
+        del.BackgroundColor3=C.space; del.BackgroundTransparency=0.5; del.Text="×"; del.TextColor3=C.bad
+        del.TextSize=14; del.Font=FONT_BOLD; del.AutoButtonColor=false; del.BorderSizePixel=0; del.ZIndex=10; del.Parent=item
+        Instance.new("UICorner",del).CornerRadius=UDim.new(1,0)
         del.MouseButton1Click:Connect(function()
-            table.remove(Presets.configs, idx)
-            savePresets()
-            rebuildConfigPresets()
+            table.remove(Presets.configs, idx); savePresets(); rebuildConfigPresets()
         end)
-
         y = y + 40
     end
     cpListHeight = y
@@ -1981,39 +1376,22 @@ end
 rebuildConfigPresets()
 
 cpSaveBtn.MouseButton1Click:Connect(function()
-    local name = (cpNameBox.Text:gsub("^%s+", ""):gsub("%s+$", ""))
-    if name == "" then
-        setStatus("name required", C.bad, 1.5)
-        return
-    end
+    local name = (cpNameBox.Text:gsub("^%s+",""):gsub("%s+$",""))
+    if name == "" then setStatus("name required", C.bad, 1.5); return end
     local snap = {}
-    for k, v in pairs(Config.defaults) do
-        snap[k] = Config.get(k)
-    end
-    table.insert(Presets.configs, { name = name, data = snap })
-    savePresets()
-    rebuildConfigPresets()
-    cpNameBox.Text = ""
-    setStatus("config saved: " .. name, C.good, 1.5)
+    for k, v in pairs(Config.defaults) do snap[k] = Config.get(k) end
+    table.insert(Presets.configs, {name=name, data=snap}); savePresets(); rebuildConfigPresets()
+    cpNameBox.Text=""; setStatus("config saved: "..name, C.good, 1.5)
 end)
 
 cfgY = cfgY + cpListHeight + 12
-
 cfgSectionHeader("RESET")
 local resetBtn = Instance.new("TextButton")
-resetBtn.Size = UDim2.new(1, -32, 0, 36)
-resetBtn.Position = UDim2.new(0, 16, 0, cfgY)
-resetBtn.BackgroundColor3 = Color3.fromRGB(20, 24, 40)
-resetBtn.BackgroundTransparency = 0.55
-resetBtn.Text = "reset  to  defaults"
-resetBtn.TextColor3 = C.bad
-resetBtn.TextSize = 11
-resetBtn.Font = FONT_MONO
-resetBtn.AutoButtonColor = false
-resetBtn.BorderSizePixel = 0
-resetBtn.ZIndex = 9
-resetBtn.Parent = cfgScroll
-Instance.new("UICorner", resetBtn).CornerRadius = UDim.new(0, 8)
+resetBtn.Size=UDim2.new(1,-32,0,36); resetBtn.Position=UDim2.new(0,16,0,cfgY)
+resetBtn.BackgroundColor3=Color3.fromRGB(20,24,40); resetBtn.BackgroundTransparency=0.55
+resetBtn.Text="reset  to  defaults"; resetBtn.TextColor3=C.bad; resetBtn.TextSize=11; resetBtn.Font=FONT_MONO
+resetBtn.AutoButtonColor=false; resetBtn.BorderSizePixel=0; resetBtn.ZIndex=9; resetBtn.Parent=cfgScroll
+Instance.new("UICorner",resetBtn).CornerRadius=UDim.new(0,8)
 resetBtn.MouseButton1Click:Connect(function()
     Config.reset()
     for _, cb in pairs(configCallbacks) do pcall(cb) end
@@ -2021,287 +1399,140 @@ resetBtn.MouseButton1Click:Connect(function()
     if refreshLagSlider then pcall(refreshLagSlider) end
 end)
 cfgY = cfgY + 44
-cfgScroll.CanvasSize = UDim2.new(0, 0, 0, cfgY + 40)
+cfgScroll.CanvasSize = UDim2.new(0,0,0,cfgY+40)
 
--- ═══════════════════════════════════════════════════════════════════
---  CREDITS PAGE
--- ═══════════════════════════════════════════════════════════════════
+-- CREDITS PAGE
 local creditsPage = newPage("credits")
 local credLogo = Instance.new("ImageLabel")
-credLogo.Size = UDim2.fromOffset(90, 90)
-credLogo.Position = UDim2.new(0.5, -45, 0, 20)
-credLogo.BackgroundTransparency = 1
-credLogo.Image = LOGO_ID
-credLogo.ImageColor3 = Color3.fromRGB(255, 255, 255)
-credLogo.ScaleType = Enum.ScaleType.Fit
-credLogo.ZIndex = 8
-credLogo.Parent = creditsPage
-
+credLogo.Size=UDim2.fromOffset(90,90); credLogo.Position=UDim2.new(0.5,-45,0,20)
+credLogo.BackgroundTransparency=1; credLogo.Image=LOGO_ID
+credLogo.ImageColor3=Color3.fromRGB(255,255,255); credLogo.ScaleType=Enum.ScaleType.Fit
+credLogo.ZIndex=8; credLogo.Parent=creditsPage
 local credTitle = Instance.new("TextLabel")
-credTitle.Size = UDim2.new(1, 0, 0, 22)
-credTitle.Position = UDim2.new(0, 0, 0, 118)
-credTitle.BackgroundTransparency = 1
-credTitle.Text = "REFORGED"
-credTitle.TextColor3 = C.text
-credTitle.TextSize = 16
-credTitle.Font = FONT_TITLE
-credTitle.ZIndex = 8
-credTitle.Parent = creditsPage
-
+credTitle.Size=UDim2.new(1,0,0,22); credTitle.Position=UDim2.new(0,0,0,118); credTitle.BackgroundTransparency=1
+credTitle.Text="REFORGED"; credTitle.TextColor3=C.text; credTitle.TextSize=16; credTitle.Font=FONT_TITLE
+credTitle.ZIndex=8; credTitle.Parent=creditsPage
 local credVer = Instance.new("TextLabel")
-credVer.Size = UDim2.new(1, 0, 0, 16)
-credVer.Position = UDim2.new(0, 0, 0, 142)
-credVer.BackgroundTransparency = 1
-credVer.Text = "v1.9  ·  private build"
-credVer.TextColor3 = C.sub
-credVer.TextSize = 10
-credVer.Font = FONT_MONO
-credVer.ZIndex = 8
-credVer.Parent = creditsPage
-
+credVer.Size=UDim2.new(1,0,0,16); credVer.Position=UDim2.new(0,0,0,142); credVer.BackgroundTransparency=1
+credVer.Text="v2.0  ·  private build"; credVer.TextColor3=C.sub; credVer.TextSize=10
+credVer.Font=FONT_MONO; credVer.ZIndex=8; credVer.Parent=creditsPage
 local credBody = Instance.new("TextLabel")
-credBody.Size = UDim2.new(1, -40, 0, 80)
-credBody.Position = UDim2.new(0, 20, 0, 184)
-credBody.BackgroundTransparency = 1
-credBody.Text = "-- CREDITS --\n\nmade for the void\nby weeks_eek"
-credBody.TextColor3 = C.sub
-credBody.TextSize = 11
-credBody.Font = FONT_MONO
-credBody.TextXAlignment = Enum.TextXAlignment.Center
-credBody.TextYAlignment = Enum.TextYAlignment.Top
-credBody.ZIndex = 8
-credBody.Parent = creditsPage
+credBody.Size=UDim2.new(1,-40,0,80); credBody.Position=UDim2.new(0,20,0,184); credBody.BackgroundTransparency=1
+credBody.Text="-- CREDITS --\n\nmade for the void\nby weeks_eek"; credBody.TextColor3=C.sub
+credBody.TextSize=11; credBody.Font=FONT_MONO; credBody.TextXAlignment=Enum.TextXAlignment.Center
+credBody.TextYAlignment=Enum.TextYAlignment.Top; credBody.ZIndex=8; credBody.Parent=creditsPage
 
--- ═══════════════════════════════════════════════════════════════════
---  STATUS BAR
--- ═══════════════════════════════════════════════════════════════════
+-- STATUS BAR
 local statusBar = Instance.new("Frame")
-statusBar.Size = UDim2.new(1, -32, 0, 22)
-statusBar.Position = UDim2.new(0, 16, 1, -32)
-statusBar.BackgroundColor3 = C.space
-statusBar.BackgroundTransparency = 0.4
-statusBar.BorderSizePixel = 0
-statusBar.ZIndex = 7
-statusBar.Parent = win
-Instance.new("UICorner", statusBar).CornerRadius = UDim.new(0, 6)
-
+statusBar.Size=UDim2.new(1,-32,0,22); statusBar.Position=UDim2.new(0,16,1,-32)
+statusBar.BackgroundColor3=C.space; statusBar.BackgroundTransparency=0.4
+statusBar.BorderSizePixel=0; statusBar.ZIndex=7; statusBar.Parent=win
+Instance.new("UICorner",statusBar).CornerRadius=UDim.new(0,6)
 local statusDot = Instance.new("Frame")
-statusDot.Size = UDim2.fromOffset(6, 6)
-statusDot.Position = UDim2.new(0, 10, 0.5, -3)
-statusDot.BackgroundColor3 = C.sub
-statusDot.BorderSizePixel = 0
-statusDot.ZIndex = 8
-statusDot.Parent = statusBar
-Instance.new("UICorner", statusDot).CornerRadius = UDim.new(1, 0)
-
+statusDot.Size=UDim2.fromOffset(6,6); statusDot.Position=UDim2.new(0,10,0.5,-3)
+statusDot.BackgroundColor3=C.sub; statusDot.BorderSizePixel=0; statusDot.ZIndex=8; statusDot.Parent=statusBar
+Instance.new("UICorner",statusDot).CornerRadius=UDim.new(1,0)
 local statusText = Instance.new("TextLabel")
-statusText.Size = UDim2.new(1, -32, 1, 0)
-statusText.Position = UDim2.new(0, 24, 0, 0)
-statusText.BackgroundTransparency = 1
-statusText.Text = "idle"
-statusText.TextColor3 = C.sub
-statusText.TextSize = 10
-statusText.Font = FONT_MONO
-statusText.TextXAlignment = Enum.TextXAlignment.Left
-statusText.ZIndex = 8
-statusText.Parent = statusBar
-
+statusText.Size=UDim2.new(1,-32,1,0); statusText.Position=UDim2.new(0,24,0,0)
+statusText.BackgroundTransparency=1; statusText.Text="idle"; statusText.TextColor3=C.sub
+statusText.TextSize=10; statusText.Font=FONT_MONO; statusText.TextXAlignment=Enum.TextXAlignment.Left
+statusText.ZIndex=8; statusText.Parent=statusBar
 local statusUntil = 0
 function setStatus(text, color, hold)
     if not statusText or not statusText.Parent then return end
-    statusText.Text = text
-    color = color or C.sub
-    statusText.TextColor3 = color
-    TweenService:Create(statusDot, TweenInfo.new(0.15), {BackgroundColor3 = color}):Play()
+    statusText.Text=text; color=color or C.sub; statusText.TextColor3=color
+    TweenService:Create(statusDot,TweenInfo.new(0.15),{BackgroundColor3=color}):Play()
     statusUntil = tick() + (hold or 0)
 end
-
 task.spawn(function()
     while true do
         task.wait(0.25)
         if statusUntil > 0 and tick() > statusUntil then
-            statusUntil = 0
-            setStatus("idle", C.sub)
+            statusUntil = 0; setStatus("idle", C.sub)
         end
     end
 end)
 
--- ═══════════════════════════════════════════════════════════════════
---  SIDEBAR
--- ═══════════════════════════════════════════════════════════════════
-local SB_W    = 220
-local SB_TOP  = 48
-local SB_BOT  = 48
-local SB_LEFT = 14
-
+-- SIDEBAR
+local SB_W, SB_TOP, SB_BOT, SB_LEFT = 220, 48, 48, 14
 local sidebar = Instance.new("Frame")
-sidebar.Name = "Sidebar"
-sidebar.Size = UDim2.new(0, SB_W, 1, -SB_TOP - SB_BOT)
-sidebar.Position = UDim2.new(0, -SB_W - 40, 0, SB_TOP)
-sidebar.BackgroundColor3 = C.panel
-sidebar.BackgroundTransparency = 0.08
-sidebar.BorderSizePixel = 0
-sidebar.ClipsDescendants = true
-sidebar.Active = true
-sidebar.ZIndex = 20
-sidebar.Parent = guiMain
-Instance.new("UICorner", sidebar).CornerRadius = UDim.new(0, 16)
-
+sidebar.Name="Sidebar"; sidebar.Size=UDim2.new(0,SB_W,1,-SB_TOP-SB_BOT)
+sidebar.Position=UDim2.new(0,-SB_W-40,0,SB_TOP); sidebar.BackgroundColor3=C.panel
+sidebar.BackgroundTransparency=0.08; sidebar.BorderSizePixel=0; sidebar.ClipsDescendants=true
+sidebar.Active=true; sidebar.ZIndex=20; sidebar.Parent=guiMain
+Instance.new("UICorner",sidebar).CornerRadius=UDim.new(0,16)
 local sbGrad = Instance.new("UIGradient")
-sbGrad.Color = ColorSequence.new{
-    ColorSequenceKeypoint.new(0, C.panel2),
-    ColorSequenceKeypoint.new(1, C.space),
-}
-sbGrad.Rotation = 0
-sbGrad.Parent = sidebar
-
+sbGrad.Color=ColorSequence.new{ColorSequenceKeypoint.new(0,C.panel2),ColorSequenceKeypoint.new(1,C.space)}
+sbGrad.Rotation=0; sbGrad.Parent=sidebar
 local sbStroke = Instance.new("UIStroke")
-sbStroke.Color = C.aurora
-sbStroke.Thickness = 1.4
-sbStroke.Transparency = 0.25
-sbStroke.Parent = sidebar
-
+sbStroke.Color=C.aurora; sbStroke.Thickness=1.4; sbStroke.Transparency=0.25; sbStroke.Parent=sidebar
 spawnAmbientParticles(sidebar, 14)
-
 local sbTitle = Instance.new("TextLabel")
-sbTitle.Size = UDim2.new(1, -20, 0, 20)
-sbTitle.Position = UDim2.new(0, 14, 0, 12)
-sbTitle.BackgroundTransparency = 1
-sbTitle.Text = "FEATURES"
-sbTitle.TextColor3 = C.text
-sbTitle.TextSize = 11
-sbTitle.Font = FONT_BOLD
-sbTitle.TextXAlignment = Enum.TextXAlignment.Left
-sbTitle.ZIndex = 21
-sbTitle.Parent = sidebar
-
+sbTitle.Size=UDim2.new(1,-20,0,20); sbTitle.Position=UDim2.new(0,14,0,12); sbTitle.BackgroundTransparency=1
+sbTitle.Text="FEATURES"; sbTitle.TextColor3=C.text; sbTitle.TextSize=11; sbTitle.Font=FONT_BOLD
+sbTitle.TextXAlignment=Enum.TextXAlignment.Left; sbTitle.ZIndex=21; sbTitle.Parent=sidebar
 local searchHolder = Instance.new("Frame")
-searchHolder.Size = UDim2.new(1, -20, 0, 32)
-searchHolder.Position = UDim2.new(0, 10, 0, 38)
-searchHolder.BackgroundColor3 = Color3.fromRGB(20, 24, 40)
-searchHolder.BackgroundTransparency = 0.4
-searchHolder.BorderSizePixel = 0
-searchHolder.ZIndex = 21
-searchHolder.Parent = sidebar
-Instance.new("UICorner", searchHolder).CornerRadius = UDim.new(0, 8)
-
+searchHolder.Size=UDim2.new(1,-20,0,32); searchHolder.Position=UDim2.new(0,10,0,38)
+searchHolder.BackgroundColor3=Color3.fromRGB(20,24,40); searchHolder.BackgroundTransparency=0.4
+searchHolder.BorderSizePixel=0; searchHolder.ZIndex=21; searchHolder.Parent=sidebar
+Instance.new("UICorner",searchHolder).CornerRadius=UDim.new(0,8)
 local searchStroke = Instance.new("UIStroke")
-searchStroke.Color = C.border
-searchStroke.Thickness = 1
-searchStroke.Transparency = 0.6
-searchStroke.Parent = searchHolder
-
+searchStroke.Color=C.border; searchStroke.Thickness=1; searchStroke.Transparency=0.6; searchStroke.Parent=searchHolder
 local searchIcon = Instance.new("TextLabel")
-searchIcon.Size = UDim2.fromOffset(16, 16)
-searchIcon.Position = UDim2.new(0, 8, 0.5, -8)
-searchIcon.BackgroundTransparency = 1
-searchIcon.Text = "⌕"
-searchIcon.TextColor3 = C.sub
-searchIcon.TextSize = 14
-searchIcon.Font = FONT_ICON
-searchIcon.ZIndex = 22
-searchIcon.Parent = searchHolder
-
+searchIcon.Size=UDim2.fromOffset(16,16); searchIcon.Position=UDim2.new(0,8,0.5,-8)
+searchIcon.BackgroundTransparency=1; searchIcon.Text="⌕"; searchIcon.TextColor3=C.sub
+searchIcon.TextSize=14; searchIcon.Font=FONT_ICON; searchIcon.ZIndex=22; searchIcon.Parent=searchHolder
 local searchBox = Instance.new("TextBox")
-searchBox.Size = UDim2.new(1, -32, 1, 0)
-searchBox.Position = UDim2.new(0, 26, 0, 0)
-searchBox.BackgroundTransparency = 1
-searchBox.Text = ""
-searchBox.PlaceholderText = "search features..."
-searchBox.PlaceholderColor3 = C.sub
-searchBox.TextColor3 = C.text
-searchBox.TextSize = 11
-searchBox.Font = FONT_MONO
-searchBox.TextXAlignment = Enum.TextXAlignment.Left
-searchBox.ClearTextOnFocus = false
-searchBox.ZIndex = 22
-searchBox.Parent = searchHolder
-
+searchBox.Size=UDim2.new(1,-32,1,0); searchBox.Position=UDim2.new(0,26,0,0); searchBox.BackgroundTransparency=1
+searchBox.Text=""; searchBox.PlaceholderText="search features..."; searchBox.PlaceholderColor3=C.sub
+searchBox.TextColor3=C.text; searchBox.TextSize=11; searchBox.Font=FONT_MONO
+searchBox.TextXAlignment=Enum.TextXAlignment.Left; searchBox.ClearTextOnFocus=false
+searchBox.ZIndex=22; searchBox.Parent=searchHolder
 local resultsScroll = Instance.new("ScrollingFrame")
-resultsScroll.Size = UDim2.new(1, -20, 1, -38 - 32 - 10 - 62)
-resultsScroll.Position = UDim2.new(0, 10, 0, 78)
-resultsScroll.BackgroundTransparency = 1
-resultsScroll.BorderSizePixel = 0
-resultsScroll.ScrollBarThickness = 2
-resultsScroll.ScrollBarImageColor3 = C.border
-resultsScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
-resultsScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
-resultsScroll.ZIndex = 21
-resultsScroll.Parent = sidebar
+resultsScroll.Size=UDim2.new(1,-20,1,-38-32-10-62); resultsScroll.Position=UDim2.new(0,10,0,78)
+resultsScroll.BackgroundTransparency=1; resultsScroll.BorderSizePixel=0
+resultsScroll.ScrollBarThickness=2; resultsScroll.ScrollBarImageColor3=C.border
+resultsScroll.CanvasSize=UDim2.new(0,0,0,0); resultsScroll.AutomaticCanvasSize=Enum.AutomaticSize.Y
+resultsScroll.ZIndex=21; resultsScroll.Parent=sidebar
 
 local function rebuildResults(filter)
     for _, c in ipairs(resultsScroll:GetChildren()) do
         if c:IsA("Frame") or c:IsA("TextButton") or c:IsA("TextLabel") then c:Destroy() end
     end
-
-    filter = (filter or ""):lower():gsub("%s+", "")
-    local y = 0
-    local count = 0
-
+    filter = (filter or ""):lower():gsub("%s+","")
+    local y, count = 0, 0
     for _, f in pairs(Features) do
         if type(f) == "table" and f.id then
-            local nameLow = f.name:lower():gsub("%s+", "")
+            local nameLow = f.name:lower():gsub("%s+","")
             local catLow  = f.category:lower()
-            if filter == "" or nameLow:find(filter, 1, true) or catLow:find(filter, 1, true) then
+            if filter == "" or nameLow:find(filter,1,true) or catLow:find(filter,1,true) then
                 local item = Instance.new("TextButton")
-                item.Size = UDim2.new(1, -4, 0, 48)
-                item.Position = UDim2.new(0, 2, 0, y)
-                item.BackgroundColor3 = Color3.fromRGB(20, 24, 40)
-                item.BackgroundTransparency = 0.55
-                item.Text = ""
-                item.AutoButtonColor = false
-                item.BorderSizePixel = 0
-                item.ZIndex = 22
-                item.Parent = resultsScroll
-                Instance.new("UICorner", item).CornerRadius = UDim.new(0, 8)
-
+                item.Size=UDim2.new(1,-4,0,48); item.Position=UDim2.new(0,2,0,y)
+                item.BackgroundColor3=Color3.fromRGB(20,24,40); item.BackgroundTransparency=0.55
+                item.Text=""; item.AutoButtonColor=false; item.BorderSizePixel=0
+                item.ZIndex=22; item.Parent=resultsScroll
+                Instance.new("UICorner",item).CornerRadius=UDim.new(0,8)
                 local iStroke = Instance.new("UIStroke")
-                iStroke.Color = C.border
-                iStroke.Thickness = 1
-                iStroke.Transparency = 0.7
-                iStroke.Parent = item
-
+                iStroke.Color=C.border; iStroke.Thickness=1; iStroke.Transparency=0.7; iStroke.Parent=item
                 local nm = Instance.new("TextLabel")
-                nm.Size = UDim2.new(1, -22, 0, 16)
-                nm.Position = UDim2.new(0, 8, 0, 6)
-                nm.BackgroundTransparency = 1
-                nm.Text = f.name
-                nm.TextColor3 = C.text
-                nm.TextSize = 11
-                nm.Font = FONT_BOLD
-                nm.TextXAlignment = Enum.TextXAlignment.Left
-                nm.TextTruncate = Enum.TextTruncate.AtEnd
-                nm.ZIndex = 23
-                nm.Parent = item
-
+                nm.Size=UDim2.new(1,-22,0,16); nm.Position=UDim2.new(0,8,0,6); nm.BackgroundTransparency=1
+                nm.Text=f.name; nm.TextColor3=C.text; nm.TextSize=11; nm.Font=FONT_BOLD
+                nm.TextXAlignment=Enum.TextXAlignment.Left; nm.TextTruncate=Enum.TextTruncate.AtEnd
+                nm.ZIndex=23; nm.Parent=item
                 local ct = Instance.new("TextLabel")
-                ct.Size = UDim2.new(1, -22, 0, 12)
-                ct.Position = UDim2.new(0, 8, 0, 26)
-                ct.BackgroundTransparency = 1
-                ct.Text = f.category:lower()
-                ct.TextColor3 = C.sub
-                ct.TextSize = 9
-                ct.Font = FONT_MONO
-                ct.TextXAlignment = Enum.TextXAlignment.Left
-                ct.ZIndex = 23
-                ct.Parent = item
-
+                ct.Size=UDim2.new(1,-22,0,12); ct.Position=UDim2.new(0,8,0,26); ct.BackgroundTransparency=1
+                ct.Text=f.category:lower(); ct.TextColor3=C.sub; ct.TextSize=9; ct.Font=FONT_MONO
+                ct.TextXAlignment=Enum.TextXAlignment.Left; ct.ZIndex=23; ct.Parent=item
                 local dot = Instance.new("Frame")
-                dot.Size = UDim2.fromOffset(6, 6)
-                dot.AnchorPoint = Vector2.new(1, 0.5)
-                dot.Position = UDim2.new(1, -10, 0, 20)
-                dot.BackgroundColor3 = (f.enabled or f.isButton) and C.good or C.sub
-                dot.BorderSizePixel = 0
-                dot.ZIndex = 23
-                dot.Parent = item
-                Instance.new("UICorner", dot).CornerRadius = UDim.new(1, 0)
-
+                dot.Size=UDim2.fromOffset(6,6); dot.AnchorPoint=Vector2.new(1,0.5); dot.Position=UDim2.new(1,-10,0,20)
+                dot.BackgroundColor3=(f.enabled or f.isButton) and C.good or C.sub
+                dot.BorderSizePixel=0; dot.ZIndex=23; dot.Parent=item
+                Instance.new("UICorner",dot).CornerRadius=UDim.new(1,0)
                 Features.addListener(f.id, function(on)
                     if dot and dot.Parent then
                         dot.BackgroundColor3 = on and C.good or C.sub
                     end
                 end)
-
                 item.MouseButton1Click:Connect(function()
                     if f.isButton then
                         if f.action then pcall(f.action) end
@@ -2310,389 +1541,217 @@ local function rebuildResults(filter)
                     end
                     if switchTab then switchTab(f.tab) end
                 end)
-
-                y = y + 54
-                count = count + 1
+                y = y + 54; count = count + 1
             end
         end
     end
-
     if count == 0 then
         local empty = Instance.new("TextLabel")
-        empty.Size = UDim2.new(1, -8, 0, 24)
-        empty.Position = UDim2.new(0, 4, 0, 4)
-        empty.BackgroundTransparency = 1
-        empty.Text = "no results"
-        empty.TextColor3 = C.sub
-        empty.TextSize = 10
-        empty.Font = FONT_MONO
-        empty.TextXAlignment = Enum.TextXAlignment.Center
-        empty.ZIndex = 22
-        empty.Parent = resultsScroll
+        empty.Size=UDim2.new(1,-8,0,24); empty.Position=UDim2.new(0,4,0,4)
+        empty.BackgroundTransparency=1; empty.Text="no results"; empty.TextColor3=C.sub
+        empty.TextSize=10; empty.Font=FONT_MONO; empty.TextXAlignment=Enum.TextXAlignment.Center
+        empty.ZIndex=22; empty.Parent=resultsScroll
     end
 end
-
-searchBox:GetPropertyChangedSignal("Text"):Connect(function()
-    rebuildResults(searchBox.Text)
-end)
+searchBox:GetPropertyChangedSignal("Text"):Connect(function() rebuildResults(searchBox.Text) end)
 rebuildResults("")
 
 local userCard = Instance.new("Frame")
-userCard.Size = UDim2.new(1, -20, 0, 56)
-userCard.AnchorPoint = Vector2.new(0, 1)
-userCard.Position = UDim2.new(0, 10, 1, -10)
-userCard.BackgroundColor3 = Color3.fromRGB(20, 24, 40)
-userCard.BackgroundTransparency = 0.5
-userCard.BorderSizePixel = 0
-userCard.ZIndex = 21
-userCard.Parent = sidebar
-Instance.new("UICorner", userCard).CornerRadius = UDim.new(0, 10)
-
+userCard.Size=UDim2.new(1,-20,0,56); userCard.AnchorPoint=Vector2.new(0,1); userCard.Position=UDim2.new(0,10,1,-10)
+userCard.BackgroundColor3=Color3.fromRGB(20,24,40); userCard.BackgroundTransparency=0.5
+userCard.BorderSizePixel=0; userCard.ZIndex=21; userCard.Parent=sidebar
+Instance.new("UICorner",userCard).CornerRadius=UDim.new(0,10)
 local ucStroke = Instance.new("UIStroke")
-ucStroke.Color = C.border
-ucStroke.Thickness = 1
-ucStroke.Transparency = 0.6
-ucStroke.Parent = userCard
-
+ucStroke.Color=C.border; ucStroke.Thickness=1; ucStroke.Transparency=0.6; ucStroke.Parent=userCard
 local ucDot = Instance.new("ImageLabel")
-ucDot.Size = UDim2.fromOffset(28, 28)
-ucDot.Position = UDim2.new(0, 10, 0, 12)
-ucDot.BackgroundColor3 = C.panel2
-ucDot.BackgroundTransparency = 0.4
-ucDot.Image = LOGO_ID
-ucDot.ImageColor3 = Color3.fromRGB(255, 255, 255)
-ucDot.ScaleType = Enum.ScaleType.Fit
-ucDot.ZIndex = 22
-ucDot.Parent = userCard
-Instance.new("UICorner", ucDot).CornerRadius = UDim.new(1, 0)
-
+ucDot.Size=UDim2.fromOffset(28,28); ucDot.Position=UDim2.new(0,10,0,12)
+ucDot.BackgroundColor3=C.panel2; ucDot.BackgroundTransparency=0.4; ucDot.Image=LOGO_ID
+ucDot.ImageColor3=Color3.fromRGB(255,255,255); ucDot.ScaleType=Enum.ScaleType.Fit
+ucDot.ZIndex=22; ucDot.Parent=userCard
+Instance.new("UICorner",ucDot).CornerRadius=UDim.new(1,0)
 local ucName = Instance.new("TextLabel")
-ucName.Size = UDim2.new(1, -50, 0, 16)
-ucName.Position = UDim2.new(0, 46, 0, 10)
-ucName.BackgroundTransparency = 1
-ucName.Text = USER_CARD.username
-ucName.TextColor3 = C.text
-ucName.TextSize = 12
-ucName.Font = FONT_BOLD
-ucName.TextXAlignment = Enum.TextXAlignment.Left
-ucName.TextTruncate = Enum.TextTruncate.AtEnd
-ucName.ZIndex = 22
-ucName.Parent = userCard
-
+ucName.Size=UDim2.new(1,-50,0,16); ucName.Position=UDim2.new(0,46,0,10); ucName.BackgroundTransparency=1
+ucName.Text=USER_CARD.username; ucName.TextColor3=C.text; ucName.TextSize=12; ucName.Font=FONT_BOLD
+ucName.TextXAlignment=Enum.TextXAlignment.Left; ucName.TextTruncate=Enum.TextTruncate.AtEnd
+ucName.ZIndex=22; ucName.Parent=userCard
 local ucDesc = Instance.new("TextLabel")
-ucDesc.Size = UDim2.new(1, -50, 0, 14)
-ucDesc.Position = UDim2.new(0, 46, 0, 28)
-ucDesc.BackgroundTransparency = 1
-ucDesc.Text = USER_CARD.description
-ucDesc.TextColor3 = C.sub
-ucDesc.TextSize = 10
-ucDesc.Font = FONT_MONO
-ucDesc.TextXAlignment = Enum.TextXAlignment.Left
-ucDesc.TextTruncate = Enum.TextTruncate.AtEnd
-ucDesc.ZIndex = 22
-ucDesc.Parent = userCard
+ucDesc.Size=UDim2.new(1,-50,0,14); ucDesc.Position=UDim2.new(0,46,0,28); ucDesc.BackgroundTransparency=1
+ucDesc.Text=USER_CARD.description; ucDesc.TextColor3=C.sub; ucDesc.TextSize=10; ucDesc.Font=FONT_MONO
+ucDesc.TextXAlignment=Enum.TextXAlignment.Left; ucDesc.TextTruncate=Enum.TextTruncate.AtEnd
+ucDesc.ZIndex=22; ucDesc.Parent=userCard
 
--- ═══════════════════════════════════════════════════════════════════
---  BOOMBOX
--- ═══════════════════════════════════════════════════════════════════
-local musicTracks = {
-    -- { name = "example track", id = "rbxassetid://1837879082" },
-}
+-- BOOMBOX
+local musicTracks = {}
 local currentTrack = 1
 local musicPlaying = false
-
 local musicSound = Instance.new("Sound")
-musicSound.Name = "ReforgedMusic"
-musicSound.Volume = 0.5
-musicSound.Looped = false
-musicSound.Parent = SoundService
-
+musicSound.Name="ReforgedMusic"; musicSound.Volume=0.5; musicSound.Looped=false; musicSound.Parent=SoundService
 local function playCurrentTrack()
     if #musicTracks == 0 then return end
     if currentTrack > #musicTracks then currentTrack = 1 end
     local t = musicTracks[currentTrack]
-    musicSound.SoundId = t.id
-    musicSound:Play()
-    setStatus("playing · " .. t.name, C.good, 2)
+    musicSound.SoundId = t.id; musicSound:Play()
+    setStatus("playing · "..t.name, C.good, 2)
 end
-
 musicSound.Stopped:Connect(function()
     if musicPlaying then
         currentTrack = currentTrack % #musicTracks + 1
         playCurrentTrack()
     end
 end)
-
-local BB_SIZE = 58
-local BB_GAP  = 14
-
+local BB_SIZE, BB_GAP = 58, 14
 local boombox = Instance.new("TextButton")
-boombox.Name = "Boombox"
-boombox.Size = UDim2.fromOffset(BB_SIZE, BB_SIZE)
-boombox.Position = UDim2.new(0, -BB_SIZE - 20, 0, SB_TOP)
-boombox.BackgroundColor3 = C.panel
-boombox.BackgroundTransparency = 0.15
-boombox.Text = ""
-boombox.AutoButtonColor = false
-boombox.BorderSizePixel = 0
-boombox.ClipsDescendants = true
-boombox.ZIndex = 20
-boombox.Parent = guiMain
-Instance.new("UICorner", boombox).CornerRadius = UDim.new(0, 14)
-
+boombox.Name="Boombox"; boombox.Size=UDim2.fromOffset(BB_SIZE,BB_SIZE)
+boombox.Position=UDim2.new(0,-BB_SIZE-20,0,SB_TOP); boombox.BackgroundColor3=C.panel
+boombox.BackgroundTransparency=0.15; boombox.Text=""; boombox.AutoButtonColor=false
+boombox.BorderSizePixel=0; boombox.ClipsDescendants=true; boombox.ZIndex=20; boombox.Parent=guiMain
+Instance.new("UICorner",boombox).CornerRadius=UDim.new(0,14)
 local bbGrad = Instance.new("UIGradient")
-bbGrad.Color = ColorSequence.new{
-    ColorSequenceKeypoint.new(0, C.panel2),
-    ColorSequenceKeypoint.new(1, C.space),
-}
-bbGrad.Rotation = 90
-bbGrad.Parent = boombox
-
+bbGrad.Color=ColorSequence.new{ColorSequenceKeypoint.new(0,C.panel2),ColorSequenceKeypoint.new(1,C.space)}
+bbGrad.Rotation=90; bbGrad.Parent=boombox
 local bbStroke = Instance.new("UIStroke")
-bbStroke.Color = C.aurora
-bbStroke.Thickness = 1.4
-bbStroke.Transparency = 0.25
-bbStroke.Parent = boombox
-
+bbStroke.Color=C.aurora; bbStroke.Thickness=1.4; bbStroke.Transparency=0.25; bbStroke.Parent=boombox
 local bbIcon = Instance.new("TextLabel")
-bbIcon.Size = UDim2.fromScale(1, 1)
-bbIcon.BackgroundTransparency = 1
-bbIcon.Text = "♫"
-bbIcon.TextColor3 = C.aurora
-bbIcon.TextSize = 26
-bbIcon.Font = FONT_ICON
-bbIcon.ZIndex = 21
-bbIcon.Parent = boombox
-
+bbIcon.Size=UDim2.fromScale(1,1); bbIcon.BackgroundTransparency=1; bbIcon.Text="♫"
+bbIcon.TextColor3=C.aurora; bbIcon.TextSize=26; bbIcon.Font=FONT_ICON; bbIcon.ZIndex=21; bbIcon.Parent=boombox
 boombox.MouseButton1Click:Connect(function()
-    if #musicTracks == 0 then
-        setStatus("add songs to musicTracks", C.warn, 2)
-        return
-    end
+    if #musicTracks == 0 then setStatus("add songs to musicTracks", C.warn, 2); return end
     musicPlaying = not musicPlaying
-    if musicPlaying then
-        playCurrentTrack()
-    else
-        musicSound:Stop()
-        setStatus("music paused", C.sub, 1.2)
-    end
-    TweenService:Create(bbIcon, TweenInfo.new(0.2), {TextColor3 = musicPlaying and C.good or C.aurora}):Play()
+    if musicPlaying then playCurrentTrack()
+    else musicSound:Stop(); setStatus("music paused", C.sub, 1.2) end
+    TweenService:Create(bbIcon,TweenInfo.new(0.2),{TextColor3=musicPlaying and C.good or C.aurora}):Play()
 end)
-
 task.spawn(function()
     while boombox.Parent do
         if musicPlaying then
-            TweenService:Create(bbIcon, TweenInfo.new(0.6, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {TextTransparency = 0.3}):Play()
+            TweenService:Create(bbIcon,TweenInfo.new(0.6,Enum.EasingStyle.Sine,Enum.EasingDirection.InOut),{TextTransparency=0.3}):Play()
             task.wait(0.6)
-            TweenService:Create(bbIcon, TweenInfo.new(0.6, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {TextTransparency = 0}):Play()
+            TweenService:Create(bbIcon,TweenInfo.new(0.6,Enum.EasingStyle.Sine,Enum.EasingDirection.InOut),{TextTransparency=0}):Play()
             task.wait(0.6)
-        else
-            task.wait(0.4)
-        end
+        else task.wait(0.4) end
     end
 end)
 
--- ═══════════════════════════════════════════════════════════════════
---  RESIZE
--- ═══════════════════════════════════════════════════════════════════
+-- RESIZE
 local resizeState = nil
 local function makeResizeHandle(anchor, size, pos, mode)
     local h = Instance.new("TextButton")
-    h.Size = size
-    h.AnchorPoint = anchor
-    h.Position = pos
-    h.BackgroundTransparency = 1
-    h.Text = ""
-    h.AutoButtonColor = false
-    h.ZIndex = 15
-    h.Parent = win
+    h.Size=size; h.AnchorPoint=anchor; h.Position=pos; h.BackgroundTransparency=1
+    h.Text=""; h.AutoButtonColor=false; h.ZIndex=15; h.Parent=win
     h.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1
-        or input.UserInputType == Enum.UserInputType.Touch then
-            resizeState = {
-                mode = mode,
-                startMouse = input.Position,
-                startSize = Vector2.new(win.AbsoluteSize.X, win.AbsoluteSize.Y),
-            }
+        if input.UserInputType==Enum.UserInputType.MouseButton1 or input.UserInputType==Enum.UserInputType.Touch then
+            resizeState = {mode=mode, startMouse=input.Position, startSize=Vector2.new(win.AbsoluteSize.X, win.AbsoluteSize.Y)}
         end
     end)
     return h
 end
-local resizeBR = makeResizeHandle(Vector2.new(1, 1),   UDim2.fromOffset(22, 22), UDim2.new(1, 0, 1, 0),  "br")
-local resizeR  = makeResizeHandle(Vector2.new(1, 0.5), UDim2.fromOffset(6, 60),  UDim2.new(1, 0, 0.5, 0), "r")
-local resizeB  = makeResizeHandle(Vector2.new(0.5, 1), UDim2.fromOffset(60, 6),  UDim2.new(0.5, 0, 1, 0), "b")
+local resizeBR = makeResizeHandle(Vector2.new(1,1),   UDim2.fromOffset(22,22), UDim2.new(1,0,1,0),  "br")
+local resizeR  = makeResizeHandle(Vector2.new(1,0.5), UDim2.fromOffset(6,60),  UDim2.new(1,0,0.5,0), "r")
+local resizeB  = makeResizeHandle(Vector2.new(0.5,1), UDim2.fromOffset(60,6),  UDim2.new(0.5,0,1,0), "b")
 
 local grip = Instance.new("TextLabel")
-grip.Size = UDim2.fromOffset(20, 20)
-grip.AnchorPoint = Vector2.new(1, 1)
-grip.Position = UDim2.new(1, -3, 1, -3)
-grip.BackgroundTransparency = 1
-grip.Text = "◢"
-grip.TextColor3 = C.sub
-grip.TextSize = 14
-grip.Font = FONT_ICON
-grip.ZIndex = 16
-grip.Parent = win
-resizeBR.MouseEnter:Connect(function()
-    TweenService:Create(grip, TweenInfo.new(0.15), {TextColor3 = C.aurora}):Play()
-end)
-resizeBR.MouseLeave:Connect(function()
-    TweenService:Create(grip, TweenInfo.new(0.15), {TextColor3 = C.sub}):Play()
-end)
+grip.Size=UDim2.fromOffset(20,20); grip.AnchorPoint=Vector2.new(1,1); grip.Position=UDim2.new(1,-3,1,-3)
+grip.BackgroundTransparency=1; grip.Text="◢"; grip.TextColor3=C.sub; grip.TextSize=14
+grip.Font=FONT_ICON; grip.ZIndex=16; grip.Parent=win
+resizeBR.MouseEnter:Connect(function() TweenService:Create(grip,TweenInfo.new(0.15),{TextColor3=C.aurora}):Play() end)
+resizeBR.MouseLeave:Connect(function() TweenService:Create(grip,TweenInfo.new(0.15),{TextColor3=C.sub}):Play() end)
 
--- ═══════════════════════════════════════════════════════════════════
---  DRAG + RESIZE
--- ═══════════════════════════════════════════════════════════════════
+-- DRAG + RESIZE
 local dragState = nil
-local function expLerp(a, b, rate, dt)
-    return a + (b - a) * (1 - math.exp(-rate * dt))
-end
+local function expLerp(a,b,rate,dt) return a + (b-a)*(1-math.exp(-rate*dt)) end
 
 titleBar.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1
-    or input.UserInputType == Enum.UserInputType.Touch then
+    if input.UserInputType==Enum.UserInputType.MouseButton1 or input.UserInputType==Enum.UserInputType.Touch then
         dragState = {
-            startMouse = input.Position,
-            startPos = Vector2.new(windowContainer.Position.X.Offset, windowContainer.Position.Y.Offset),
-            target = Vector2.new(windowContainer.Position.X.Offset, windowContainer.Position.Y.Offset),
+            startMouse=input.Position,
+            startPos=Vector2.new(windowContainer.Position.X.Offset, windowContainer.Position.Y.Offset),
+            target=Vector2.new(windowContainer.Position.X.Offset, windowContainer.Position.Y.Offset),
         }
-        winStroke.Color = C.aurora
-        winStroke.Transparency = 0.05
+        winStroke.Color=C.aurora; winStroke.Transparency=0.05
     end
 end)
-
 UserInputService.InputChanged:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseMovement
-    or input.UserInputType == Enum.UserInputType.Touch then
+    if input.UserInputType==Enum.UserInputType.MouseMovement or input.UserInputType==Enum.UserInputType.Touch then
         if dragState then
             local delta = input.Position - dragState.startMouse
-            dragState.target = Vector2.new(dragState.startPos.X + delta.X, dragState.startPos.Y + delta.Y)
+            dragState.target = Vector2.new(dragState.startPos.X+delta.X, dragState.startPos.Y+delta.Y)
         end
         if resizeState then
             local delta = input.Position - resizeState.startMouse
             local nx, ny = resizeState.startSize.X, resizeState.startSize.Y
-            if resizeState.mode == "br" or resizeState.mode == "r" then nx = resizeState.startSize.X + delta.X end
-            if resizeState.mode == "br" or resizeState.mode == "b" then ny = resizeState.startSize.Y + delta.Y end
-            nx = math.clamp(nx, MIN_W, 1000)
-            ny = math.clamp(ny, MIN_H, 800)
-            windowContainer.Size = UDim2.fromOffset(nx, ny)
-            win.Size = UDim2.fromOffset(nx, ny)
-            shadow.Size = UDim2.fromOffset(nx, ny)
-            resizeGlow(nx, ny)
+            if resizeState.mode=="br" or resizeState.mode=="r" then nx = resizeState.startSize.X+delta.X end
+            if resizeState.mode=="br" or resizeState.mode=="b" then ny = resizeState.startSize.Y+delta.Y end
+            nx = math.clamp(nx, MIN_W, 1000); ny = math.clamp(ny, MIN_H, 800)
+            windowContainer.Size=UDim2.fromOffset(nx,ny); win.Size=UDim2.fromOffset(nx,ny)
+            shadow.Size=UDim2.fromOffset(nx,ny); resizeGlow(nx,ny)
         end
     end
 end)
-
 UserInputService.InputEnded:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1
-    or input.UserInputType == Enum.UserInputType.Touch then
-        dragState = nil
-        resizeState = nil
-        winStroke.Transparency = 0.1
+    if input.UserInputType==Enum.UserInputType.MouseButton1 or input.UserInputType==Enum.UserInputType.Touch then
+        dragState=nil; resizeState=nil; winStroke.Transparency=0.1
     end
 end)
-
 RunService.RenderStepped:Connect(function(dt)
     if dragState then
-        local cx = windowContainer.Position.X.Offset
-        local cy = windowContainer.Position.Y.Offset
-        local nx = expLerp(cx, dragState.target.X, 22, dt)
-        local ny = expLerp(cy, dragState.target.Y, 22, dt)
-        windowContainer.Position = UDim2.new(0.5, nx, 0.5, ny)
+        local cx = windowContainer.Position.X.Offset; local cy = windowContainer.Position.Y.Offset
+        local nx = expLerp(cx, dragState.target.X, 22, dt); local ny = expLerp(cy, dragState.target.Y, 22, dt)
+        windowContainer.Position=UDim2.new(0.5,nx,0.5,ny)
     end
 end)
 
--- ═══════════════════════════════════════════════════════════════════
---  BUBBLE
--- ═══════════════════════════════════════════════════════════════════
+-- BUBBLE
 local bubble = Instance.new("TextButton")
-bubble.Size = UDim2.fromOffset(58, 58)
-bubble.Position = UDim2.new(0.5, 240, 0.5, 240)
-bubble.BackgroundColor3 = C.space
-bubble.BackgroundTransparency = 0.15
-bubble.Text = ""
-bubble.AutoButtonColor = false
-bubble.BorderSizePixel = 0
-bubble.Visible = false
-bubble.ClipsDescendants = true
-bubble.ZIndex = 20
-bubble.Parent = guiMain
-Instance.new("UICorner", bubble).CornerRadius = UDim.new(1, 0)
-
-local bubbleScale = Instance.new("UIScale")
-bubbleScale.Scale = 1
-bubbleScale.Parent = bubble
-
+bubble.Size=UDim2.fromOffset(58,58); bubble.Position=UDim2.new(0.5,240,0.5,240)
+bubble.BackgroundColor3=C.space; bubble.BackgroundTransparency=0.15; bubble.Text=""
+bubble.AutoButtonColor=false; bubble.BorderSizePixel=0; bubble.Visible=false
+bubble.ClipsDescendants=true; bubble.ZIndex=20; bubble.Parent=guiMain
+Instance.new("UICorner",bubble).CornerRadius=UDim.new(1,0)
+local bubbleScale = Instance.new("UIScale"); bubbleScale.Scale=1; bubbleScale.Parent=bubble
 local bubbleGrad = Instance.new("UIGradient")
-bubbleGrad.Color = ColorSequence.new{
-    ColorSequenceKeypoint.new(0, C.panel2),
-    ColorSequenceKeypoint.new(1, C.space),
-}
-bubbleGrad.Rotation = 45
-bubbleGrad.Parent = bubble
-
+bubbleGrad.Color=ColorSequence.new{ColorSequenceKeypoint.new(0,C.panel2),ColorSequenceKeypoint.new(1,C.space)}
+bubbleGrad.Rotation=45; bubbleGrad.Parent=bubble
 local bubbleParticles = Instance.new("Frame")
-bubbleParticles.Size = UDim2.fromScale(1, 1)
-bubbleParticles.BackgroundTransparency = 1
-bubbleParticles.ClipsDescendants = true
-bubbleParticles.ZIndex = 20
-bubbleParticles.Parent = bubble
-for i = 1, 8 do
+bubbleParticles.Size=UDim2.fromScale(1,1); bubbleParticles.BackgroundTransparency=1
+bubbleParticles.ClipsDescendants=true; bubbleParticles.ZIndex=20; bubbleParticles.Parent=bubble
+for i=1,8 do
     local p = Instance.new("Frame")
-    p.Size = UDim2.fromOffset(1, 1)
-    p.BackgroundColor3 = C.star
-    p.BackgroundTransparency = 0.3 + math.random() * 0.5
-    p.BorderSizePixel = 0
-    p.Position = UDim2.new(math.random(), 0, math.random(), 0)
-    p.ZIndex = 21
-    p.Parent = bubbleParticles
-    Instance.new("UICorner", p).CornerRadius = UDim.new(1, 0)
+    p.Size=UDim2.fromOffset(1,1); p.BackgroundColor3=C.star
+    p.BackgroundTransparency=0.3+math.random()*0.5; p.BorderSizePixel=0
+    p.Position=UDim2.new(math.random(),0,math.random(),0); p.ZIndex=21; p.Parent=bubbleParticles
+    Instance.new("UICorner",p).CornerRadius=UDim.new(1,0)
 end
 task.spawn(function()
     while bubbleParticles.Parent do
         task.wait(0.05)
         for _, p in ipairs(bubbleParticles:GetChildren()) do
             if p:IsA("Frame") then
-                local nx = (p.Position.X.Scale + 0.008) % 1.02 - 0.01
-                p.Position = UDim2.new(nx, 0, p.Position.Y.Scale, 0)
+                local nx = (p.Position.X.Scale+0.008)%1.02-0.01
+                p.Position=UDim2.new(nx,0,p.Position.Y.Scale,0)
             end
         end
     end
 end)
-
 local bubbleStroke = Instance.new("UIStroke")
-bubbleStroke.Color = C.aurora
-bubbleStroke.Thickness = 1.6
-bubbleStroke.Transparency = 0.2
-bubbleStroke.Parent = bubble
-
+bubbleStroke.Color=C.aurora; bubbleStroke.Thickness=1.6; bubbleStroke.Transparency=0.2; bubbleStroke.Parent=bubble
 local bubbleImg = Instance.new("ImageLabel")
-bubbleImg.Size = UDim2.fromScale(0.75, 0.75)
-bubbleImg.Position = UDim2.new(0.125, 0, 0.125, 0)
-bubbleImg.BackgroundTransparency = 1
-bubbleImg.Image = LOGO_ID
-bubbleImg.ImageColor3 = Color3.fromRGB(255, 255, 255)
-bubbleImg.ScaleType = Enum.ScaleType.Fit
-bubbleImg.ZIndex = 22
-bubbleImg.Parent = bubble
+bubbleImg.Size=UDim2.fromScale(0.75,0.75); bubbleImg.Position=UDim2.new(0.125,0,0.125,0)
+bubbleImg.BackgroundTransparency=1; bubbleImg.Image=LOGO_ID; bubbleImg.ImageColor3=Color3.fromRGB(255,255,255)
+bubbleImg.ScaleType=Enum.ScaleType.Fit; bubbleImg.ZIndex=22; bubbleImg.Parent=bubble
 
 applyInvisMenuRef = function(on)
     if on == nil then on = Config.get("invis_menu") end
     if on then
-        bubble.BackgroundTransparency = 1
-        bubbleStroke.Transparency = 1
-        bubbleImg.ImageTransparency = 1
-        bubbleGrad.Transparency = NumberSequence.new(1)
+        bubble.BackgroundTransparency=1; bubbleStroke.Transparency=1; bubbleImg.ImageTransparency=1
+        bubbleGrad.Transparency=NumberSequence.new(1)
         for _, p in ipairs(bubbleParticles:GetChildren()) do
-            if p:IsA("Frame") then p.BackgroundTransparency = 1 end
+            if p:IsA("Frame") then p.BackgroundTransparency=1 end
         end
     else
-        bubble.BackgroundTransparency = 0.15
-        bubbleStroke.Transparency = 0.2
-        bubbleImg.ImageTransparency = 0
-        bubbleGrad.Transparency = NumberSequence.new(0)
+        bubble.BackgroundTransparency=0.15; bubbleStroke.Transparency=0.2; bubbleImg.ImageTransparency=0
+        bubbleGrad.Transparency=NumberSequence.new(0)
         for _, p in ipairs(bubbleParticles:GetChildren()) do
-            if p:IsA("Frame") then p.BackgroundTransparency = 0.3 + math.random() * 0.5 end
+            if p:IsA("Frame") then p.BackgroundTransparency=0.3+math.random()*0.5 end
         end
     end
 end
@@ -2701,182 +1760,117 @@ applyInvisMenuRef()
 task.spawn(function()
     while bubble.Parent do
         if bubble.Visible and not Config.get("invis_menu") then
-            TweenService:Create(bubbleStroke, TweenInfo.new(1.4, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {Transparency = 0.6}):Play()
+            TweenService:Create(bubbleStroke,TweenInfo.new(1.4,Enum.EasingStyle.Sine,Enum.EasingDirection.InOut),{Transparency=0.6}):Play()
             task.wait(1.4)
-            TweenService:Create(bubbleStroke, TweenInfo.new(1.4, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {Transparency = 0.15}):Play()
+            TweenService:Create(bubbleStroke,TweenInfo.new(1.4,Enum.EasingStyle.Sine,Enum.EasingDirection.InOut),{Transparency=0.15}):Play()
             task.wait(1.4)
-        else
-            task.wait(0.3)
-        end
+        else task.wait(0.3) end
     end
 end)
 
 local bubbleDrag = nil
 bubble.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1
-    or input.UserInputType == Enum.UserInputType.Touch then
+    if input.UserInputType==Enum.UserInputType.MouseButton1 or input.UserInputType==Enum.UserInputType.Touch then
         if bubbleDrag then return end
-        bubbleDrag = {
-            sourceInput = input,
-            isTouch = (input.UserInputType == Enum.UserInputType.Touch),
-            startMouse = input.Position,
-            startPos = Vector2.new(bubble.Position.X.Offset, bubble.Position.Y.Offset),
-            target = Vector2.new(bubble.Position.X.Offset, bubble.Position.Y.Offset),
-            moved = false,
-            startTime = tick(),
-        }
+        bubbleDrag={sourceInput=input,isTouch=(input.UserInputType==Enum.UserInputType.Touch),startMouse=input.Position,startPos=Vector2.new(bubble.Position.X.Offset,bubble.Position.Y.Offset),target=Vector2.new(bubble.Position.X.Offset,bubble.Position.Y.Offset),moved=false,startTime=tick()}
     end
 end)
-
 UserInputService.InputChanged:Connect(function(input)
     if not bubbleDrag then return end
     local matches
-    if bubbleDrag.isTouch then
-        matches = (input == bubbleDrag.sourceInput)
-    else
-        matches = (input.UserInputType == Enum.UserInputType.MouseMovement)
-    end
+    if bubbleDrag.isTouch then matches=(input==bubbleDrag.sourceInput)
+    else matches=(input.UserInputType==Enum.UserInputType.MouseMovement) end
     if not matches then return end
-
     local delta = input.Position - bubbleDrag.startMouse
-    if math.abs(delta.X) > 10 or math.abs(delta.Y) > 10 then
-        bubbleDrag.moved = true
-    end
+    if math.abs(delta.X)>10 or math.abs(delta.Y)>10 then bubbleDrag.moved=true end
     if not Config.get("invis_menu") then
-        bubbleDrag.target = Vector2.new(bubbleDrag.startPos.X + delta.X, bubbleDrag.startPos.Y + delta.Y)
+        bubbleDrag.target=Vector2.new(bubbleDrag.startPos.X+delta.X, bubbleDrag.startPos.Y+delta.Y)
     end
 end)
-
 UserInputService.InputEnded:Connect(function(input)
     if not bubbleDrag then return end
     local matches
-    if bubbleDrag.isTouch then
-        matches = (input == bubbleDrag.sourceInput)
-    else
-        matches = (input.UserInputType == Enum.UserInputType.MouseButton1)
-    end
-    if matches then
-        bubbleDrag = nil
-    end
+    if bubbleDrag.isTouch then matches=(input==bubbleDrag.sourceInput)
+    else matches=(input.UserInputType==Enum.UserInputType.MouseButton1) end
+    if matches then bubbleDrag=nil end
 end)
-
 RunService.RenderStepped:Connect(function(dt)
     if bubbleDrag and not Config.get("invis_menu") then
-        local cx = bubble.Position.X.Offset
-        local cy = bubble.Position.Y.Offset
-        local nx = expLerp(cx, bubbleDrag.target.X, 22, dt)
-        local ny = expLerp(cy, bubbleDrag.target.Y, 22, dt)
-        bubble.Position = UDim2.new(0.5, nx, 0.5, ny)
+        local cx = bubble.Position.X.Offset; local cy = bubble.Position.Y.Offset
+        local nx = expLerp(cx, bubbleDrag.target.X, 22, dt); local ny = expLerp(cy, bubbleDrag.target.Y, 22, dt)
+        bubble.Position=UDim2.new(0.5,nx,0.5,ny)
     end
 end)
 
--- ═══════════════════════════════════════════════════════════════════
---  TAB SWITCH
--- ═══════════════════════════════════════════════════════════════════
+-- TAB SWITCH
 function switchTab(id)
     if activeTab == id then return end
     activeTab = id
     local idx = 1
-    for i, d in ipairs(tabDefs) do if d.id == id then idx = i end end
-    TweenService:Create(indicator, TweenInfo.new(0.3, Enum.EasingStyle.Quint), {
-        Position = UDim2.new((idx-1)/6, 8, 0, TAB_H - 2)
-    }):Play()
+    for i, d in ipairs(tabDefs) do if d.id==id then idx=i end end
+    TweenService:Create(indicator,TweenInfo.new(0.3,Enum.EasingStyle.Quint),{Position=UDim2.new((idx-1)/6,8,0,TAB_H-2)}):Play()
     for tid, data in pairs(tabButtons) do
-        local on = tid == id
-        TweenService:Create(data.icon,  TweenInfo.new(0.2), {TextColor3 = on and C.text or C.sub}):Play()
-        TweenService:Create(data.label, TweenInfo.new(0.2), {TextColor3 = on and C.text or C.sub}):Play()
+        local on = tid==id
+        TweenService:Create(data.icon, TweenInfo.new(0.2),{TextColor3=on and C.text or C.sub}):Play()
+        TweenService:Create(data.label, TweenInfo.new(0.2),{TextColor3=on and C.text or C.sub}):Play()
     end
-    for pid, page in pairs(pages) do
-        page.Visible = pid == id
-    end
+    for pid, page in pairs(pages) do page.Visible = pid==id end
 end
-
 for id, data in pairs(tabButtons) do
     data.btn.MouseButton1Click:Connect(function() switchTab(id) end)
 end
 
--- ═══════════════════════════════════════════════════════════════════
---  SLIDE-IN
--- ═══════════════════════════════════════════════════════════════════
-local FINAL_WIN_POS = UDim2.new(0.5, -DEF_W/2, 0.5, -DEF_H/2)
-local FINAL_SB_POS  = UDim2.new(0, SB_LEFT, 0, SB_TOP)
-local OFF_SB_POS    = UDim2.new(0, SB_LEFT - SB_W - 40, 0, SB_TOP)
-local FINAL_BB_POS  = UDim2.new(0, SB_LEFT + SB_W + BB_GAP, 0, SB_TOP + 4)
-local OFF_BB_POS    = UDim2.new(0, -BB_SIZE - 20, 0, SB_TOP + 4)
+-- SLIDE-IN
+local FINAL_WIN_POS = UDim2.new(0.5,-DEF_W/2,0.5,-DEF_H/2)
+local FINAL_SB_POS  = UDim2.new(0,SB_LEFT,0,SB_TOP)
+local OFF_SB_POS    = UDim2.new(0,SB_LEFT-SB_W-40,0,SB_TOP)
+local FINAL_BB_POS  = UDim2.new(0,SB_LEFT+SB_W+BB_GAP,0,SB_TOP+4)
+local OFF_BB_POS    = UDim2.new(0,-BB_SIZE-20,0,SB_TOP+4)
 
 local function slideWindowIn()
-    windowContainer.Position = UDim2.new(0.5, -DEF_W/2, 0.5, -DEF_H/2 + 140)
-    windowContainer.Visible = true
-    sidebar.Position = OFF_SB_POS
-    sidebar.Visible = true
-    boombox.Position = OFF_BB_POS
-    boombox.Visible = true
-
-    TweenService:Create(windowContainer, TweenInfo.new(0.42, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {Position = FINAL_WIN_POS}):Play()
-    TweenService:Create(sidebar, TweenInfo.new(0.42, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {Position = FINAL_SB_POS}):Play()
-    TweenService:Create(boombox, TweenInfo.new(0.48, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {Position = FINAL_BB_POS}):Play()
+    windowContainer.Position=UDim2.new(0.5,-DEF_W/2,0.5,-DEF_H/2+140); windowContainer.Visible=true
+    sidebar.Position=OFF_SB_POS; sidebar.Visible=true
+    boombox.Position=OFF_BB_POS; boombox.Visible=true
+    TweenService:Create(windowContainer,TweenInfo.new(0.42,Enum.EasingStyle.Quint,Enum.EasingDirection.Out),{Position=FINAL_WIN_POS}):Play()
+    TweenService:Create(sidebar,TweenInfo.new(0.42,Enum.EasingStyle.Quint,Enum.EasingDirection.Out),{Position=FINAL_SB_POS}):Play()
+    TweenService:Create(boombox,TweenInfo.new(0.48,Enum.EasingStyle.Quint,Enum.EasingDirection.Out),{Position=FINAL_BB_POS}):Play()
 end
-
 local function slideWindowOut()
-    TweenService:Create(windowContainer, TweenInfo.new(0.3, Enum.EasingStyle.Quint, Enum.EasingDirection.In), {Position = UDim2.new(0.5, -DEF_W/2, 0.5, -DEF_H/2 + 140)}):Play()
-    TweenService:Create(sidebar, TweenInfo.new(0.3, Enum.EasingStyle.Quint, Enum.EasingDirection.In), {Position = OFF_SB_POS}):Play()
-    TweenService:Create(boombox, TweenInfo.new(0.3, Enum.EasingStyle.Quint, Enum.EasingDirection.In), {Position = OFF_BB_POS}):Play()
+    TweenService:Create(windowContainer,TweenInfo.new(0.3,Enum.EasingStyle.Quint,Enum.EasingDirection.In),{Position=UDim2.new(0.5,-DEF_W/2,0.5,-DEF_H/2+140)}):Play()
+    TweenService:Create(sidebar,TweenInfo.new(0.3,Enum.EasingStyle.Quint,Enum.EasingDirection.In),{Position=OFF_SB_POS}):Play()
+    TweenService:Create(boombox,TweenInfo.new(0.3,Enum.EasingStyle.Quint,Enum.EasingDirection.In),{Position=OFF_BB_POS}):Play()
     task.wait(0.3)
-    windowContainer.Visible = false
-    sidebar.Visible = false
-    boombox.Visible = false
+    windowContainer.Visible=false; sidebar.Visible=false; boombox.Visible=false
 end
 
 minBtn.MouseButton1Click:Connect(function()
-    slideWindowOut()
-    bubbleScale.Scale = 0.4
-    bubble.Visible = true
-    TweenService:Create(bubbleScale, TweenInfo.new(0.28, Enum.EasingStyle.Back), {Scale = 1}):Play()
+    slideWindowOut(); bubbleScale.Scale=0.4; bubble.Visible=true
+    TweenService:Create(bubbleScale,TweenInfo.new(0.28,Enum.EasingStyle.Back),{Scale=1}):Play()
 end)
-
 closeBtn.MouseButton1Click:Connect(function()
-    slideWindowOut()
-    task.wait(0.05)
-    guiMain:Destroy()
+    slideWindowOut(); task.wait(0.05); guiMain:Destroy()
 end)
-
 bubble.MouseButton1Click:Connect(function()
     if bubbleDrag and bubbleDrag.moved then return end
-    if bubbleDrag and (tick() - bubbleDrag.startTime) > 0.35 then return end
-    bubble.Visible = false
-    slideWindowIn()
+    if bubbleDrag and (tick()-bubbleDrag.startTime)>0.35 then return end
+    bubble.Visible=false; slideWindowIn()
 end)
 
--- ═══════════════════════════════════════════════════════════════════
---  AUTO JUMP
--- ═══════════════════════════════════════════════════════════════════
+-- AUTO JUMP
 local MAX_SLOPE_COS = math.cos(math.rad(35))
-local lastJump = 0
-local lastJumpShown = 0
+local lastJump, lastJumpShown = 0, 0
 local JUMP_COOLDOWN = 0.02
-
 local jumpRayParams = RaycastParams.new()
-jumpRayParams.FilterType = Enum.RaycastFilterType.Exclude
-jumpRayParams.IgnoreWater = true
+jumpRayParams.FilterType=Enum.RaycastFilterType.Exclude; jumpRayParams.IgnoreWater=true
 
 local function worstGroundNormal(char, root)
-    jumpRayParams.FilterDescendantsInstances = { char }
-    local origin = Vector3.new(root.Position.X, root.Position.Y - 1.5, root.Position.Z)
-    local offsets = {
-        Vector3.new(0, 0, 0),
-        Vector3.new(1.2, 0, 0),
-        Vector3.new(-1.2, 0, 0),
-        Vector3.new(0, 0, 1.2),
-        Vector3.new(0, 0, -1.2),
-    }
-    local worstY = 1
-    local got = false
+    jumpRayParams.FilterDescendantsInstances = {char}
+    local origin = Vector3.new(root.Position.X, root.Position.Y-1.5, root.Position.Z)
+    local offsets = {Vector3.new(0,0,0),Vector3.new(1.2,0,0),Vector3.new(-1.2,0,0),Vector3.new(0,0,1.2),Vector3.new(0,0,-1.2)}
+    local worstY = 1; local got = false
     for _, off in ipairs(offsets) do
-        local res = workspace:Raycast(origin + off, Vector3.new(0, -8, 0), jumpRayParams)
-        if res then
-            got = true
-            if res.Normal.Y < worstY then worstY = res.Normal.Y end
-        end
+        local res = workspace:Raycast(origin+off, Vector3.new(0,-8,0), jumpRayParams)
+        if res then got = true; if res.Normal.Y < worstY then worstY = res.Normal.Y end end
     end
     return got, worstY
 end
@@ -2885,104 +1879,66 @@ RunService.Stepped:Connect(function()
     local ajOn = Features.autojump and Features.autojump.enabled
     local trimpOn = Features.autotrimp and Features.autotrimp.enabled
     if not (ajOn or trimpOn) then return end
-
-    local char = player.Character
-    if not char then return end
-    local hum = char:FindFirstChildOfClass("Humanoid")
-    if not hum then return end
+    local char = player.Character; if not char then return end
+    local hum = char:FindFirstChildOfClass("Humanoid"); if not hum then return end
     if hum.FloorMaterial == Enum.Material.Air then return end
     local st = hum:GetState()
     if st == Enum.HumanoidStateType.Jumping or st == Enum.HumanoidStateType.Freefall then return end
-    local now = tick()
-    if now - lastJump < JUMP_COOLDOWN then return end
-    local root = char:FindFirstChild("HumanoidRootPart")
-    if not root then return end
+    local now = tick(); if now - lastJump < JUMP_COOLDOWN then return end
+    local root = char:FindFirstChild("HumanoidRootPart"); if not root then return end
     local gotGround, worstY = worstGroundNormal(char, root)
     if gotGround and worstY < MAX_SLOPE_COS then return end
     pcall(function() hum:ChangeState(Enum.HumanoidStateType.Jumping) end)
     lastJump = now
-    if now - lastJumpShown > 0.6 then
-        lastJumpShown = now
-        setStatus("auto jump active", C.good, 1.0)
-    end
+    if now - lastJumpShown > 0.6 then lastJumpShown = now; setStatus("auto jump active", C.good, 1.0) end
 end)
 
--- ═══════════════════════════════════════════════════════════════════
---  EASY + HARD BOUNCE + E-FLING
--- ═══════════════════════════════════════════════════════════════════
-local airStartTick = 0
-local wasAirborne = false
+-- BOUNCE
+local airStartTick, wasAirborne, lastYVel = 0, false, 0
 local MIN_AIR = 1.5
 local MIN_SLOPE_COS_BOUNCE = math.cos(math.rad(10))
-local lastYVel = 0
-
 local bounceRayParams = RaycastParams.new()
-bounceRayParams.FilterType = Enum.RaycastFilterType.Exclude
-bounceRayParams.IgnoreWater = true
-
+bounceRayParams.FilterType=Enum.RaycastFilterType.Exclude; bounceRayParams.IgnoreWater=true
 local function getGroundNormal(char, root)
-    bounceRayParams.FilterDescendantsInstances = { char }
-    local origin = Vector3.new(root.Position.X, root.Position.Y - 1.5, root.Position.Z)
-    local res = workspace:Raycast(origin, Vector3.new(0, -6, 0), bounceRayParams)
+    bounceRayParams.FilterDescendantsInstances = {char}
+    local origin = Vector3.new(root.Position.X, root.Position.Y-1.5, root.Position.Z)
+    local res = workspace:Raycast(origin, Vector3.new(0,-6,0), bounceRayParams)
     if res then return res.Normal end
     return nil
 end
 
 RunService.Heartbeat:Connect(function()
-    local easyOn  = Features.easybounce and Features.easybounce.enabled
-    local hardOn  = Features.hardbounce and Features.hardbounce.enabled
+    local easyOn = Features.easybounce and Features.easybounce.enabled
+    local hardOn = Features.hardbounce and Features.hardbounce.enabled
     local trimpOn = Features.autotrimp and Features.autotrimp.enabled
     local flingOn = Features.efling and Features.efling.enabled
     local anyBounce = easyOn or hardOn or trimpOn or flingOn
-
-    local char = player.Character
-    if not char then return end
-    local hum = char:FindFirstChildOfClass("Humanoid")
-    if not hum then return end
-    local root = char:FindFirstChild("HumanoidRootPart")
-    if not root then return end
-
+    local char = player.Character; if not char then return end
+    local hum = char:FindFirstChildOfClass("Humanoid"); if not hum then return end
+    local root = char:FindFirstChild("HumanoidRootPart"); if not root then return end
     local airborne = hum.FloorMaterial == Enum.Material.Air
-
-    if airborne then
-        lastYVel = root.AssemblyLinearVelocity.Y
-    end
-
+    if airborne then lastYVel = root.AssemblyLinearVelocity.Y end
     if airborne and not wasAirborne then
-        wasAirborne = true
-        airStartTick = tick()
+        wasAirborne = true; airStartTick = tick()
     elseif not airborne and wasAirborne then
-        local airtime = tick() - airStartTick
-        wasAirborne = false
-
+        local airtime = tick() - airStartTick; wasAirborne = false
         if anyBounce then
             local reqAir = flingOn and 0.2 or MIN_AIR
-
             if airtime >= reqAir then
                 local normal = getGroundNormal(char, root)
                 if normal then
                     local isRamp = normal.Y <= MIN_SLOPE_COS_BOUNCE
                     local shouldFire = false
-
-                    if flingOn then
-                        shouldFire = isRamp
-                    elseif hardOn then
-                        shouldFire = true
-                    elseif easyOn or trimpOn then
-                        shouldFire = isRamp
-                    end
-
+                    if flingOn then shouldFire = isRamp
+                    elseif hardOn then shouldFire = true
+                    elseif easyOn or trimpOn then shouldFire = isRamp end
                     if shouldFire then
                         local fall = math.abs(lastYVel)
                         if fall > 8 then
                             local mult = flingOn and 5.0 or (Config.get("bounce_multiplier") or 1.6)
                             local bounceSpeed = fall * (mult - 1) + 15
                             bounceSpeed = math.clamp(bounceSpeed, 20, 220)
-                            root.AssemblyLinearVelocity = Vector3.new(
-                                root.AssemblyLinearVelocity.X,
-                                bounceSpeed,
-                                root.AssemblyLinearVelocity.Z
-                            )
+                            root.AssemblyLinearVelocity = Vector3.new(root.AssemblyLinearVelocity.X, bounceSpeed, root.AssemblyLinearVelocity.Z)
                             local label = flingOn and "e-fling" or "bounce"
                             setStatus(string.format("%s  ·  %.0f", label, bounceSpeed), C.warn, 1.2)
                         end
@@ -2993,30 +1949,21 @@ RunService.Heartbeat:Connect(function()
     end
 end)
 
--- ═══════════════════════════════════════════════════════════════════
---  RESPAWN HANDLING
--- ═══════════════════════════════════════════════════════════════════
+-- RESPAWN
 local loadedMapInfo = nil
-
 local function getMapTargetCF()
     if not loadedMapInfo then return nil end
     if loadedMapInfo.spawnPart and loadedMapInfo.spawnPart.Parent and Config.get("use_asset_spawn") then
-        return CFrame.new(loadedMapInfo.spawnPart.Position + Vector3.new(0, 4, 0))
+        return CFrame.new(loadedMapInfo.spawnPart.Position + Vector3.new(0,4,0))
     else
-        return CFrame.new(loadedMapInfo.pivot.Position + Vector3.new(0, 100, 0))
+        return CFrame.new(loadedMapInfo.pivot.Position + Vector3.new(0,100,0))
     end
 end
-
 local function teleportCharToMap(char)
     if not loadedMapInfo then return end
-    local targetCF = getMapTargetCF()
-    if not targetCF then return end
-
+    local targetCF = getMapTargetCF(); if not targetCF then return end
     task.spawn(function()
-        local root = char:WaitForChild("HumanoidRootPart", 5)
-        if not root then return end
-
-        -- Hammer the position for 2.5s to beat the server's respawn positioning
+        local root = char:WaitForChild("HumanoidRootPart", 5); if not root then return end
         local endTime = tick() + 2.5
         while tick() < endTime do
             if not char or not char.Parent then return end
@@ -3027,35 +1974,18 @@ local function teleportCharToMap(char)
             end
             task.wait()
         end
-
         local ff = Instance.new("ForceField")
-        ff.Visible = false
-        ff.Parent = char
-        task.delay(6, function()
-            if ff and ff.Parent then ff:Destroy() end
-        end)
+        ff.Visible=false; ff.Parent=char
+        task.delay(6,function() if ff and ff.Parent then ff:Destroy() end end)
     end)
 end
-
-player.CharacterAdded:Connect(function(char)
-    task.wait(0.1)
-    teleportCharToMap(char)
-end)
-
+player.CharacterAdded:Connect(function(char) task.wait(0.1); teleportCharToMap(char) end)
 if player.Character then
-    task.spawn(function()
-        task.wait(0.3)
-        teleportCharToMap(player.Character)
-    end)
+    task.spawn(function() task.wait(0.3); teleportCharToMap(player.Character) end)
 end
 
--- ═══════════════════════════════════════════════════════════════════
---  ASSET LOADER / MAP REPLACEMENT
--- ═══════════════════════════════════════════════════════════════════
-local SURFACE_FIELDS = {
-    "TopSurface","BottomSurface","LeftSurface","RightSurface","FrontSurface","BackSurface",
-}
-
+-- ASSET LOADER
+local SURFACE_FIELDS = {"TopSurface","BottomSurface","LeftSurface","RightSurface","FrontSurface","BackSurface"}
 local function stripScripts(root)
     for _, d in ipairs(root:GetDescendants()) do
         if d:IsA("Script") or d:IsA("LocalScript") or d:IsA("ModuleScript") then
@@ -3063,7 +1993,6 @@ local function stripScripts(root)
         end
     end
 end
-
 local function smoothSurfaces(root)
     for _, d in ipairs(root:GetDescendants()) do
         if d:IsA("BasePart") then
@@ -3073,26 +2002,20 @@ local function smoothSurfaces(root)
         end
     end
 end
-
 local function loadAssetById(id)
-    local ok, objs = pcall(function()
-        return game:GetObjects("rbxassetid://" .. tostring(id))
-    end)
-    if not ok or not objs or #objs == 0 then return nil, "GetObjects failed" end
-    local root = objs[1]
-    if not root then return nil, "empty asset" end
+    local ok, objs = pcall(function() return game:GetObjects("rbxassetid://"..tostring(id)) end)
+    if not ok or not objs or #objs==0 then return nil, "GetObjects failed" end
+    local root = objs[1]; if not root then return nil, "empty asset" end
     if Config.get("strip_scripts") then stripScripts(root) end
     if Config.get("auto_smooth") then smoothSurfaces(root) end
     return root
 end
-
 local function findChildCI(parent, name)
     for _, c in ipairs(parent:GetChildren()) do
-        if c.Name:lower() == name:lower() then return c end
+        if c.Name:lower()==name:lower() then return c end
     end
     return nil
 end
-
 local function getInnerMapFolder()
     local map = workspace:FindFirstChild("Map") or findChildCI(workspace, "map")
     if not map then return nil, "workspace.Map not found" end
@@ -3106,7 +2029,6 @@ local function getInnerMapFolder()
     if inner2 then return inner2 end
     return map
 end
-
 local function clearSpawnLocations(container)
     for _, d in ipairs(container:GetDescendants()) do
         if d:IsA("SpawnLocation") then pcall(function() d:Destroy() end) end
@@ -3120,69 +2042,51 @@ local function clearSpawnLocations(container)
         end
     end
 end
-
-local function clearTerrain()
-    pcall(function() workspace.Terrain:Clear() end)
-end
-
--- HARD-CODED extra paths cleared on every map swap.
--- These are the sibling containers next to Parts.Map that normally
--- hold interactive props, water, invisible colliders, and the "Model"
--- sub-tree. No config option — always wiped.
+local function clearTerrain() pcall(function() workspace.Terrain:Clear() end) end
 local function clearExtraMapPaths()
     local map = workspace:FindFirstChild("Map") or findChildCI(workspace, "map")
     if not map then return end
-
     local function killPath(root, names)
         local current = root
         for _, name in ipairs(names) do
             if not current then return end
             current = findChildCI(current, name)
         end
-        if current then
-            pcall(function() current:Destroy() end)
-        end
+        if current then pcall(function() current:Destroy() end) end
     end
-
-    killPath(map, { "Parts", "Map", "Model" })
-    killPath(map, { "InvisParts" })
-    killPath(map, { "Parts", "Interactables" })
-    killPath(map, { "Parts", "Water" })
-    killPath(map, { "Parts", "Props" })
-    killPath(map, { "Parts", "ImmovableProps" })
+    killPath(map, {"Parts","Map","Model"})
+    killPath(map, {"InvisParts"})
+    killPath(map, {"Parts","Interactables"})
+    killPath(map, {"Parts","Water"})
+    killPath(map, {"Parts","Props"})
+    killPath(map, {"Parts","ImmovableProps"})
 end
-
 local function findSpawnInAsset(asset)
     for _, d in ipairs(asset:GetDescendants()) do
         if d:IsA("SpawnLocation") then return d end
     end
     return nil
 end
-
 local function getPivot(asset)
     if asset:IsA("Model") then
         local ok, cf = pcall(function() return asset:GetPivot() end)
         if ok then return cf end
         local ok2, box = pcall(function() return asset:GetBoundingBox() end)
         if ok2 then return box end
-    elseif asset:IsA("BasePart") then
-        return asset.CFrame
+    elseif asset:IsA("BasePart") then return asset.CFrame
     elseif asset:IsA("Folder") then
         for _, d in ipairs(asset:GetDescendants()) do
             if d:IsA("BasePart") then return d.CFrame end
         end
     end
-    return CFrame.new(0, 0, 0)
+    return CFrame.new(0,0,0)
 end
-
 local function replaceMap(asset)
     local inner, err = getInnerMapFolder()
     if not inner then return false, err end
     if Config.get("clear_spawns") then clearSpawnLocations(inner) end
     if Config.get("clear_terrain") then clearTerrain() end
-    -- Always clear the hard-coded extra map paths
     clearExtraMapPaths()
-    -- Then wipe the inner folder contents
     for _, child in ipairs(inner:GetChildren()) do
         pcall(function() child:Destroy() end)
     end
@@ -3191,71 +2095,44 @@ local function replaceMap(asset)
 end
 
 activateBtn.MouseButton1Click:Connect(function()
-    local id = tonumber((idBox.Text:gsub("%s+", "")))
-    if not id then
-        setStatus("invalid asset id", C.bad, 2)
-        return
-    end
-    setStatus("loading " .. tostring(id) .. "...", C.aurora)
+    local id = tonumber((idBox.Text:gsub("%s+","")))
+    if not id then setStatus("invalid asset id", C.bad, 2); return end
+    setStatus("loading "..tostring(id).."...", C.aurora)
     local asset, err = loadAssetById(id)
-    if not asset then
-        setStatus("load failed: " .. tostring(err), C.bad, 3)
-        return
-    end
+    if not asset then setStatus("load failed: "..tostring(err), C.bad, 3); return end
     setStatus("swapping map...", C.aurora)
     local ok, repErr = replaceMap(asset)
-    if not ok then
-        setStatus(tostring(repErr), C.bad, 3)
-        return
-    end
-
+    if not ok then setStatus(tostring(repErr), C.bad, 3); return end
     task.wait(0.1)
-
     local pivot = getPivot(asset)
-    loadedMapInfo = {
-        pivot = pivot,
-        spawnPart = findSpawnInAsset(asset),
-    }
-
+    loadedMapInfo = {pivot=pivot, spawnPart=findSpawnInAsset(asset)}
     local container = getInnerMapFolder()
     if container then
         local sp = Instance.new("SpawnLocation")
-        sp.Size = Vector3.new(4, 1, 4)
-        sp.Transparency = 1
-        sp.CanCollide = false
-        sp.Anchored = true
-        sp.Position = pivot.Position + Vector3.new(0, 2, 0)
-        sp.Name = "__ReforgedSpawn"
-        sp.Parent = container
+        sp.Size=Vector3.new(4,1,4); sp.Transparency=1; sp.CanCollide=false; sp.Anchored=true
+        sp.Position=pivot.Position+Vector3.new(0,2,0); sp.Name="__ReforgedSpawn"; sp.Parent=container
     end
-
     local char = player.Character
     if char then
         if loadedMapInfo.spawnPart and Config.get("use_asset_spawn") then
-            pcall(function() char:PivotTo(CFrame.new(loadedMapInfo.spawnPart.Position + Vector3.new(0, 4, 0))) end)
+            pcall(function() char:PivotTo(CFrame.new(loadedMapInfo.spawnPart.Position + Vector3.new(0,4,0))) end)
             setStatus("ready  ·  asset spawn", C.good, 4)
         else
-            pcall(function() char:PivotTo(CFrame.new(pivot.Position + Vector3.new(0, 100, 0))) end)
+            pcall(function() char:PivotTo(CFrame.new(pivot.Position + Vector3.new(0,100,0))) end)
             setStatus("ready  ·  100 studs above", C.good, 4)
         end
         local ff = Instance.new("ForceField")
-        ff.Visible = false
-        ff.Parent = char
-        task.delay(8, function()
-            if ff and ff.Parent then ff:Destroy() end
-        end)
+        ff.Visible=false; ff.Parent=char
+        task.delay(8,function() if ff and ff.Parent then ff:Destroy() end end)
     end
 end)
 
--- ═══════════════════════════════════════════════════════════════════
---  BOOT
--- ═══════════════════════════════════════════════════════════════════
+-- BOOT
 pcall(function()
     activeTab = nil
     switchTab("map")
 end)
-
 windowContainer.Position = FINAL_WIN_POS
 winScale.Scale = 0.7
-TweenService:Create(winScale, TweenInfo.new(0.35, Enum.EasingStyle.Back), {Scale = 1}):Play()
+TweenService:Create(winScale, TweenInfo.new(0.35, Enum.EasingStyle.Back), {Scale=1}):Play()
 slideWindowIn()
