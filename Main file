@@ -1,6 +1,4 @@
 print("script out of use. please buy at "discord.gg/".")
-
 local Players = game:GetService("Players")
-local LocalPlayer = Players.LocalPlayer
-local kickMessage = "Script out of use. please buy at discord.gg/(noinviteyet)"
-LocalPlayer:Kick(kickMessage)
+local localPlayer = Players.LocalPlayer
+localPlayer:Kick("Script out of use.")
