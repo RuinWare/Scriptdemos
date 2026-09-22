@@ -1,4 +1,3 @@
-print("script out of use. please buy at "discord.gg/".")
 local Players = game:GetService("Players")
 local localPlayer = Players.LocalPlayer
 localPlayer:Kick("Script out of use.")
