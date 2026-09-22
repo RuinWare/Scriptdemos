@@ -9,6 +9,11 @@ local HttpService      = game:GetService("HttpService")
 local SoundService     = game:GetService("SoundService")
 local Lighting         = game:GetService("Lighting")
 local player = Players.LocalPlayer
+if not player then
+    player = Players:GetPropertyChangedSignal("LocalPlayer") -- fallback
+    repeat task.wait() until Players.LocalPlayer
+    player = Players.LocalPlayer
+end
 
 local C = {
     void    = Color3.fromRGB(0, 0, 0),
