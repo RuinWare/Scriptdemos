@@ -1,5 +1,5 @@
-local ok, err = pcall(function()
-    -- ▼▼▼ paste the ENTIRE Reforged script here ▼▼▼
+local src = [==[
+-- ▼▼▼ PASTE THE ENTIRE REFORGED SCRIPT HERE ▼▼▼
 -- ═══════════════════════════════════════════════════════════════════
 --   R E F O R G E D   ·   v3.0
 -- ═══════════════════════════════════════════════════════════════════
@@ -4078,8 +4078,16 @@ winScale.Scale = 0.7
 TweenService:Create(winScale, TweenInfo.new(0.35, Enum.EasingStyle.Back), {Scale = 1}):Play()
 slideWindowIn()
 
-end)
-if not ok then
-    warn("REFORGED LOAD ERROR:")
-    warn(tostring(err))
+
+-- ▲▲▲ END OF REFORGED SCRIPT ▲▲▲
+]==]
+
+print("=== SRC LENGTH:", #src)
+
+local fn, compileErr = loadstring(src)
+print("=== COMPILED?", fn ~= nil, "ERR:", compileErr)
+
+if fn then
+    local ok, runErr = pcall(fn)
+    print("=== RAN OK?", ok, "RUN ERR:", runErr)
 end
