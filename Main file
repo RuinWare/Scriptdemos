@@ -1,5 +1,5 @@
 -- ═══════════════════════════════════════════════════════════════════
---   R E F O R G E D   ·   v2.0
+--   R E F O R G E D   ·   v3.0
 -- ═══════════════════════════════════════════════════════════════════
 local Players          = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
@@ -7,6 +7,7 @@ local RunService       = game:GetService("RunService")
 local TweenService     = game:GetService("TweenService")
 local HttpService      = game:GetService("HttpService")
 local SoundService     = game:GetService("SoundService")
+local Lighting         = game:GetService("Lighting")
 local player = Players.LocalPlayer
 
 local C = {
@@ -35,21 +36,12 @@ local LOGO_ID    = "rbxassetid://127983099298280"
 local MAX_LAYER  = 2147483647
 
 -- ╔══════════════════════════════════════════════════════════════╗
--- ║                                                              ║
--- ║   ⚠️  EDIT ME  ⚠️   USER CARD  —  your name & description     ║
--- ║                                                              ║
--- ║   ▸ Change "description" to whatever you want.               ║
--- ║   ▸ "username" auto-fills with your Roblox name.             ║
--- ║   ▸ This shows in the sidebar above the FEATURES list.       ║
--- ║                                                              ║
+-- ║   ⚠️  EDIT ME  ⚠️   USER CARD                                 ║
 -- ╚══════════════════════════════════════════════════════════════╝
 local USER_CARD = {
-    username    = player.Name,     -- auto-filled, leave as-is
+    username    = player.Name,
     description = "test",          -- <<< CHANGE THIS LINE >>>
 }
--- ╔══════════════════════════════════════════════════════════════╗
--- ║   END USER CARD  —  nothing else to edit here                 ║
--- ╚══════════════════════════════════════════════════════════════╝
 
 -- ═══════════════════════════════════════════════════════════════════
 --  CONFIG
@@ -64,6 +56,15 @@ Config.defaults = {
     invis_menu        = false,
     bounce_multiplier = 1.6,
     lag_duration      = 0.5,
+    frontal_speed     = 50,
+    hip_height        = 2,
+    esp_box           = false,
+    esp_highlight     = false,
+    esp_distance      = false,
+    esp_tracers       = false,
+    skybox            = "default",
+    spoof_username    = "",
+    spoof_display     = "",
 }
 Config.data = {}
 for k, v in pairs(Config.defaults) do Config.data[k] = v end
@@ -74,7 +75,7 @@ function Config.reset()
 end
 
 -- ═══════════════════════════════════════════════════════════════════
---  PRESET STORE  ·  also holds warnings_seen
+--  PRESET STORE
 -- ═══════════════════════════════════════════════════════════════════
 local Presets = { maps = {}, configs = {}, warnings_seen = {} }
 
@@ -136,7 +137,7 @@ local spawnAmbientParticles
 --  WINDOW
 -- ═══════════════════════════════════════════════════════════════════
 local MIN_W, MIN_H = 380, 380
-local DEF_W, DEF_H = 520, 460
+local DEF_W, DEF_H = 540, 480
 
 local windowContainer = Instance.new("Frame")
 windowContainer.Name = "WindowContainer"
@@ -380,7 +381,7 @@ local subtitleText = Instance.new("TextLabel")
 subtitleText.Size = UDim2.new(1, -160, 0, 14)
 subtitleText.Position = UDim2.new(0, 57, 0, 30)
 subtitleText.BackgroundTransparency = 1
-subtitleText.Text = "v2.0"
+subtitleText.Text = "v3.0"
 subtitleText.TextColor3 = C.sub
 subtitleText.TextSize = 10
 subtitleText.Font = FONT_MONO
@@ -461,7 +462,7 @@ local tabDefs = {
     { id = "credits",  label = "CREDITS",  icon = "●" },
 }
 local tabButtons = {}
-local activeTab = "map"
+local activeTab = "movement"
 
 for i, def in ipairs(tabDefs) do
     local tb = Instance.new("TextButton")
@@ -597,11 +598,13 @@ function Features.register(id, opts)
 end
 
 local FORCE_OFF = {
-    autojump   = { "autotrimp" },
-    easybounce = { "hardbounce", "autotrimp", "efling" },
-    hardbounce = { "easybounce", "autotrimp", "efling" },
-    autotrimp  = { "autojump", "easybounce", "hardbounce", "efling" },
-    efling     = { "autojump", "easybounce", "hardbounce", "autotrimp" },
+    autojump     = { "autotrimp", "frontaljump", "backwardjump" },
+    easybounce   = { "hardbounce", "autotrimp", "efling" },
+    hardbounce   = { "easybounce", "autotrimp", "efling" },
+    autotrimp    = { "autojump", "easybounce", "hardbounce", "efling", "frontaljump", "backwardjump" },
+    efling       = { "autojump", "easybounce", "hardbounce", "autotrimp" },
+    frontaljump  = { "backwardjump", "autojump", "autotrimp" },
+    backwardjump = { "frontaljump", "autojump", "autotrimp" },
 }
 
 function Features.setEnabled(id, state)
@@ -1381,34 +1384,364 @@ local function makeSliderRow(parent, labelText, cfgKey, minVal, maxVal, yPos, su
 end
 
 -- ═══════════════════════════════════════════════════════════════════
+--  GENERAL TOGGLE (for use in any page)
+-- ═══════════════════════════════════════════════════════════════════
+local function makeToggleAt(parent, yPos, labelText, cfgKey, subtitle, onChange)
+    local row = Instance.new("Frame")
+    row.Size = UDim2.new(1, -32, 0, 48)
+    row.Position = UDim2.new(0, 16, 0, yPos)
+    row.BackgroundColor3 = Color3.fromRGB(20, 24, 40)
+    row.BackgroundTransparency = 0.55
+    row.BorderSizePixel = 0
+    row.ZIndex = 9
+    row.Parent = parent
+    Instance.new("UICorner", row).CornerRadius = UDim.new(0, 10)
+    local rowStroke = Instance.new("UIStroke")
+    rowStroke.Color = C.border
+    rowStroke.Thickness = 1
+    rowStroke.Transparency = 0.65
+    rowStroke.Parent = row
+
+    local lbl = Instance.new("TextLabel")
+    lbl.Size = UDim2.new(1, -80, 0, 20)
+    lbl.Position = UDim2.new(0, 16, 0, 8)
+    lbl.BackgroundTransparency = 1
+    lbl.Text = labelText
+    lbl.TextColor3 = C.text
+    lbl.TextSize = 12
+    lbl.Font = FONT_BOLD
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+    lbl.ZIndex = 10
+    lbl.Parent = row
+
+    local sub = Instance.new("TextLabel")
+    sub.Size = UDim2.new(1, -80, 0, 14)
+    sub.Position = UDim2.new(0, 16, 0, 26)
+    sub.BackgroundTransparency = 1
+    sub.Text = subtitle or ""
+    sub.TextColor3 = C.sub
+    sub.TextSize = 9
+    sub.Font = FONT_MONO
+    sub.TextXAlignment = Enum.TextXAlignment.Left
+    sub.ZIndex = 10
+    sub.Parent = row
+
+    local refreshToggle = makeGlassToggle(
+        row,
+        UDim2.new(1, -14, 0, 11),
+        function() return Config.get(cfgKey) and true or false end,
+        function(v)
+            Config.set(cfgKey, v)
+            if onChange then pcall(onChange, v) end
+        end
+    )
+
+    return row, refreshToggle, 56
+end
+
+-- ═══════════════════════════════════════════════════════════════════
+--  ESP SYSTEM
+-- ═══════════════════════════════════════════════════════════════════
+local espActive = {}     -- [plr] = { highlight, billboard, tracer }
+local espMasterOn = false
+
+local function clearESPFor(plr)
+    local e = espActive[plr]
+    if not e then return end
+    if e.highlight then e.highlight:Destroy() end
+    if e.box then e.box:Destroy() end
+    if e.billboard then e.billboard:Destroy() end
+    if e.tracer then e.tracer:Destroy() end
+    espActive[plr] = nil
+end
+
+local function clearAllESP()
+    for plr in pairs(espActive) do
+        clearESPFor(plr)
+    end
+end
+
+local function buildESPFor(plr)
+    if plr == player then return end
+    local char = plr.Character
+    if not char then return end
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    if not hrp then return end
+
+    clearESPFor(plr)
+    local e = {}
+
+    -- Highlight
+    if Config.get("esp_highlight") then
+        local hl = Instance.new("Highlight")
+        hl.Name = "ReforgedESP"
+        hl.Adornee = char
+        hl.FillColor = Color3.fromRGB(255, 255, 255)
+        hl.FillTransparency = 0.65
+        hl.OutlineColor = Color3.fromRGB(0, 0, 0)
+        hl.OutlineTransparency = 0.1
+        hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+        hl.Parent = guiMain
+        e.highlight = hl
+    end
+
+    -- Box (SelectionBox around the HRP)
+    if Config.get("esp_box") then
+        local box = Instance.new("SelectionBox")
+        box.Name = "ReforgedESPBox"
+        box.Adornee = hrp
+        box.Color3 = Color3.fromRGB(255, 255, 255)
+        box.LineThickness = 0.05
+        box.SurfaceTransparency = 1
+        box.SurfaceColor3 = Color3.fromRGB(255, 255, 255)
+        box.Parent = guiMain
+        e.box = box
+    end
+
+    -- Distance / Name billboard
+    if Config.get("esp_distance") then
+        local bb = Instance.new("BillboardGui")
+        bb.Name = "ReforgedESPDist"
+        bb.Adornee = hrp
+        bb.Size = UDim2.fromOffset(120, 20)
+        bb.StudsOffsetWorldSpace = Vector3.new(0, 3, 0)
+        bb.AlwaysOnTop = true
+        bb.Parent = guiMain
+
+        local lbl = Instance.new("TextLabel")
+        lbl.Size = UDim2.fromScale(1, 1)
+        lbl.BackgroundTransparency = 1
+        lbl.Text = plr.Name
+        lbl.TextColor3 = Color3.fromRGB(255, 255, 255)
+        lbl.TextSize = 12
+        lbl.Font = FONT_BOLD
+        lbl.TextStrokeTransparency = 0
+        lbl.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+        lbl.Parent = bb
+        e.billboard = bb
+        e.billboardLabel = lbl
+    end
+
+    -- Tracer (line from bottom of screen)
+    if Config.get("esp_tracers") then
+        local tr = Instance.new("Frame")
+        tr.Name = "ReforgedESPTracer"
+        tr.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+        tr.BorderSizePixel = 0
+        tr.AnchorPoint = Vector2.new(0, 0.5)
+        tr.ZIndex = 50
+        tr.Parent = guiMain
+        e.tracer = tr
+        e.tracerOrigin = Vector2.new(workspace.CurrentCamera.ViewportSize.X / 2,
+                                      workspace.CurrentCamera.ViewportSize.Y)
+    end
+
+    espActive[plr] = e
+end
+
+local function refreshAllESP()
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr ~= player then
+            if espMasterOn and plr.Character then
+                buildESPFor(plr)
+            else
+                clearESPFor(plr)
+            end
+        end
+    end
+end
+
+-- ESP render loop for tracers + distance
+RunService.RenderStepped:Connect(function()
+    if not espMasterOn then
+        if next(espActive) then clearAllESP() end
+        return
+    end
+
+    local cam = workspace.CurrentCamera
+    if not cam then return end
+    local vp = cam.ViewportSize
+    local origin = Vector2.new(vp.X / 2, vp.Y)
+
+    for plr, e in pairs(espActive) do
+        local char = plr.Character
+        local hrp = char and char:FindFirstChild("HumanoidRootPart")
+        if not hrp then
+            clearESPFor(plr)
+            continue
+        end
+
+        -- Distance update
+        if e.billboardLabel then
+            local myRoot = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+            if myRoot then
+                local dist = (myRoot.Position - hrp.Position).Magnitude
+                e.billboardLabel.Text = string.format("%s  [%d]", plr.Name, math.floor(dist))
+            end
+        end
+
+        -- Tracer update
+        if e.tracer then
+            local sp, onScreen = cam:WorldToViewportPoint(hrp.Position)
+            if onScreen then
+                local target = Vector2.new(sp.X, sp.Y)
+                local diff = target - origin
+                local length = diff.Magnitude
+                local mid = (origin + target) / 2
+                local angle = math.atan2(diff.Y, diff.X)
+                e.tracer.Size = UDim2.fromOffset(length, 1)
+                e.tracer.Position = UDim2.fromOffset(mid.X, mid.Y)
+                e.tracer.Rotation = math.deg(angle)
+                e.tracer.Visible = true
+            else
+                e.tracer.Visible = false
+            end
+        end
+    end
+end)
+
+-- Player add/remove listeners
+local function espPlayerAdded(plr)
+    if plr == player then return end
+    if espMasterOn then
+        plr.CharacterAdded:Connect(function()
+            task.wait(0.3)
+            if espMasterOn then buildESPFor(plr) end
+        end)
+        if plr.Character then
+            task.wait(0.3)
+            if espMasterOn then buildESPFor(plr) end
+        end
+    end
+end
+
+Players.PlayerAdded:Connect(function(plr)
+    if espMasterOn then espPlayerAdded(plr) end
+end)
+
+Players.PlayerRemoving:Connect(function(plr)
+    clearESPFor(plr)
+end)
+
+-- ═══════════════════════════════════════════════════════════════════
+--  SKYBOX HANDLER
+-- ═══════════════════════════════════════════════════════════════════
+local SKYBOXES = {
+    default   = nil,
+    sunrise   = { "rbxassetid://124406174", "rbxassetid://124406205", "rbxassetid://124406243", "rbxassetid://124406287", "rbxassetid://124406318", "rbxassetid://124406353" },
+    daytime   = { "rbxassetid://124405122", "rbxassetid://124405154", "rbxassetid://124405194", "rbxassetid://124405228", "rbxassetid://124405264", "rbxassetid://124405296" },
+    afternoon = { "rbxassetid://124405051", "rbxassetid://124405085", "rbxassetid://124405121", "rbxassetid://124405158", "rbxassetid://124405190", "rbxassetid://124405223" },
+    sunset    = { "rbxassetid://124405231", "rbxassetid://124405261", "rbxassetid://124405297", "rbxassetid://124405332", "rbxassetid://124405365", "rbxassetid://124405397" },
+    nighttime = { "rbxassetid://124405309", "rbxassetid://124405344", "rbxassetid://124405378", "rbxassetid://124405411", "rbxassetid://124405445", "rbxassetid://124405478" },
+}
+
+local currentSky = nil
+local function applySkybox(name)
+    if currentSky then
+        pcall(function() currentSky:Destroy() end)
+        currentSky = nil
+    end
+    local set = SKYBOXES[name]
+    if not set then return end
+    local sky = Instance.new("Sky")
+    sky.SkyboxBk = set[1]
+    sky.SkyboxDn = set[2]
+    sky.SkyboxFt = set[3]
+    sky.SkyboxLf = set[4]
+    sky.SkyboxRt = set[5]
+    sky.SkyboxUp = set[6]
+    sky.Parent = Lighting
+    currentSky = sky
+    Config.set("skybox", name)
+end
+
+-- ═══════════════════════════════════════════════════════════════════
+--  SPOOFER
+-- ═══════════════════════════════════════════════════════════════════
+local spoofState = {
+    username = "",
+    display  = "",
+}
+
+local function applySpooferHooks()
+    pcall(function()
+        local mt = getrawmetatable(game)
+        local oldIndex = mt.__index
+        setreadonly(mt, false)
+        mt.__index = newcclosure(function(self, key)
+            if self == player then
+                if key == "Name" and spoofState.username ~= "" then
+                    return spoofState.username
+                elseif key == "DisplayName" and spoofState.display ~= "" then
+                    return spoofState.display
+                end
+            end
+            return oldIndex(self, key)
+        end)
+        setreadonly(mt, true)
+    end)
+end
+applySpooferHooks()
+
+local function copyAvatarFromUsername(username)
+    task.spawn(function()
+        local ok, userId = pcall(function()
+            return Players:GetUserIdFromUsername(username)
+        end)
+        if not ok or not userId or userId == 0 then return end
+        local ok2, desc = pcall(function()
+            return Players:GetHumanoidDescriptionFromUserId(userId)
+        end)
+        if not ok2 or not desc then return end
+        local char = player.Character
+        if not char then return end
+        local hum = char:FindFirstChildOfClass("Humanoid")
+        if not hum then return end
+        pcall(function()
+            hum:ApplyDescription(desc)
+        end)
+    end)
+end
+
+-- ═══════════════════════════════════════════════════════════════════
 --  REGISTER FEATURES
 -- ═══════════════════════════════════════════════════════════════════
 Features.register("autojump", {
     name = "Auto Jump", icon = "▲", category = "MOVEMENT", tab = "movement",
-    hudOffset = Vector2.new(-240, 130),
+    hudOffset = Vector2.new(-240, 90),
+})
+Features.register("frontaljump", {
+    name = "Frontal Jump", icon = "▶", category = "MOVEMENT", tab = "movement",
+    hint = "auto-jump + constant forward push",
+    hudOffset = Vector2.new(-240, 158),
+})
+Features.register("backwardjump", {
+    name = "Backward Jump", icon = "◀", category = "MOVEMENT", tab = "movement",
+    hint = "auto-jump + constant backward push",
+    hudOffset = Vector2.new(-240, 226),
 })
 Features.register("easybounce", {
     name = "Easy Bounce", icon = "◈", category = "MOVEMENT", tab = "movement",
     hint = "bounce on ramps (>10°) after 1.5s airtime",
-    hudOffset = Vector2.new(-240, 198),
+    hudOffset = Vector2.new(-240, 294),
 })
 Features.register("hardbounce", {
     name = "Hard Bounce", icon = "◭", category = "MOVEMENT", tab = "movement",
     hint = "bounce on any surface after 1.5s airtime",
-    hudOffset = Vector2.new(-240, 266),
+    hudOffset = Vector2.new(-240, 362),
 })
 Features.register("autotrimp", {
     name = "Auto Trimp", icon = "✦", category = "MOVEMENT", tab = "movement",
     hint = "auto jump + easy bounce combo",
-    hudOffset = Vector2.new(-240, 334),
+    hudOffset = Vector2.new(-240, 430),
 })
 Features.register("efling", {
     name = "E-Fling", icon = "⟁", category = "MOVEMENT", tab = "movement",
     hint = "Basic E-Fling Mechanic",
-    hudOffset = Vector2.new(-240, 402),
+    hudOffset = Vector2.new(-240, 498),
 })
 
--- Lag switch — momentary button that freezes the client render loop
+-- Lag switch
 local lagFrozen = false
 local lagFreezeUntil = 0
 
@@ -1429,11 +1762,11 @@ Features.register("lagswitch", {
         lagFrozen = true
         setStatus(string.format("lag  ·  %.2fs", dur), C.warn, dur + 0.3)
     end,
-    hudOffset = Vector2.new(-240, 470),
+    hudOffset = Vector2.new(-400, 90),
 })
 
 -- ═══════════════════════════════════════════════════════════════════
---  LADDER GLIDE  ·  autofarm teleport loop with one-time warning
+--  LADDER GLIDE (4000 studs)
 -- ═══════════════════════════════════════════════════════════════════
 local ladderGlideTask = nil
 local ladderGlideOrigin = nil
@@ -1463,11 +1796,9 @@ local function startLadderGlide()
             if not r then break end
             if not ladderGlideOrigin then break end
 
-            -- Teleport 9000 studs rightward from the saved origin
-            local rightCF = CFrame.new(ladderGlideOrigin.Position + Vector3.new(9000, 0, 0))
+            local rightCF = CFrame.new(ladderGlideOrigin.Position + Vector3.new(4000, 0, 0))
             pcall(function() c:PivotTo(rightCF) end)
 
-            -- Hold at the destination for 7 seconds
             local waited = 0
             while waited < 7 do
                 if not Features.ladderglide or not Features.ladderglide.enabled then break end
@@ -1477,7 +1808,6 @@ local function startLadderGlide()
 
             if not Features.ladderglide or not Features.ladderglide.enabled then break end
 
-            -- Return to origin
             pcall(function() c:PivotTo(ladderGlideOrigin) end)
             task.wait(0.4)
         end
@@ -1589,13 +1919,6 @@ local function showLadderWarning()
     exitStroke.Transparency = 0.4
     exitStroke.Parent = exitBtn
 
-    exitBtn.MouseEnter:Connect(function()
-        TweenService:Create(exitStroke, TweenInfo.new(0.15), {Transparency = 0.1}):Play()
-    end)
-    exitBtn.MouseLeave:Connect(function()
-        TweenService:Create(exitStroke, TweenInfo.new(0.15), {Transparency = 0.4}):Play()
-    end)
-
     local contBtn = Instance.new("TextButton")
     contBtn.Size = UDim2.new(1, -160, 0, 46)
     contBtn.Position = UDim2.new(0, 150, 1, -66)
@@ -1635,9 +1958,7 @@ local function showLadderWarning()
         ladderWarningGui = nil
     end
 
-    exitBtn.MouseButton1Click:Connect(function()
-        closeWarning()
-    end)
+    exitBtn.MouseButton1Click:Connect(closeWarning)
 
     local canContinue = false
     local countdown = 7
@@ -1672,13 +1993,12 @@ end
 Features.register("ladderglide", {
     name = "Ladder Glide", icon = "☰", category = "PLAYER", tab = "movement",
     hint = "autofarm teleport loop · requires ladder",
-    hudOffset = Vector2.new(-240, 538),
+    hudOffset = Vector2.new(-400, 158),
 })
 
 Features.addListener("ladderglide", function(enabled)
     if enabled then
         if not (Presets.warnings_seen and Presets.warnings_seen.ladder_glide) then
-            -- Revert and show the warning
             Features.setEnabled("ladderglide", false)
             showLadderWarning()
             return
@@ -1694,20 +2014,32 @@ end)
 -- ═══════════════════════════════════════════════════════════════════
 local movementPage = newPage("movement", true)
 makeCategoryHeader(movementPage, "MOVEMENT", 14)
-makeFeatureRow(movementPage, "autojump",   36)
-makeFeatureRow(movementPage, "easybounce", 102)
-makeFeatureRow(movementPage, "hardbounce", 168)
-makeFeatureRow(movementPage, "autotrimp",  234)
-makeFeatureRow(movementPage, "efling",     300)
-makeCategoryHeader(movementPage, "PLAYER", 372)
-makeFeatureRow(movementPage, "lagswitch",    394)
-makeFeatureRow(movementPage, "ladderglide",  460)
-makeCategoryHeader(movementPage, "SETTINGS", 532)
+makeFeatureRow(movementPage, "autojump",     36)
+makeFeatureRow(movementPage, "frontaljump",  102)
+makeFeatureRow(movementPage, "backwardjump", 168)
+makeFeatureRow(movementPage, "easybounce",   234)
+makeFeatureRow(movementPage, "hardbounce",   300)
+makeFeatureRow(movementPage, "autotrimp",    366)
+makeFeatureRow(movementPage, "efling",       432)
+
+makeCategoryHeader(movementPage, "PLAYER", 504)
+makeFeatureRow(movementPage, "lagswitch",   526)
+makeFeatureRow(movementPage, "ladderglide", 592)
+
+-- Hip Height slider
+local hipSliderRow, refreshHipSlider = makeSliderRow(
+    movementPage, "Hip Height", "hip_height", 0.5, 8, 664, "", 1
+)
+
+makeCategoryHeader(movementPage, "SETTINGS", 740)
 local bounceSliderRow, refreshBounceSlider = makeSliderRow(
-    movementPage, "Bounce Multiplier", "bounce_multiplier", 1.04, 5.0, 554, "x", 2
+    movementPage, "Bounce Multiplier", "bounce_multiplier", 1.04, 5.0, 762, "x", 2
 )
 local lagSliderRow, refreshLagSlider = makeSliderRow(
-    movementPage, "Lag Duration", "lag_duration", 0.2, 1.2, 626, "s", 2
+    movementPage, "Lag Duration", "lag_duration", 0.2, 1.2, 834, "s", 2
+)
+local speedSliderRow, refreshSpeedSlider = makeSliderRow(
+    movementPage, "Frontal/Backward Speed", "frontal_speed", 5, 250, 906, "", 0
 )
 
 -- ═══════════════════════════════════════════════════════════════════
@@ -1779,13 +2111,6 @@ actLabel.TextSize = 14
 actLabel.Font = FONT_BOLD
 actLabel.ZIndex = 9
 actLabel.Parent = activateBtn
-
-activateBtn.MouseEnter:Connect(function()
-    TweenService:Create(actStroke, TweenInfo.new(0.15), {Transparency = 0.1}):Play()
-end)
-activateBtn.MouseLeave:Connect(function()
-    TweenService:Create(actStroke, TweenInfo.new(0.15), {Transparency = 0.5}):Play()
-end)
 
 makeCategoryHeader(mapPage, "MAP PRESETS", 158)
 
@@ -1919,51 +2244,302 @@ mpSaveBtn.MouseButton1Click:Connect(function()
     setStatus("saved: " .. name, C.good, 1.5)
 end)
 
-makeCategoryHeader(mapPage, "SHADERS", 400)
-makeSoon(mapPage, 420)
+-- ── MAP SETTINGS (moved from config) ──────────────────────────────
+makeCategoryHeader(mapPage, "MAP SETTINGS", 400)
 
--- ═══════════════════════════════════════════════════════════════════
---  PLACEHOLDER PAGES
--- ═══════════════════════════════════════════════════════════════════
-local function makePlaceholder(page, icon, title, subtitle)
-    local i = Instance.new("TextLabel")
-    i.Size = UDim2.new(1, 0, 0, 60)
-    i.Position = UDim2.new(0, 0, 0, 50)
-    i.BackgroundTransparency = 1
-    i.Text = icon
-    i.TextColor3 = C.sub
-    i.TextSize = 44
-    i.Font = FONT_ICON
-    i.ZIndex = 8
-    i.Parent = page
+local mapSetY = 422
+local mapSettingRows = {}
 
-    local t = Instance.new("TextLabel")
-    t.Size = UDim2.new(1, 0, 0, 20)
-    t.Position = UDim2.new(0, 0, 0, 118)
-    t.BackgroundTransparency = 1
-    t.Text = title
-    t.TextColor3 = C.text
-    t.TextSize = 13
-    t.Font = FONT_BOLD
-    t.ZIndex = 8
-    t.Parent = page
-
-    local s = Instance.new("TextLabel")
-    s.Size = UDim2.new(1, 0, 0, 16)
-    s.Position = UDim2.new(0, 0, 0, 140)
-    s.BackgroundTransparency = 1
-    s.Text = subtitle
-    s.TextColor3 = C.sub
-    s.TextSize = 10
-    s.Font = FONT_MONO
-    s.ZIndex = 8
-    s.Parent = page
+local function mapSetting(labelText, cfgKey, subtitle)
+    local row, refresh = makeToggleAt(mapPage, mapSetY, labelText, cfgKey, subtitle)
+    mapSetY = mapSetY + 56
+    return row, refresh
 end
 
-local visualsPage = newPage("visuals")
-makePlaceholder(visualsPage, "◉", "VISUALS", "coming soon")
-local extraPage = newPage("extra")
-makePlaceholder(extraPage, "★", "EXTRA", "coming soon")
+mapSetting("Auto-smooth surfaces", "auto_smooth",     "smooths every part on the map for e-dashing")
+mapSetting("Strip scripts",        "strip_scripts",   "removes every script inside the loaded asset")
+mapSetting("Clear spawn areas",    "clear_spawns",    "wipes old SpawnLocations from the map")
+mapSetting("Clear terrain",        "clear_terrain",   "clears all voxels from workspace.Terrain")
+mapSetting("Use asset spawn",      "use_asset_spawn", "spawns at the asset's own spawn point if it has one")
+
+-- ═══════════════════════════════════════════════════════════════════
+--  VISUALS PAGE
+-- ═══════════════════════════════════════════════════════════════════
+local visualsPage = newPage("visuals", true)
+
+-- ── MAIN (ESP) ────────────────────────────────────────────────────
+makeCategoryHeader(visualsPage, "MAIN", 14)
+
+-- Master ESP toggle
+local espMasterRow, refreshESPMaster = makeToggleAt(visualsPage, 36, "ESP Master", "_esp_master",
+    "master switch — disables all ESP below when off",
+    function(on)
+        espMasterOn = on
+        if on then refreshAllESP() else clearAllESP() end
+    end
+)
+
+-- ESP sub toggles
+local espY = 92
+local function espToggle(labelText, cfgKey, subtitle)
+    local row, refresh = makeToggleAt(visualsPage, espY, labelText, cfgKey, subtitle,
+        function() if espMasterOn then refreshAllESP() end end)
+    espY = espY + 56
+    return row, refresh
+end
+
+espToggle("Box ESP",      "esp_box",       "white outline box around players")
+espToggle("Highlights",   "esp_highlight", "white fill + black outline")
+espToggle("Distance",     "esp_distance",  "name + distance above players")
+espToggle("Tracers",      "esp_tracers",   "white line from bottom of screen")
+
+-- ── SKY BOX ───────────────────────────────────────────────────────
+makeCategoryHeader(visualsPage, "SKY BOX", espY + 8)
+
+local skyY = espY + 30
+local skyOptions = {
+    { key = "default",   label = "Reset to Default" },
+    { key = "sunrise",   label = "Sunrise" },
+    { key = "daytime",   label = "Daytime" },
+    { key = "afternoon", label = "Afternoon" },
+    { key = "sunset",    label = "Sunset" },
+    { key = "nighttime", label = "Nighttime" },
+}
+
+local skyRows = {}
+for _, opt in ipairs(skyOptions) do
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(1, -32, 0, 36)
+    btn.Position = UDim2.new(0, 16, 0, skyY)
+    btn.BackgroundColor3 = Color3.fromRGB(20, 24, 40)
+    btn.BackgroundTransparency = 0.55
+    btn.Text = opt.label
+    btn.TextColor3 = C.text
+    btn.TextSize = 12
+    btn.Font = FONT_BOLD
+    btn.TextXAlignment = Enum.TextXAlignment.Left
+    btn.AutoButtonColor = false
+    btn.BorderSizePixel = 0
+    btn.ZIndex = 9
+    btn.Parent = visualsPage
+    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 8)
+
+    -- padding
+    local pad = Instance.new("TextLabel")
+    pad.Size = UDim2.fromOffset(12, 1)
+    pad.Position = UDim2.new(0, 12, 0, 0)
+    pad.BackgroundTransparency = 1
+    pad.Text = ""
+    pad.Parent = btn
+
+    local btnStroke = Instance.new("UIStroke")
+    btnStroke.Color = C.border
+    btnStroke.Thickness = 1
+    btnStroke.Transparency = 0.65
+    btnStroke.Parent = btn
+
+    -- shift text right
+    btn.TextXAlignment = Enum.TextXAlignment.Left
+    local textPad = Instance.new("UIPadding")
+    textPad.PaddingLeft = UDim.new(0, 12)
+    textPad.Parent = btn
+
+    skyRows[opt.key] = { btn = btn, stroke = btnStroke }
+
+    btn.MouseEnter:Connect(function()
+        TweenService:Create(btn, TweenInfo.new(0.15), {BackgroundTransparency = 0.3}):Play()
+        TweenService:Create(btnStroke, TweenInfo.new(0.15), {Transparency = 0.3, Color = C.aurora}):Play()
+    end)
+    btn.MouseLeave:Connect(function()
+        TweenService:Create(btn, TweenInfo.new(0.15), {BackgroundTransparency = 0.55}):Play()
+        TweenService:Create(btnStroke, TweenInfo.new(0.15), {
+            Transparency = (Config.get("skybox") == opt.key) and 0.15 or 0.65,
+            Color = (Config.get("skybox") == opt.key) and C.aurora or C.border
+        }):Play()
+    end)
+
+    btn.MouseButton1Click:Connect(function()
+        applySkybox(opt.key == "default" and "default" or opt.key)
+        for k, r in pairs(skyRows) do
+            local selected = (k == opt.key)
+            TweenService:Create(r.btnStroke, TweenInfo.new(0.2), {
+                Transparency = selected and 0.15 or 0.65,
+                Color = selected and C.aurora or C.border
+            }):Play()
+        end
+        setStatus("skybox: " .. opt.label, C.good, 1.5)
+    end)
+
+    skyY = skyY + 44
+end
+
+-- ═══════════════════════════════════════════════════════════════════
+--  EXTRA PAGE (Spoofer)
+-- ═══════════════════════════════════════════════════════════════════
+local extraPage = newPage("extra", true)
+
+makeCategoryHeader(extraPage, "SPOOFER", 14)
+
+local spoofY = 36
+
+-- Username field
+local userRow = Instance.new("Frame")
+userRow.Size = UDim2.new(1, -32, 0, 44)
+userRow.Position = UDim2.new(0, 16, 0, spoofY)
+userRow.BackgroundColor3 = Color3.fromRGB(20, 24, 40)
+userRow.BackgroundTransparency = 0.55
+userRow.BorderSizePixel = 0
+userRow.ZIndex = 9
+userRow.Parent = extraPage
+Instance.new("UICorner", userRow).CornerRadius = UDim.new(0, 8)
+local userRowStroke = Instance.new("UIStroke")
+userRowStroke.Color = C.border
+userRowStroke.Thickness = 1
+userRowStroke.Transparency = 0.65
+userRowStroke.Parent = userRow
+
+local userBox = Instance.new("TextBox")
+userBox.Size = UDim2.new(1, -100, 1, 0)
+userBox.Position = UDim2.new(0, 12, 0, 0)
+userBox.BackgroundTransparency = 1
+userBox.Text = ""
+userBox.PlaceholderText = "username to spoof..."
+userBox.PlaceholderColor3 = C.sub
+userBox.TextColor3 = C.text
+userBox.TextSize = 12
+userBox.Font = FONT_MONO
+userBox.TextXAlignment = Enum.TextXAlignment.Left
+userBox.ClearTextOnFocus = false
+userBox.ZIndex = 10
+userBox.Parent = userRow
+
+local userSave = Instance.new("TextButton")
+userSave.Size = UDim2.fromOffset(72, 26)
+userSave.AnchorPoint = Vector2.new(1, 0.5)
+userSave.Position = UDim2.new(1, -5, 0.5, 0)
+userSave.BackgroundColor3 = C.aurora
+userSave.Text = "SAVE"
+userSave.TextColor3 = C.void
+userSave.TextSize = 11
+userSave.Font = FONT_BOLD
+userSave.AutoButtonColor = false
+userSave.BorderSizePixel = 0
+userSave.ZIndex = 10
+userSave.Parent = userRow
+Instance.new("UICorner", userSave).CornerRadius = UDim.new(0, 6)
+
+userSave.MouseButton1Click:Connect(function()
+    spoofState.username = userBox.Text
+    setStatus("username spoof applied", C.good, 1.5)
+end)
+
+spoofY = spoofY + 52
+
+-- Display name field
+local dispRow = Instance.new("Frame")
+dispRow.Size = UDim2.new(1, -32, 0, 44)
+dispRow.Position = UDim2.new(0, 16, 0, spoofY)
+dispRow.BackgroundColor3 = Color3.fromRGB(20, 24, 40)
+dispRow.BackgroundTransparency = 0.55
+dispRow.BorderSizePixel = 0
+dispRow.ZIndex = 9
+dispRow.Parent = extraPage
+Instance.new("UICorner", dispRow).CornerRadius = UDim.new(0, 8)
+local dispRowStroke = Instance.new("UIStroke")
+dispRowStroke.Color = C.border
+dispRowStroke.Thickness = 1
+dispRowStroke.Transparency = 0.65
+dispRowStroke.Parent = dispRow
+
+local dispBox = Instance.new("TextBox")
+dispBox.Size = UDim2.new(1, -100, 1, 0)
+dispBox.Position = UDim2.new(0, 12, 0, 0)
+dispBox.BackgroundTransparency = 1
+dispBox.Text = ""
+dispBox.PlaceholderText = "display name to spoof..."
+dispBox.PlaceholderColor3 = C.sub
+dispBox.TextColor3 = C.text
+dispBox.TextSize = 12
+dispBox.Font = FONT_MONO
+dispBox.TextXAlignment = Enum.TextXAlignment.Left
+dispBox.ClearTextOnFocus = false
+dispBox.ZIndex = 10
+dispBox.Parent = dispRow
+
+local dispSave = Instance.new("TextButton")
+dispSave.Size = UDim2.fromOffset(72, 26)
+dispSave.AnchorPoint = Vector2.new(1, 0.5)
+dispSave.Position = UDim2.new(1, -5, 0.5, 0)
+dispSave.BackgroundColor3 = C.aurora
+dispSave.Text = "SAVE"
+dispSave.TextColor3 = C.void
+dispSave.TextSize = 11
+dispSave.Font = FONT_BOLD
+dispSave.AutoButtonColor = false
+dispSave.BorderSizePixel = 0
+dispSave.ZIndex = 10
+dispSave.Parent = dispRow
+Instance.new("UICorner", dispSave).CornerRadius = UDim.new(0, 6)
+
+dispSave.MouseButton1Click:Connect(function()
+    spoofState.display = dispBox.Text
+    setStatus("display spoof applied", C.good, 1.5)
+end)
+
+spoofY = spoofY + 52
+
+-- Avatar copy field
+local avaRow = Instance.new("Frame")
+avaRow.Size = UDim2.new(1, -32, 0, 44)
+avaRow.Position = UDim2.new(0, 16, 0, spoofY)
+avaRow.BackgroundColor3 = Color3.fromRGB(20, 24, 40)
+avaRow.BackgroundTransparency = 0.55
+avaRow.BorderSizePixel = 0
+avaRow.ZIndex = 9
+avaRow.Parent = extraPage
+Instance.new("UICorner", avaRow).CornerRadius = UDim.new(0, 8)
+local avaRowStroke = Instance.new("UIStroke")
+avaRowStroke.Color = C.border
+avaRowStroke.Thickness = 1
+avaRowStroke.Transparency = 0.65
+avaRowStroke.Parent = avaRow
+
+local avaBox = Instance.new("TextBox")
+avaBox.Size = UDim2.new(1, -100, 1, 0)
+avaBox.Position = UDim2.new(0, 12, 0, 0)
+avaBox.BackgroundTransparency = 1
+avaBox.Text = ""
+avaBox.PlaceholderText = "copy avatar from username..."
+avaBox.PlaceholderColor3 = C.sub
+avaBox.TextColor3 = C.text
+avaBox.TextSize = 12
+avaBox.Font = FONT_MONO
+avaBox.TextXAlignment = Enum.TextXAlignment.Left
+avaBox.ClearTextOnFocus = false
+avaBox.ZIndex = 10
+avaBox.Parent = avaRow
+
+local avaSave = Instance.new("TextButton")
+avaSave.Size = UDim2.fromOffset(72, 26)
+avaSave.AnchorPoint = Vector2.new(1, 0.5)
+avaSave.Position = UDim2.new(1, -5, 0.5, 0)
+avaSave.BackgroundColor3 = C.aurora
+avaSave.Text = "COPY"
+avaSave.TextColor3 = C.void
+avaSave.TextSize = 11
+avaSave.Font = FONT_BOLD
+avaSave.AutoButtonColor = false
+avaSave.BorderSizePixel = 0
+avaSave.ZIndex = 10
+avaSave.Parent = avaRow
+Instance.new("UICorner", avaSave).CornerRadius = UDim.new(0, 6)
+
+avaSave.MouseButton1Click:Connect(function()
+    local name = avaBox.Text:gsub("%s+", "")
+    if name == "" then return end
+    copyAvatarFromUsername(name)
+    setStatus("copying avatar from " .. name, C.good, 2)
+end)
 
 -- ═══════════════════════════════════════════════════════════════════
 --  CONFIG PAGE
@@ -1998,78 +2574,15 @@ end
 
 local configCallbacks = {}
 
-local function makeConfigToggle(labelText, cfgKey, subtitle, onChange)
-    local row = Instance.new("Frame")
-    row.Size = UDim2.new(1, -32, 0, 48)
-    row.Position = UDim2.new(0, 16, 0, cfgY)
-    row.BackgroundColor3 = Color3.fromRGB(20, 24, 40)
-    row.BackgroundTransparency = 0.55
-    row.BorderSizePixel = 0
-    row.ZIndex = 9
-    row.Parent = cfgScroll
-    Instance.new("UICorner", row).CornerRadius = UDim.new(0, 10)
-    local rowStroke = Instance.new("UIStroke")
-    rowStroke.Color = C.border
-    rowStroke.Thickness = 1
-    rowStroke.Transparency = 0.65
-    rowStroke.Parent = row
-
-    local lbl = Instance.new("TextLabel")
-    lbl.Size = UDim2.new(1, -80, 0, 20)
-    lbl.Position = UDim2.new(0, 16, 0, 8)
-    lbl.BackgroundTransparency = 1
-    lbl.Text = labelText
-    lbl.TextColor3 = C.text
-    lbl.TextSize = 12
-    lbl.Font = FONT_BOLD
-    lbl.TextXAlignment = Enum.TextXAlignment.Left
-    lbl.ZIndex = 10
-    lbl.Parent = row
-
-    local sub = Instance.new("TextLabel")
-    sub.Size = UDim2.new(1, -80, 0, 14)
-    sub.Position = UDim2.new(0, 16, 0, 26)
-    sub.BackgroundTransparency = 1
-    sub.Text = subtitle or ""
-    sub.TextColor3 = C.sub
-    sub.TextSize = 9
-    sub.Font = FONT_MONO
-    sub.TextXAlignment = Enum.TextXAlignment.Left
-    sub.ZIndex = 10
-    sub.Parent = row
-
-    local refreshToggle = makeGlassToggle(
-        row,
-        UDim2.new(1, -14, 0, 11),
-        function() return Config.get(cfgKey) and true or false end,
-        function(v)
-            Config.set(cfgKey, v)
-            if onChange then pcall(onChange, v) end
-        end
-    )
-
-    configCallbacks[cfgKey] = function()
-        refreshToggle()
-        if onChange then pcall(onChange, Config.get(cfgKey)) end
-    end
-
-    cfgY = cfgY + 56
-end
-
-cfgSectionHeader("MAP LOADING")
-makeConfigToggle("Auto-smooth surfaces", "auto_smooth",     "smooths every part on the map for e-dashing")
-makeConfigToggle("Strip scripts",        "strip_scripts",   "removes every script inside the loaded asset")
-makeConfigToggle("Clear spawn areas",    "clear_spawns",    "wipes old SpawnLocations from the map")
-makeConfigToggle("Clear terrain",        "clear_terrain",   "clears all voxels from workspace.Terrain")
-makeConfigToggle("Use asset spawn",      "use_asset_spawn", "spawns at the asset's own spawn point if it has one")
-
-cfgY = cfgY + 8
 cfgSectionHeader("INTERFACE")
 local applyInvisMenuRef = function() end
-makeConfigToggle("Invis Menu", "invis_menu",
-    "hides RF bubble · still tappable to open",
-    function(on) applyInvisMenuRef(on) end
-)
+do
+    local row, refresh = makeToggleAt(cfgScroll, cfgY, "Invis Menu", "invis_menu",
+        "hides RF bubble · still tappable to open",
+        function(on) applyInvisMenuRef(on) end)
+    configCallbacks.invis_menu = refresh
+    cfgY = cfgY + 56
+end
 
 cfgY = cfgY + 8
 cfgSectionHeader("CONFIGS")
@@ -2171,6 +2684,8 @@ local function rebuildConfigPresets()
             for _, cb in pairs(configCallbacks) do pcall(cb) end
             if refreshBounceSlider then pcall(refreshBounceSlider) end
             if refreshLagSlider then pcall(refreshLagSlider) end
+            if refreshHipSlider then pcall(refreshHipSlider) end
+            if refreshSpeedSlider then pcall(refreshSpeedSlider) end
             setStatus("loaded config: " .. p.name, C.good, 1.5)
         end)
 
@@ -2240,6 +2755,8 @@ resetBtn.MouseButton1Click:Connect(function()
     for _, cb in pairs(configCallbacks) do pcall(cb) end
     if refreshBounceSlider then pcall(refreshBounceSlider) end
     if refreshLagSlider then pcall(refreshLagSlider) end
+    if refreshHipSlider then pcall(refreshHipSlider) end
+    if refreshSpeedSlider then pcall(refreshSpeedSlider) end
 end)
 cfgY = cfgY + 44
 cfgScroll.CanvasSize = UDim2.new(0, 0, 0, cfgY + 40)
@@ -2273,7 +2790,7 @@ local credVer = Instance.new("TextLabel")
 credVer.Size = UDim2.new(1, 0, 0, 16)
 credVer.Position = UDim2.new(0, 0, 0, 142)
 credVer.BackgroundTransparency = 1
-credVer.Text = "v2.0  ·  private build"
+credVer.Text = "v3.0  ·  private build"
 credVer.TextColor3 = C.sub
 credVer.TextSize = 10
 credVer.Font = FONT_MONO
@@ -2348,9 +2865,9 @@ task.spawn(function()
 end)
 
 -- ═══════════════════════════════════════════════════════════════════
---  SIDEBAR
+--  SIDEBAR  ·  thicker now
 -- ═══════════════════════════════════════════════════════════════════
-local SB_W    = 220
+local SB_W    = 260          -- was 220
 local SB_TOP  = 48
 local SB_BOT  = 48
 local SB_LEFT = 14
@@ -2558,6 +3075,7 @@ searchBox:GetPropertyChangedSignal("Text"):Connect(function()
 end)
 rebuildResults("")
 
+-- User card
 local userCard = Instance.new("Frame")
 userCard.Size = UDim2.new(1, -20, 0, 56)
 userCard.AnchorPoint = Vector2.new(0, 1)
@@ -3069,7 +3587,7 @@ bubble.MouseButton1Click:Connect(function()
 end)
 
 -- ═══════════════════════════════════════════════════════════════════
---  AUTO JUMP
+--  AUTO JUMP + FRONTAL / BACKWARD JUMP
 -- ═══════════════════════════════════════════════════════════════════
 local MAX_SLOPE_COS = math.cos(math.rad(35))
 local lastJump = 0
@@ -3102,10 +3620,36 @@ local function worstGroundNormal(char, root)
     return got, worstY
 end
 
+-- ── Continual push for frontal/backward jump ─────────────────────
+RunService.Heartbeat:Connect(function()
+    local isFrontal  = Features.frontaljump  and Features.frontaljump.enabled
+    local isBackward = Features.backwardjump and Features.backwardjump.enabled
+    if not (isFrontal or isBackward) then return end
+
+    local char = player.Character
+    if not char then return end
+    local root = char:FindFirstChild("HumanoidRootPart")
+    if not root then return end
+
+    local speed = Config.get("frontal_speed") or 50
+    local dir = isFrontal and 1 or -1
+    local look = root.CFrame.LookVector
+    -- Constant horizontal velocity in look direction
+    local horizontal = Vector3.new(look.X, 0, look.Z).Unit * speed * dir
+    root.AssemblyLinearVelocity = Vector3.new(
+        horizontal.X,
+        root.AssemblyLinearVelocity.Y,
+        horizontal.Z
+    )
+end)
+
+-- ── The actual jump logic ────────────────────────────────────────
 RunService.Stepped:Connect(function()
-    local ajOn = Features.autojump and Features.autojump.enabled
-    local trimpOn = Features.autotrimp and Features.autotrimp.enabled
-    if not (ajOn or trimpOn) then return end
+    local ajOn     = Features.autojump     and Features.autojump.enabled
+    local frontOn  = Features.frontaljump  and Features.frontaljump.enabled
+    local backOn   = Features.backwardjump and Features.backwardjump.enabled
+    local trimpOn  = Features.autotrimp    and Features.autotrimp.enabled
+    if not (ajOn or frontOn or backOn or trimpOn) then return end
 
     local char = player.Character
     if not char then return end
@@ -3215,16 +3759,36 @@ RunService.Heartbeat:Connect(function()
 end)
 
 -- ═══════════════════════════════════════════════════════════════════
---  RESPAWN HANDLING  ·  gentle multi-teleport, no anchoring
+--  HIP HEIGHT
+-- ═══════════════════════════════════════════════════════════════════
+local function applyHipHeight()
+    local char = player.Character
+    if not char then return end
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if not hum then return end
+    pcall(function()
+        hum.HipHeight = Config.get("hip_height") or 2
+    end)
+end
+
+-- hook up: reapply on character spawn
+player.CharacterAdded:Connect(function()
+    task.wait(0.2)
+    applyHipHeight()
+end)
+
+-- live update loop (in case user drags slider)
+task.spawn(function()
+    while true do
+        task.wait(0.5)
+        applyHipHeight()
+    end
+end)
+
+-- ═══════════════════════════════════════════════════════════════════
+--  RESPAWN HANDLING  ·  4-second delay, then teleport + camera rebind
 -- ═══════════════════════════════════════════════════════════════════
 local loadedMapInfo = nil
-local DEBUG_RESPAWN = true   -- flip to false once it works
-
-local function dlog(msg)
-    if DEBUG_RESPAWN then
-        print("[Reforged Respawn] " .. msg)
-    end
-end
 
 local function getMapTargetCF()
     if not loadedMapInfo then return nil end
@@ -3235,84 +3799,69 @@ local function getMapTargetCF()
     end
 end
 
-local function bindCamera(hum)
-    local cam = workspace.CurrentCamera
-    if not cam or not hum then return end
-    pcall(function() cam.CameraType = Enum.CameraType.Custom end)
-    pcall(function() cam.CameraSubject = hum end)
-end
-
 local function teleportCharToMap(char)
-    if not loadedMapInfo then
-        dlog("no loadedMapInfo, skipping")
-        return
-    end
+    if not loadedMapInfo then return end
     local targetCF = getMapTargetCF()
-    if not targetCF then
-        dlog("no targetCF, skipping")
-        return
-    end
-
-    dlog("starting for " .. char.Name)
+    if not targetCF then return end
 
     task.spawn(function()
-        local hum  = char:WaitForChild("Humanoid", 8)
-        if not hum then dlog("no humanoid"); return end
-        local root = char:WaitForChild("HumanoidRootPart", 8)
-        if not root then dlog("no root"); return end
+        -- Let the game fully finish its own spawn sequence first
+        task.wait(4.0)
 
-        -- Let the game finish its own spawn sequence first. No anchoring.
-        task.wait(0.5)
+        local hum  = char:FindFirstChildOfClass("Humanoid")
+        local root = char:FindFirstChild("HumanoidRootPart")
+        if not hum or not root then return end
 
-        if hum.Health <= 0 then
-            dlog("character is dead before teleport — bailing")
-            return
-        end
+        -- Reset any stuck states from the respawn
+        pcall(function() hum:ChangeState(Enum.HumanoidStateType.GettingUp) end)
+        pcall(function() hum.PlatformStand = false end)
 
-        -- Do 4 gentle teleports spread out over ~1.6s. No anchor, no velocity
-        -- touching, no force-hammering. Just move and rebind the camera.
-        for i = 1, 4 do
-            local c = player.Character
-            if not c or c ~= char then
-                dlog("character changed on iteration " .. i .. " — bailing")
-                return
-            end
-            local h = c:FindFirstChildOfClass("Humanoid")
-            if not h or h.Health <= 0 then
-                dlog("character died on iteration " .. i .. " — bailing")
-                return
-            end
-            local r = c:FindFirstChild("HumanoidRootPart")
+        -- Hammer the position for 2s
+        local endTime = tick() + 2.0
+        while tick() < endTime do
+            if not char or not char.Parent then return end
+            local r = char:FindFirstChild("HumanoidRootPart")
             if r then
-                pcall(function() c:PivotTo(targetCF) end)
-                bindCamera(h)
+                r.CFrame = targetCF
+                r.AssemblyLinearVelocity = Vector3.zero
+                r.AssemblyAngularVelocity = Vector3.zero
             end
-            task.wait(0.4)
+            task.wait()
         end
 
-        dlog("all teleports done")
+        -- Final snap + camera rebind
+        local finalRoot = char:FindFirstChild("HumanoidRootPart")
+        if finalRoot then
+            finalRoot.CFrame = targetCF
+            finalRoot.AssemblyLinearVelocity = Vector3.zero
+        end
+        pcall(function() char:PivotTo(targetCF) end)
+        applyHipHeight()
+
+        local cam = workspace.CurrentCamera
+        if cam and hum then
+            pcall(function() cam.CameraType = Enum.CameraType.Custom end)
+            pcall(function() cam.CameraSubject = hum end)
+        end
 
         -- ForceField for the fall
-        local c = player.Character
-        if c and c == char then
-            local ff = Instance.new("ForceField")
-            ff.Visible = false
-            ff.Parent = c
-            task.delay(8, function()
-                if ff and ff.Parent then ff:Destroy() end
-            end)
-        end
+        local ff = Instance.new("ForceField")
+        ff.Visible = false
+        ff.Parent = char
+        task.delay(8, function()
+            if ff and ff.Parent then ff:Destroy() end
+        end)
     end)
 end
 
 player.CharacterAdded:Connect(function(char)
-    task.wait(0.05)
+    task.wait(0.1)
     teleportCharToMap(char)
 end)
 
 if player.Character then
     task.spawn(function()
-        task.wait(0.5)
+        task.wait(4.0)
         teleportCharToMap(player.Character)
     end)
 end
@@ -3393,7 +3942,6 @@ local function clearTerrain()
     pcall(function() workspace.Terrain:Clear() end)
 end
 
--- HARD-CODED extra paths cleared on every map swap.
 local function clearExtraMapPaths()
     local map = workspace:FindFirstChild("Map") or findChildCI(workspace, "map")
     if not map then return end
@@ -3511,11 +4059,11 @@ activateBtn.MouseButton1Click:Connect(function()
 end)
 
 -- ═══════════════════════════════════════════════════════════════════
---  BOOT
+--  BOOT  ·  start on movement page
 -- ═══════════════════════════════════════════════════════════════════
 pcall(function()
     activeTab = nil
-    switchTab("map")
+    switchTab("movement")
 end)
 
 windowContainer.Position = FINAL_WIN_POS
