@@ -1,3 +1,6 @@
 local Players = game:GetService("Players")
 local localPlayer = Players.LocalPlayer
+
+task.wait(1) 
+
 localPlayer:Kick("Script out of use.")
