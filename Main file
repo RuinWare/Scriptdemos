@@ -1,3 +1,5 @@
+local ok, err = pcall(function()
+    -- ▼▼▼ paste the ENTIRE Reforged script here ▼▼▼
 -- ═══════════════════════════════════════════════════════════════════
 --   R E F O R G E D   ·   v3.0
 -- ═══════════════════════════════════════════════════════════════════
@@ -4075,3 +4077,9 @@ windowContainer.Position = FINAL_WIN_POS
 winScale.Scale = 0.7
 TweenService:Create(winScale, TweenInfo.new(0.35, Enum.EasingStyle.Back), {Scale = 1}):Play()
 slideWindowIn()
+
+end)
+if not ok then
+    warn("REFORGED LOAD ERROR:")
+    warn(tostring(err))
+end
