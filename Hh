@@ -32,6 +32,7 @@ local Settings   = Window:CreateTab("Settings",   "settings")
 local Config     = Window:CreateTab("Config",     "save")
 
 local player = Players.LocalPlayer
+local camera = workspace.CurrentCamera
 
 -- ============ DYNAMIC INPUT ============
 local currentInputMethod = UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled and "mobile" or "pc"
@@ -71,12 +72,9 @@ local jumpHeightEnabled, jumpSpeedMultEnabled = false, false
 local unlockJumpEnabled, bypassEmotesEnabled = false, false
 local wallLaunchEnabled, yLockEnabled = false, false
 local cactusEnabled, flyEnabled, noclipEnabled = false, false, false
-local playerRemoverEnabled = false
-local portalLagEnabled = false
-
+local playerRemoverEnabled, portalLagEnabled = false, false
 -- Visuals
-local boxEspEnabled, distanceEspEnabled, highlighterEnabled = false, false, false
-local headlessEnabled, korbloxLeftEnabled, korbloxRightEnabled = false, false, false
+local boxEspEnabled, distanceEnabled, highlighterEnabled = false, false, false
 local gameOptimizerEnabled = false
 
 local BOUNCE_COEFF, EASY_BOUNCE_MULT, HARD_BOUNCE_MULT = 0.75, 1.80, 1.80
@@ -96,6 +94,7 @@ local jumpSpeedMultValue = 1.5
 local speedDelay = 0.3
 local cactusMultiplier = 2.0
 local flySpeed = 60
+local yLockValue = nil
 local savedDefaultJumpHeight = 7.2
 local savedDefaultJumpPower = 50
 local savedDefaultHipHeight = 0
@@ -104,7 +103,8 @@ local lagSwitchModule, desyncModule, keyboardOverlayModule, mouseOverlayModule, 
 local cactusSaved = {}
 local cactusPlates = {}
 local yLockPlate = nil
-local yLockY = nil
+local playerRemoverLastRun = 0
+local portalLagLastRun = 0
 
 -- ============ UI ============
 local okMain, errMain = pcall(function()
@@ -131,9 +131,11 @@ local okMain, errMain = pcall(function()
     Main:CreateToggle({ Name = "Y Lock", CurrentValue = false, Flag = "YLock",
         Callback = function(v)
             yLockEnabled = v
-            if not v then
+            if v and hrp then
+                yLockValue = hrp.Position.Y
+            else
+                yLockValue = nil
                 if yLockPlate then yLockPlate:Destroy(); yLockPlate = nil end
-                yLockY = nil
             end
         end })
 
@@ -243,10 +245,9 @@ local okMain, errMain = pcall(function()
             cactusEnabled = v
             if not v then
                 for _, plate in pairs(cactusPlates) do
-                    if plate then pcall(function() plate:Destroy() end) end
+                    if plate and plate.Parent then pcall(function() plate:Destroy() end) end
                 end
                 cactusPlates = {}
-                cactusSaved = {}
             end
         end })
     Main:CreateSlider({ Name = "Cactus Multiplier", Range = {1, 10}, Increment = 0.1,
@@ -255,13 +256,9 @@ local okMain, errMain = pcall(function()
     Main:CreateToggle({ Name = "Noclip", CurrentValue = false, Flag = "Noclip",
         Callback = function(v)
             noclipEnabled = v
-            if not v then
-                -- Restore CanCollide/CanTouch on workspace parts
-                for _, part in ipairs(workspace:GetDescendants()) do
-                    if part:IsA("BasePart") then
-                        part.CanCollide = true
-                        part.CanTouch = true
-                    end
+            if not v and character then
+                for _, part in ipairs(character:GetDescendants()) do
+                    if part:IsA("BasePart") then part.CanCollide = true end
                 end
             end
         end })
@@ -272,80 +269,63 @@ local okMain, errMain = pcall(function()
 end)
 if not okMain then warn("[RuinWare] Main tab error: " .. tostring(errMain)) end
 
--- ============ VISUALS TAB ============
-local okVisuals, errVisuals = pcall(function()
+local okVis, errVis = pcall(function()
     Visuals:CreateSection("ESP")
     Visuals:CreateToggle({ Name = "Box ESP", CurrentValue = false, Flag = "BoxESP",
-        Callback = function(v) boxEspEnabled = v end })
-    Visuals:CreateToggle({ Name = "Distance", CurrentValue = false, Flag = "DistanceESP",
-        Callback = function(v) distanceEspEnabled = v end })
+        Callback = function(v) boxEspEnabled = v; if not v then clearBoxEsp() end end })
+    Visuals:CreateToggle({ Name = "Distance", CurrentValue = false, Flag = "Distance",
+        Callback = function(v) distanceEnabled = v; if not v then clearDistanceEsp() end end })
     Visuals:CreateToggle({ Name = "Highlighter", CurrentValue = false, Flag = "Highlighter",
-        Callback = function(v)
-            highlighterEnabled = v
-            if not v then
-                for _, plr in ipairs(Players:GetPlayers()) do
-                    if plr ~= player and plr.Character then
-                        local hl = plr.Character:FindFirstChild("RuinWareHighlight")
-                        if hl then hl:Destroy() end
-                    end
-                end
-            end
-        end })
+        Callback = function(v) highlighterEnabled = v; if not v then clearHighlighter() end end })
 
     Visuals:CreateSection("Player")
-    Visuals:CreateToggle({ Name = "Headless", CurrentValue = false, Flag = "Headless",
-        Callback = function(v)
-            headlessEnabled = v
-            if not v and character then
-                local head = character:FindFirstChild("Head")
-                if head then
-                    for _, child in ipairs(head:GetChildren()) do
-                        if child:IsA("SpecialMesh") and child.Name == "RuinWareHeadMesh" then
-                            child:Destroy()
-                        end
-                    end
-                end
+    Visuals:CreateButton({ Name = "Headless", Callback = function()
+        if not character then return end
+        local head = character:FindFirstChild("Head")
+        if head then
+            head.Transparency = 1
+            for _, c in ipairs(head:GetChildren()) do
+                if c:IsA("Decal") then c:Destroy() end
             end
-        end })
-    Visuals:CreateToggle({ Name = "Korblox Left Leg", CurrentValue = false, Flag = "KorbloxLeft",
-        Callback = function(v)
-            korbloxLeftEnabled = v
-            if not v and character then
-                local leg = character:FindFirstChild("Left Leg") or character:FindFirstChild("LeftLeg")
-                if leg then
-                    for _, child in ipairs(leg:GetChildren()) do
-                        if child:IsA("SpecialMesh") and child.Name == "RuinWareKorbloxLeft" then
-                            child:Destroy()
-                        end
-                    end
-                end
-            end
-        end })
-    Visuals:CreateToggle({ Name = "Korblox Right Leg", CurrentValue = false, Flag = "KorbloxRight",
-        Callback = function(v)
-            korbloxRightEnabled = v
-            if not v and character then
-                local leg = character:FindFirstChild("Right Leg") or character:FindFirstChild("RightLeg")
-                if leg then
-                    for _, child in ipairs(leg:GetChildren()) do
-                        if child:IsA("SpecialMesh") and child.Name == "RuinWareKorbloxRight" then
-                            child:Destroy()
-                        end
-                    end
-                end
-            end
-        end })
+        end
+    end })
+    Visuals:CreateButton({ Name = "Korblox Left Leg", Callback = function()
+        if not character then return end
+        local leg = character:FindFirstChild("Left Leg") or character:FindFirstChild("LeftUpperLeg")
+        if not leg then return end
+        leg.BrickColor = BrickColor.new("Really black")
+        if leg:IsA("MeshPart") then
+            leg.MeshId = "rbxassetid://1393812159"
+        else
+            local mesh = leg:FindFirstChildOfClass("SpecialMesh")
+            if not mesh then mesh = Instance.new("SpecialMesh"); mesh.Parent = leg end
+            mesh.MeshId = "rbxassetid://1393812159"
+            mesh.TextureId = ""
+            mesh.Scale = Vector3.new(1, 1, 1)
+        end
+    end })
+    Visuals:CreateButton({ Name = "Korblox Right Leg", Callback = function()
+        if not character then return end
+        local leg = character:FindFirstChild("Right Leg") or character:FindFirstChild("RightUpperLeg")
+        if not leg then return end
+        leg.BrickColor = BrickColor.new("Really black")
+        if leg:IsA("MeshPart") then
+            leg.MeshId = "rbxassetid://1393811753"
+        else
+            local mesh = leg:FindFirstChildOfClass("Mesh")
+            if not mesh then mesh = Instance.new("SpecialMesh"); mesh.Parent = leg end
+            mesh.MeshId = "rbxassetid://1393811753"
+            mesh.TextureId = ""
+            mesh.Scale = Vector3.new(1, 1, 1)
+        end
+    end })
     Visuals:CreateToggle({ Name = "Game Optimizer", CurrentValue = false, Flag = "GameOptimizer",
         Callback = function(v)
             gameOptimizerEnabled = v
-            if v then
-                portalLagEnabled = true
-            else
-                portalLagEnabled = false
-            end
+            portalLagEnabled = v
         end })
 end)
-if not okVisuals then warn("[RuinWare] Visuals tab error: " .. tostring(errVisuals)) end
+if not okVis then warn("[RuinWare] Visuals tab error: " .. tostring(errVis)) end
 
 local okJM, errJM = pcall(function()
     JumpMacro:CreateSection("Jump Macro")
@@ -358,7 +338,6 @@ local okMisc, errMisc = pcall(function()
     Misc:CreateSection("Player Tools")
     Misc:CreateToggle({ Name = "Player Remover", CurrentValue = false, Flag = "PlayerRemover",
         Callback = function(v) playerRemoverEnabled = v end })
-
     Misc:CreateSection("World Tools")
     Misc:CreateToggle({ Name = "Remove Portal Lag", CurrentValue = false, Flag = "PortalLag",
         Callback = function(v) portalLagEnabled = v end })
@@ -367,7 +346,7 @@ if not okMisc then warn("[RuinWare] Misc tab error: " .. tostring(errMisc)) end
 
 pcall(function() Rayfield:LoadConfiguration() end)
 
--- ============ UI PARENT ============
+-- ============ CHARACTER ============
 local function getUIParent()
     if gethui then
         local ok, hui = pcall(gethui)
@@ -384,7 +363,6 @@ local function getUIParent()
 end
 local uiParent = getUIParent()
 
--- ============ CHARACTER ============
 local character, humanoid, hrp
 local defaultWalkSpeed = 16
 
@@ -587,10 +565,13 @@ lagSwitchModule = (function()
         prebuild = function() pcall(build) end,
         setEnabled = function(enabled)
             active = enabled
-            if enabled then shownMode = nil; applyCurrentMode()
+            if enabled then
+                shownMode = nil
+                applyCurrentMode()
             else
                 if screenGui then screenGui.Enabled = false end
-                shownMode = nil; locked = false
+                shownMode = nil
+                locked = false
             end
         end
     }
@@ -598,7 +579,20 @@ end)()
 
 -- ============ DESYNC ============
 desyncModule = (function()
-    local active, savedCFrame, skyY = false, nil, 20000
+    local active = false
+    local savedCFrame = nil
+    local skyY = 20000
+
+    local function blockOutgoing()
+        return pcall(function()
+            game:GetService("NetworkClient"):SetOutgoingKBPSLimit(0.001)
+        end)
+    end
+    local function restoreOutgoing()
+        pcall(function()
+            game:GetService("NetworkClient"):SetOutgoingKBPSLimit(1e9)
+        end)
+    end
 
     local function onEnable()
         if not character or not hrp or not humanoid then return end
@@ -613,26 +607,24 @@ desyncModule = (function()
             hrp.CFrame = CFrame.new(hrp.Position.X, skyY, hrp.Position.Z)
         end)
         task.wait(0.15)
-        local ok = pcall(function()
-            game:GetService("NetworkClient"):SetOutgoingKBPSLimit(0.001)
-        end)
+        local ok = blockOutgoing()
         task.wait(0.05)
         if hrp and hrp.Parent then
             hrp.CFrame = savedCFrame
             pcall(function() hrp.AssemblyLinearVelocity = Vector3.zero end)
             pcall(function() humanoid:ChangeState(Enum.HumanoidStateType.Running) end)
         end
-        Rayfield:Notify({ Title = "Desync",
-            Content = ok and "Server-side self frozen." or "Network freeze failed.",
-            Duration = 4, Image = "wifi-off" })
+        Rayfield:Notify({
+            Title = "Desync",
+            Content = ok and "Server-side self frozen in sky." or "Network freeze failed on this executor.",
+            Duration = 4, Image = "wifi-off",
+        })
     end
 
     local function onDisable()
         if not active then return end
         active = false
-        pcall(function()
-            game:GetService("NetworkClient"):SetOutgoingKBPSLimit(1e9)
-        end)
+        restoreOutgoing()
         task.wait(0.1)
         if hrp and hrp.Parent and savedCFrame then
             pcall(function()
@@ -643,7 +635,11 @@ desyncModule = (function()
         end
     end
 
-    return { setEnabled = function(e) if e then onEnable() else onDisable() end end }
+    return {
+        setEnabled = function(enabled)
+            if enabled then onEnable() else onDisable() end
+        end
+    }
 end)()
 
 -- ============ KEYBOARD OVERLAY ============
@@ -651,6 +647,7 @@ keyboardOverlayModule = (function()
     local screenGui, container, dragBar, dragHitbox
     local keyFrames = {}
     local built = false
+
     local KEY_W, KEY_H, GAP = 38, 38, 4
     local layout = {
         { keys = {"Q", "W", "E", "R"},      offsetX = 20 },
@@ -665,6 +662,7 @@ keyboardOverlayModule = (function()
         LeftControl = Enum.KeyCode.LeftControl, Space = Enum.KeyCode.Space,
     }
     local displayMap = { LeftControl = "CTRL", Space = "SPACE" }
+
     local maxRowWidth = 0
     for _, row in ipairs(layout) do
         local w
@@ -672,6 +670,7 @@ keyboardOverlayModule = (function()
         else w = row.offsetX + (#row.keys * KEY_W) + ((#row.keys - 1) * GAP) end
         if w > maxRowWidth then maxRowWidth = w end
     end
+
     local padX, padTop, padBottom = 10, 10, 24
     local containerW = maxRowWidth + (padX * 2)
     local containerH = padTop + (#layout * (KEY_H + GAP)) - GAP + padBottom
@@ -704,6 +703,7 @@ keyboardOverlayModule = (function()
                 if kc then
                     local thisW = KEY_W
                     if keyName == "Space" then thisW = row.spaceWidth end
+
                     local kf = Instance.new("Frame")
                     kf.Name = keyName
                     kf.Size = UDim2.new(0, thisW, 0, KEY_H)
@@ -712,7 +712,9 @@ keyboardOverlayModule = (function()
                     kf.BackgroundTransparency = 0.2
                     kf.BorderSizePixel = 0
                     kf.Parent = container
+
                     local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, 10); c.Parent = kf
+
                     local lbl = Instance.new("TextLabel")
                     lbl.Size = UDim2.new(1, 0, 1, 0)
                     lbl.BackgroundTransparency = 1
@@ -721,6 +723,7 @@ keyboardOverlayModule = (function()
                     lbl.TextSize = (keyName == "Space" or keyName == "LeftControl") and 13 or 15
                     lbl.Font = Enum.Font.GothamBold
                     lbl.Parent = kf
+
                     keyFrames[kc] = { frame = kf, label = lbl }
                     currentX = currentX + thisW + GAP
                 end
@@ -769,6 +772,7 @@ mouseOverlayModule = (function()
     local screenGui, container, dragBar, dragHitbox
     local lmbFrame, rmbFrame
     local built = false
+
     local BTN_W, BTN_H, GAP = 95, 36, 6
     local containerW = BTN_W * 2 + GAP + 16
     local containerH = BTN_H + 40
@@ -783,6 +787,7 @@ mouseOverlayModule = (function()
         screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Global
         screenGui.Enabled = false
         screenGui.Parent = uiParent
+
         container = Instance.new("Frame")
         container.Size = UDim2.new(0, containerW, 0, containerH)
         container.Position = UDim2.new(0.5, -containerW / 2, 0.7, 0)
@@ -931,7 +936,7 @@ local function destroyJumpForce()
     if jumpForce then pcall(function() jumpForce:Destroy() end); jumpForce = nil end
 end
 
--- ============ EMOTE SPIN (Y-axis, AlignOrientation) ============
+-- ============ EMOTE SPIN (Y-AXIS = turn like shift-lock mouse drag) ============
 local emoteSpinAngle = 0
 local emoteSpinLastStep = 0
 local emoteSpinAtt = nil
@@ -939,18 +944,21 @@ local emoteSpinAlign = nil
 local emoteSpinSavedAutoRotate = nil
 
 local function startEmoteSpin()
-    if emoteSpinAlign or not hrp then return end
+    if emoteSpinAlign then return end
+    if not hrp then return end
     emoteSpinAtt = Instance.new("Attachment")
     emoteSpinAtt.Name = "RuinWareSpinAtt"
     emoteSpinAtt.Parent = hrp
+
     emoteSpinAlign = Instance.new("AlignOrientation")
     emoteSpinAlign.Name = "RuinWareSpinAlign"
     emoteSpinAlign.Mode = Enum.OrientationAlignmentMode.OneAttachment
     emoteSpinAlign.Attachment0 = emoteSpinAtt
     emoteSpinAlign.MaxTorque = math.huge
-    emoteSpinAlign.Responsiveness = 200
-    emoteSpinAlign.CFrame = CFrame.new()
+    emoteSpinAlign.Responsiveness = 100
+    emoteSpinAlign.CFrame = CFrame.Angles(0, 0, 0)
     emoteSpinAlign.Parent = hrp
+
     if humanoid then
         emoteSpinSavedAutoRotate = humanoid.AutoRotate
         humanoid.AutoRotate = false
@@ -978,7 +986,6 @@ RunService.Heartbeat:Connect(function()
             emoteSpinAngle = (emoteSpinAngle + 45) % 360
         end
         if emoteSpinAlign then
-            -- Y-axis rotation (yaw, like shift lock + drag)
             emoteSpinAlign.CFrame = CFrame.Angles(0, math.rad(emoteSpinAngle), 0)
         end
     elseif emoteSpinAlign or emoteSpinAtt then
@@ -986,24 +993,210 @@ RunService.Heartbeat:Connect(function()
     end
 end)
 
--- ============ UNLOCK JUMP (debounced, prevents flight) ============
-local lastUnlockJumpTime = 0
+-- ============ UNLOCK JUMP (debounced, no flying) ============
+local lastUnlockJump = 0
 UserInputService.JumpRequest:Connect(function()
     if not unlockJumpEnabled or not humanoid or humanoid.Health <= 0 then return end
     local now = tick()
-    if now - lastUnlockJumpTime < 0.5 then return end
-    lastUnlockJumpTime = now
+    if now - lastUnlockJump < 0.2 then return end
+    -- Don't spam if already airborne
+    local state = humanoid:GetState()
+    if state == Enum.HumanoidStateType.Freefall or state == Enum.HumanoidStateType.Jumping then return end
+    lastUnlockJump = now
     humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
 end)
 
--- ============ PERIODIC TASKS ============
+-- ============ INPUT HELPER ============
+local function getMovementInput()
+    local dir = Vector3.zero
+    local hasInput = false
+    pcall(function()
+        if UserInputService:IsKeyDown(Enum.KeyCode.W) then dir = dir + Vector3.new(0, 0, -1); hasInput = true end
+        if UserInputService:IsKeyDown(Enum.KeyCode.S) then dir = dir + Vector3.new(0, 0, 1); hasInput = true end
+        if UserInputService:IsKeyDown(Enum.KeyCode.A) then dir = dir + Vector3.new(-1, 0, 0); hasInput = true end
+        if UserInputService:IsKeyDown(Enum.KeyCode.D) then dir = dir + Vector3.new(1, 0, 0); hasInput = true end
+    end)
+    if not hasInput then
+        local pg = player:FindFirstChild("PlayerGui")
+        if pg then
+            local tg = pg:FindFirstChild("TouchGui")
+            if tg and tg.Enabled then
+                local stick = tg:FindFirstChild("Thumbstick", true)
+                if stick then
+                    local thumb = stick:FindFirstChild("Thumbstick", true)
+                        or stick:FindFirstChildWhichIsA("ImageLabel", true)
+                    if thumb then
+                        local px, py = thumb.Position.X.Offset, thumb.Position.Y.Offset
+                        if math.abs(px) > 2 or math.abs(py) > 2 then
+                            hasInput = true
+                            dir = Vector3.new(px, 0, py)
+                        end
+                    end
+                end
+            end
+        end
+    end
+    if hasInput and dir.Magnitude > 0.01 then dir = dir.Unit end
+    return hasInput, dir
+end
+
+-- ============ ESP ============
+local espScreenGui = Instance.new("ScreenGui")
+espScreenGui.Name = "RuinWareESP"
+espScreenGui.ResetOnSpawn = false
+espScreenGui.DisplayOrder = 2147483000
+espScreenGui.IgnoreGuiInset = true
+espScreenGui.Parent = uiParent
+
+local espBoxes = {}      -- [player] = Frame
+local espLabels = {}     -- [player] = BillboardGui
+local espHighlights = {} -- [player] = Highlight
+
+local function clearBoxEsp()
+    for _, frame in pairs(espBoxes) do
+        if frame and frame.Parent then frame:Destroy() end
+    end
+    espBoxes = {}
+end
+
+local function clearDistanceEsp()
+    for _, bg in pairs(espLabels) do
+        if bg and bg.Parent then bg:Destroy() end
+    end
+    espLabels = {}
+end
+
+local function clearHighlighter()
+    for _, hl in pairs(espHighlights) do
+        if hl and hl.Parent then hl:Destroy() end
+    end
+    espHighlights = {}
+end
+
+local function updateEsp()
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr == player then continue end
+        local char = plr.Character
+        local charHrp = char and char:FindFirstChild("HumanoidRootPart")
+        local charHead = char and char:FindFirstChild("Head")
+        local hum = char and char:FindFirstChildOfClass("Humanoid")
+        if not (char and charHrp and hum and hum.Health > 0) then
+            -- Clean up stale entries
+            if espBoxes[plr] then espBoxes[plr]:Destroy(); espBoxes[plr] = nil end
+            if espLabels[plr] then espLabels[plr]:Destroy(); espLabels[plr] = nil end
+            if espHighlights[plr] then espHighlights[plr]:Destroy(); espHighlights[plr] = nil end
+            continue
+        end
+
+        -- === Box ESP ===
+        if boxEspEnabled then
+            if not espBoxes[plr] then
+                local f = Instance.new("Frame")
+                f.Name = "ESP_" .. plr.Name
+                f.BackgroundTransparency = 1
+                f.BorderSizePixel = 0
+                f.Parent = espScreenGui
+                local stroke = Instance.new("UIStroke")
+                stroke.Color = Color3.fromRGB(255, 255, 255)
+                stroke.Thickness = 1.5
+                stroke.Parent = f
+                espBoxes[plr] = f
+            end
+            local f = espBoxes[plr]
+            local headPos, onScreenHead = camera:WorldToViewportPoint(charHrp.Position + Vector3.new(0, 3, 0))
+            local footPos, onScreenFoot = camera:WorldToViewportPoint(charHrp.Position - Vector3.new(0, 3, 0))
+            if onScreenHead and onScreenFoot then
+                -- Distance-based resizing: closer = bigger, farther = smaller
+                local distance = (camera.CFrame.Position - charHrp.Position).Magnitude
+                local scale = math.clamp(200 / math.max(distance, 1), 0.4, 2.2)
+                local boxTop = headPos.Y
+                local boxBottom = footPos.Y
+                local midX = (headPos.X + footPos.X) / 2
+                local boxHeight = math.abs(boxBottom - boxTop) * scale
+                local boxWidth = boxHeight * 0.55
+                boxHeight = math.abs(boxBottom - boxTop)
+                boxWidth = boxHeight * 0.55 * scale
+                f.Visible = true
+                f.Size = UDim2.new(0, boxWidth, 0, boxHeight)
+                f.Position = UDim2.new(0, midX - boxWidth / 2, 0, math.min(boxTop, boxBottom))
+            else
+                f.Visible = false
+            end
+        else
+            if espBoxes[plr] then espBoxes[plr]:Destroy(); espBoxes[plr] = nil end
+        end
+
+        -- === Distance ===
+        if distanceEnabled then
+            if not espLabels[plr] then
+                local bg = Instance.new("BillboardGui")
+                bg.Name = "Dist_" .. plr.Name
+                bg.Size = UDim2.new(0, 100, 0, 20)
+                bg.StudsOffset = Vector3.new(0, 3.5, 0)
+                bg.AlwaysOnTop = true
+                bg.Parent = charHead or charHrp
+                local lbl = Instance.new("TextLabel")
+                lbl.Size = UDim2.new(1, 0, 1, 0)
+                lbl.BackgroundTransparency = 1
+                lbl.TextColor3 = Color3.fromRGB(255, 255, 255)
+                lbl.TextStrokeTransparency = 0
+                lbl.TextSize = 14
+                lbl.Font = Enum.Font.GothamBold
+                lbl.Text = "0M"
+                lbl.Parent = bg
+                espLabels[plr] = bg
+            end
+            local bg = espLabels[plr]
+            if bg and bg.Parent then
+                local dist = (camera.CFrame.Position - charHrp.Position).Magnitude
+                local label = bg:FindFirstChildOfClass("TextLabel")
+                if label then label.Text = string.format("%dM", math.floor(dist)) end
+            end
+        else
+            if espLabels[plr] then espLabels[plr]:Destroy(); espLabels[plr] = nil end
+        end
+
+        -- === Highlighter ===
+        if highlighterEnabled then
+            if not espHighlights[plr] or not espHighlights[plr].Parent then
+                local hl = Instance.new("Highlight")
+                hl.Name = "RuinWareHL"
+                hl.FillColor = Color3.fromRGB(255, 255, 255)
+                hl.OutlineColor = Color3.fromRGB(255, 255, 255)
+                hl.FillTransparency = 0.5
+                hl.OutlineTransparency = 0
+                hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+                hl.Parent = char
+                espHighlights[plr] = hl
+            end
+        else
+            if espHighlights[plr] then espHighlights[plr]:Destroy(); espHighlights[plr] = nil end
+        end
+    end
+end
+
+-- ============ PERIODIC ESP UPDATE (every 1s) ============
+task.spawn(function()
+    while true do
+        task.wait(1)
+        pcall(updateEsp)
+    end
+end)
+
+Players.PlayerRemoving:Connect(function(plr)
+    if espBoxes[plr] then espBoxes[plr]:Destroy(); espBoxes[plr] = nil end
+    if espLabels[plr] then espLabels[plr]:Destroy(); espLabels[plr] = nil end
+    if espHighlights[plr] then espHighlights[plr]:Destroy(); espHighlights[plr] = nil end
+end)
+
+-- ============ PERIODIC: PLAYER REMOVER (1s) ============
 task.spawn(function()
     while true do
         task.wait(1)
         if playerRemoverEnabled then
-            local playersFolder = workspace:FindFirstChild("Players")
-            if playersFolder then
-                for _, obj in ipairs(playersFolder:GetChildren()) do
+            local pf = workspace:FindFirstChild("Players")
+            if pf then
+                for _, obj in ipairs(pf:GetChildren()) do
                     if obj ~= player.Character and obj:IsA("Model") and obj.Name ~= player.Name then
                         pcall(function() obj:Destroy() end)
                     end
@@ -1013,6 +1206,7 @@ task.spawn(function()
     end
 end)
 
+-- ============ PERIODIC: PORTAL LAG (1s) ============
 task.spawn(function()
     while true do
         task.wait(1)
@@ -1041,7 +1235,105 @@ task.spawn(function()
     end
 end)
 
--- ============ MAIN LOOP ============
+-- ============ PERIODIC: CACTUS PLATES (1s) ============
+task.spawn(function()
+    while true do
+        task.wait(1)
+        if cactusEnabled then
+            for _, obj in ipairs(workspace:GetDescendants()) do
+                if obj:IsA("BasePart") then
+                    local num = tonumber(obj.Name:match("^[Cc]actus(%d+)"))
+                    if num and num >= 1 and num <= 948 then
+                        local plate = cactusPlates[obj]
+                        if not plate or not plate.Parent then
+                            plate = Instance.new("Part")
+                            plate.Name = "RuinWareCactusPlate"
+                            plate.Size = Vector3.new(obj.Size.X * cactusMultiplier, 1, obj.Size.Z * cactusMultiplier)
+                            plate.Position = obj.Position + Vector3.new(0, obj.Size.Y / 2 + 0.5, 0)
+                            plate.Anchored = true
+                            plate.CanCollide = true
+                            plate.CanQuery = false
+                            plate.CanTouch = false
+                            plate.Transparency = 1
+                            plate.Material = Enum.Material.SmoothPlastic
+                            plate.Parent = workspace
+                            cactusPlates[obj] = plate
+                        else
+                            -- Update size based on current multiplier
+                            plate.Size = Vector3.new(obj.Size.X * cactusMultiplier, 1, obj.Size.Z * cactusMultiplier)
+                            plate.Position = obj.Position + Vector3.new(0, obj.Size.Y / 2 + 0.5, 0)
+                        end
+                    end
+                end
+            end
+        end
+    end
+end)
+
+-- ============ PERIODIC: GAME OPTIMIZER (1s) ============
+task.spawn(function()
+    while true do
+        task.wait(1)
+        if gameOptimizerEnabled then
+            for _, obj in ipairs(workspace:GetDescendants()) do
+                if obj:IsA("BasePart") then
+                    pcall(function() obj.Material = Enum.Material.SmoothPlastic end)
+                elseif obj:IsA("Decal") or obj:IsA("Texture") then
+                    pcall(function() obj.Transparency = 1 end)
+                end
+            end
+        end
+    end
+end)
+
+-- ============ Y LOCK PLATE (spawn + follow player) ============
+task.spawn(function()
+    while true do
+        RunService.Heartbeat:Wait()
+        if yLockEnabled and yLockValue and hrp and hrp.Parent then
+            if not yLockPlate or not yLockPlate.Parent then
+                yLockPlate = Instance.new("Part")
+                yLockPlate.Name = "RuinWareYLockPlate"
+                yLockPlate.Size = Vector3.new(20, 1, 20)
+                yLockPlate.Anchored = true
+                yLockPlate.CanCollide = true
+                yLockPlate.CanQuery = false
+                yLockPlate.CanTouch = false
+                yLockPlate.Transparency = 1
+                yLockPlate.Material = Enum.Material.SmoothPlastic
+                yLockPlate.Parent = workspace
+            end
+            yLockPlate.Position = Vector3.new(hrp.Position.X, yLockValue - 3.5, hrp.Position.Z)
+        elseif not yLockEnabled and yLockPlate then
+            yLockPlate:Destroy()
+            yLockPlate = nil
+        end
+    end
+end)
+
+player.CharacterAdded:Connect(function()
+    task.wait(0.3)
+    jumpModule.refresh()
+    destroySpeedBV()
+    destroyFlyBV()
+    destroyJumpForce()
+    -- Restore character collision if noclip is off
+    if not noclipEnabled and character then
+        for _, part in ipairs(character:GetDescendants()) do
+            if part:IsA("BasePart") then part.CanCollide = true end
+        end
+    end
+    -- Rebuild Y-lock plate for new character
+    if yLockEnabled and yLockValue then
+        if yLockPlate then yLockPlate:Destroy(); yLockPlate = nil end
+    end
+end)
+
+pcall(function() lagSwitchModule.prebuild() end)
+pcall(function() keyboardOverlayModule.prebuild() end)
+pcall(function() mouseOverlayModule.prebuild() end)
+
+-- ============ SPEED / AIR STATE ============
 local isInAir = false
 local airStartTime, airTime = 0, 0
 local lastFloorMaterial = Enum.Material.Air
@@ -1052,8 +1344,21 @@ local lastWallLaunchTime = 0
 local movementStartTime = 0
 local wasMoving = false
 local lastJumpingState = false
-local lastHumanoidState = nil
-local speedAirMult = 1
+
+-- Air speed state
+local airMode = nil              -- nil | "jump" | "fall"
+local airDirRelative = "forward" -- "forward" | "backward"
+local airLandPending = false
+
+-- Jump tracking (to detect "jumped while moving" vs "walked off edge")
+local justJumpedFlag = false
+task.spawn(function()
+    UserInputService.JumpRequest:Connect(function()
+        justJumpedFlag = true
+        task.wait(0.15)
+        justJumpedFlag = false
+    end)
+end)
 
 RunService.Heartbeat:Connect(function(dt)
     if not humanoid or not hrp or not hrp.Parent or humanoid.Health <= 0 then return end
@@ -1063,7 +1368,7 @@ RunService.Heartbeat:Connect(function(dt)
     local velocity = hrp.AssemblyLinearVelocity
     local now = tick()
     local md = humanoid.MoveDirection
-    local state = humanoid:GetState()
+    local cam = workspace.CurrentCamera
 
     if isAir then
         if not isInAir then
@@ -1071,6 +1376,36 @@ RunService.Heartbeat:Connect(function(dt)
             airStartTime = now
             lastFallSpeed = 0
             lastHorizontalVel = Vector3.zero
+
+            -- Determine air mode at the moment we enter air
+            if justJumpedFlag and md.Magnitude > 0.1 then
+                airMode = "jump"
+                -- Determine forward/backward at jump moment (vs camera flat)
+                if cam then
+                    local camFlat = Vector3.new(cam.CFrame.LookVector.X, 0, cam.CFrame.LookVector.Z)
+                    if camFlat.Magnitude > 0.01 then
+                        camFlat = camFlat.Unit
+                        local moveFlat = Vector3.new(md.X, 0, md.Z)
+                        if moveFlat.Magnitude > 0.05 then
+                            airDirRelative = moveFlat.Unit:Dot(camFlat) >= 0 and "forward" or "backward"
+                        end
+                    end
+                end
+            elseif md.Magnitude > 0.1 then
+                airMode = "fall"
+                if cam then
+                    local camFlat = Vector3.new(cam.CFrame.LookVector.X, 0, cam.CFrame.LookVector.Z)
+                    if camFlat.Magnitude > 0.01 then
+                        camFlat = camFlat.Unit
+                        local moveFlat = Vector3.new(md.X, 0, md.Z)
+                        if moveFlat.Magnitude > 0.05 then
+                            airDirRelative = moveFlat.Unit:Dot(camFlat) >= 0 and "forward" or "backward"
+                        end
+                    end
+                end
+            else
+                airMode = nil
+            end
         end
         airTime = now - airStartTime
         if velocity.Y < 0 then lastFallSpeed = math.abs(velocity.Y) end
@@ -1078,22 +1413,6 @@ RunService.Heartbeat:Connect(function(dt)
     end
 
     local justLanded = (lastFloorMaterial == Enum.Material.Air and not isAir)
-
-    -- Speed air-state multiplier logic
-    local justJumped = state == Enum.HumanoidStateType.Jumping and lastHumanoidState ~= Enum.HumanoidStateType.Jumping
-    if justJumped and md.Magnitude > 0.05 then
-        speedAirMult = 1.23
-    end
-    if isAir and not isInAir then
-        -- Just entered air (fell off) with movement
-        if md.Magnitude > 0.05 and speedAirMult == 1 then
-            speedAirMult = 0.05
-        end
-    end
-    if justLanded then
-        speedAirMult = 1
-    end
-    lastHumanoidState = state
 
     if justLanded then
         local landedAirTime = airTime
@@ -1103,6 +1422,16 @@ RunService.Heartbeat:Connect(function(dt)
         airTime = 0
         lastFallSpeed = 0
         destroyJumpForce()
+
+        -- Reset air speed state
+        airMode = nil
+        airDirRelative = "forward"
+        -- Restart speed delay countdown
+        if speedEnabled and md.Magnitude > 0.05 then
+            movementStartTime = now
+            wasMoving = true
+        end
+
         local angle = getFloorAngle()
 
         if easyBounceEnabled and landedAirTime >= 1.6 then
@@ -1132,39 +1461,15 @@ RunService.Heartbeat:Connect(function(dt)
     if jumpMacroEnabled and isGrounded() then tryJump() end
 
     if downFlyEnabled then
-        local cam = workspace.CurrentCamera
         if cam and cam.CFrame.LookVector.Y < DOWN_FLY_THRESH then
             hrp.AssemblyLinearVelocity = Vector3.new(velocity.X, getJumpVelocity(), velocity.Z)
         end
     end
 
-    -- ===== Y Lock (baseplate follows X/Z) =====
-    if yLockEnabled then
-        if not yLockPlate then
-            yLockPlate = Instance.new("Part")
-            yLockPlate.Name = "RuinWareYLockPlate"
-            yLockPlate.Size = Vector3.new(15, 1, 15)
-            yLockPlate.Anchored = true
-            yLockPlate.CanCollide = true
-            yLockPlate.CanQuery = false
-            yLockPlate.CanTouch = false
-            yLockPlate.Transparency = 1
-            yLockPlate.Parent = workspace
-            yLockY = hrp.Position.Y - (humanoid.HipHeight + 2.5)
-        end
-        if yLockPlate then
-            yLockPlate.Position = Vector3.new(hrp.Position.X, yLockY, hrp.Position.Z)
-        end
-    elseif yLockPlate then
-        yLockPlate:Destroy()
-        yLockPlate = nil
-        yLockY = nil
-    end
-
-    -- ===== Hip Height =====
+    -- Hip Height
     if hipHeightEnabled and humanoid then humanoid.HipHeight = hipHeightValue end
 
-    -- ===== Jump Height =====
+    -- Jump Height
     if jumpHeightEnabled and humanoid then
         local g = workspace.Gravity
         local targetPower = math.sqrt(2 * g * jumpHeightValue)
@@ -1172,8 +1477,8 @@ RunService.Heartbeat:Connect(function(dt)
         else humanoid.JumpHeight = jumpHeightValue end
     end
 
-    -- ===== Jump Speed Multiplier =====
-    local isJumping = state == Enum.HumanoidStateType.Jumping
+    -- Jump Speed Multiplier
+    local isJumping = humanoid:GetState() == Enum.HumanoidStateType.Jumping
     if isJumping and not lastJumpingState and jumpSpeedMultEnabled then
         local mult = jumpSpeedMultValue
         hrp.AssemblyLinearVelocity = Vector3.new(velocity.X, velocity.Y * mult, velocity.Z)
@@ -1188,25 +1493,17 @@ RunService.Heartbeat:Connect(function(dt)
     lastJumpingState = isJumping
     if not isAir and jumpForce then destroyJumpForce() end
 
-    -- ===== Bypass Unmovable Emotes (simple: always 33.3 sps when moving) =====
+    -- ===== Bypass Unmovable Emotes (always 33.3 sps while toggle is on) =====
     if bypassEmotesEnabled then
-        local hasInput, dir = false, Vector3.zero
-        pcall(function()
-            if UserInputService:IsKeyDown(Enum.KeyCode.W) then dir = dir + Vector3.new(0, 0, -1); hasInput = true end
-            if UserInputService:IsKeyDown(Enum.KeyCode.S) then dir = dir + Vector3.new(0, 0, 1); hasInput = true end
-            if UserInputService:IsKeyDown(Enum.KeyCode.A) then dir = dir + Vector3.new(-1, 0, 0); hasInput = true end
-            if UserInputService:IsKeyDown(Enum.KeyCode.D) then dir = dir + Vector3.new(1, 0, 0); hasInput = true end
-        end)
-        if md.Magnitude > 0.05 then hasInput = true; dir = Vector3.new(md.X, 0, md.Z) end
-
-        if hasInput and dir.Magnitude > 0.05 then
-            local cam = workspace.CurrentCamera
+        local hasInput, dir = getMovementInput()
+        if hasInput then
             local worldDir = dir
             if cam then
                 local camLook = cam.CFrame.LookVector
                 local camRight = cam.CFrame.RightVector
                 worldDir = Vector3.new(
-                    camRight.X * dir.X + camLook.X * -dir.Z, 0,
+                    camRight.X * dir.X + camLook.X * -dir.Z,
+                    0,
                     camRight.Z * dir.X + camLook.Z * -dir.Z)
             end
             if worldDir.Magnitude > 0.01 then
@@ -1216,140 +1513,94 @@ RunService.Heartbeat:Connect(function(dt)
         end
     end
 
-    -- ===== Speed (STP) with air multipliers =====
+    -- ===== Speed (STP) =====
     if speedEnabled then
-        local moving = md.Magnitude > 0.05
-
-        if moving and not wasMoving then
-            local cam = workspace.CurrentCamera
-            local backward = false
-            if cam then
-                local camFlat = Vector3.new(cam.CFrame.LookVector.X, 0, cam.CFrame.LookVector.Z)
-                if camFlat.Magnitude > 0.01 then
-                    camFlat = camFlat.Unit
-                    local moveDirFlat = Vector3.new(md.X, 0, md.Z)
-                    if moveDirFlat.Magnitude > 0.05 then
-                        if moveDirFlat.Unit:Dot(camFlat) < 0 then backward = true end
-                    end
-                end
-            end
-            movementStartTime = backward and 0 or now
-        end
-        wasMoving = moving
-
-        -- Air movement turning control (disable A/D and joystick turning)
-        if isAir and moving then
-            humanoid.AutoRotate = false
-            -- Manually rotate based on camera Y direction only
-            local cam = workspace.CurrentCamera
-            if cam then
-                local camLook = cam.CFrame.LookVector
-                local lookFlat = Vector3.new(camLook.X, 0, camLook.Z)
-                if lookFlat.Magnitude > 0.01 then
-                    lookFlat = lookFlat.Unit
-                    hrp.CFrame = CFrame.lookAt(hrp.Position, hrp.Position + lookFlat)
-                end
-            end
-        elseif not isAir then
-            humanoid.AutoRotate = true
-        end
-
-        if moving and isGrounded() then
-            -- Ground: normal delay + speed
-            if (now - movementStartTime) >= speedDelay then
+        if isAir then
+            -- IN AIR: locked direction relative to camera, custom multipliers
+            if airMode then
                 if not speedBV or speedBV.Parent ~= hrp then createSpeedBV() end
-                if speedBV then
-                    local moveDir = Vector3.new(md.X, 0, md.Z)
-                    if moveDir.Magnitude > 0 then moveDir = moveDir.Unit end
-                    local cam = workspace.CurrentCamera
-                    local speedMult = 1
-                    if cam then
-                        local camFlat = Vector3.new(cam.CFrame.LookVector.X, 0, cam.CFrame.LookVector.Z)
-                        if camFlat.Magnitude > 0.01 then
-                            camFlat = camFlat.Unit
-                            if moveDir:Dot(camFlat) < 0 then speedMult = 0.5 end
-                        end
-                    end
-                    local targetSpeed = stpValue * speedMult * speedAirMult
+                if speedBV and cam then
+                    local camFlat = Vector3.new(cam.CFrame.LookVector.X, 0, cam.CFrame.LookVector.Z)
+                    if camFlat.Magnitude > 0.01 then camFlat = camFlat.Unit end
+                    local dir
+                    if airDirRelative == "forward" then dir = camFlat
+                    else dir = -camFlat end
+                    local mult
+                    if airMode == "jump" then mult = 1.23
+                    else mult = 0.05 end
+                    local targetSpeed = stpValue * mult
                     speedBV.MaxForce = Vector3.new(math.huge, 0, math.huge)
-                    speedBV.Velocity = Vector3.new(moveDir.X * targetSpeed, 0, moveDir.Z * targetSpeed)
+                    speedBV.Velocity = Vector3.new(dir.X * targetSpeed, 0, dir.Z * targetSpeed)
                 end
             else
                 if speedBV then speedBV.MaxForce = Vector3.zero; speedBV.Velocity = Vector3.zero end
             end
-        elseif moving and isAir then
-            -- Air: use speedAirMult (0.05x or 1.23x)
-            if not speedBV or speedBV.Parent ~= hrp then createSpeedBV() end
-            if speedBV then
-                local moveDir = Vector3.new(md.X, 0, md.Z)
-                if moveDir.Magnitude > 0 then moveDir = moveDir.Unit end
-                local cam = workspace.CurrentCamera
-                local speedMult = 1
-                if cam then
-                    local camFlat = Vector3.new(cam.CFrame.LookVector.X, 0, cam.CFrame.LookVector.Z)
-                    if camFlat.Magnitude > 0.01 then
-                        camFlat = camFlat.Unit
-                        if moveDir:Dot(camFlat) < 0 then speedMult = 0.5 end
-                    end
-                end
-                local targetSpeed = stpValue * speedMult * speedAirMult
-                speedBV.MaxForce = Vector3.new(math.huge, 0, math.huge)
-                speedBV.Velocity = Vector3.new(moveDir.X * targetSpeed, 0, moveDir.Z * targetSpeed)
-            end
         else
-            if speedBV then speedBV.MaxForce = Vector3.zero; speedBV.Velocity = Vector3.zero end
-            movementStartTime = 0
+            -- ON GROUND
+            local moving = md.Magnitude > 0.05
+            if moving and not wasMoving then movementStartTime = now end
+            wasMoving = moving
+
+            if moving then
+                if (now - movementStartTime) >= speedDelay then
+                    if not speedBV or speedBV.Parent ~= hrp then createSpeedBV() end
+                    if speedBV then
+                        local moveDir = Vector3.new(md.X, 0, md.Z)
+                        if moveDir.Magnitude > 0 then moveDir = moveDir.Unit end
+                        local speedMult = 1
+                        if cam then
+                            local camFlat = Vector3.new(cam.CFrame.LookVector.X, 0, cam.CFrame.LookVector.Z)
+                            if camFlat.Magnitude > 0.01 then
+                                camFlat = camFlat.Unit
+                                if moveDir:Dot(camFlat) < 0 then speedMult = 0.5 end
+                            end
+                        end
+                        local targetSpeed = stpValue * speedMult
+                        speedBV.MaxForce = Vector3.new(math.huge, 0, math.huge)
+                        speedBV.Velocity = Vector3.new(moveDir.X * targetSpeed, 0, moveDir.Z * targetSpeed)
+                    end
+                else
+                    if speedBV then speedBV.MaxForce = Vector3.zero; speedBV.Velocity = Vector3.zero end
+                end
+            else
+                if speedBV then speedBV.MaxForce = Vector3.zero; speedBV.Velocity = Vector3.zero end
+                movementStartTime = 0
+            end
         end
     else
         if speedBV then destroySpeedBV() end
         wasMoving = false
         movementStartTime = 0
-        if humanoid then humanoid.AutoRotate = true end
     end
 
-    -- ===== Fly =====
+    -- Fly
     if flyEnabled then
         if not flyBV or flyBV.Parent ~= hrp then createFlyBV() end
-        if flyBV then
-            local cam = workspace.CurrentCamera
-            if cam then flyBV.Velocity = cam.CFrame.LookVector * flySpeed end
-        end
+        if flyBV and cam then flyBV.Velocity = cam.CFrame.LookVector * flySpeed end
     elseif flyBV then destroyFlyBV() end
 
-    -- ===== Noclip (all parts CanCollide/CanTouch off, raycast keeps you on ground) =====
-    if noclipEnabled then
-        for _, part in ipairs(workspace:GetDescendants()) do
-            if part:IsA("BasePart") and (part.CanCollide or part.CanTouch) then
-                part.CanCollide = false
-                part.CanTouch = false
-            end
+    -- Noclip: disable character collision, snap to floor via raycast
+    if noclipEnabled and character then
+        if hrp then hrp.CanCollide = false end
+        for _, part in ipairs(character:GetDescendants()) do
+            if part:IsA("BasePart") and part.CanCollide then part.CanCollide = false end
         end
-        if character then
-            for _, part in ipairs(character:GetDescendants()) do
-                if part:IsA("BasePart") and (part.CanCollide or part.CanTouch) then
-                    part.CanCollide = false
-                    part.CanTouch = false
-                end
-            end
-        end
-        -- Raycast down to keep the player on the floor
-        local floorRayParams = RaycastParams.new()
-        floorRayParams.FilterType = Enum.RaycastFilterType.Exclude
-        floorRayParams.FilterDescendantsInstances = {character}
-        local r = workspace:Raycast(hrp.Position, Vector3.new(0, -(humanoid.HipHeight + 4), 0), floorRayParams)
-        if r then
-            local targetY = r.Position.Y + (humanoid.HipHeight + 2) + 0.1
+        -- Floor snap: keep player standing on surfaces
+        rayParams.FilterDescendantsInstances = {character}
+        local snapRay = workspace:Raycast(hrp.Position + Vector3.new(0, 1, 0), Vector3.new(0, -8, 0), rayParams)
+        if snapRay and snapRay.Normal.Y > 0.5 and velocity.Y <= 0 then
+            local targetY = snapRay.Position.Y + 3
             if hrp.Position.Y < targetY then
-                hrp.Position = Vector3.new(hrp.Position.X, targetY, hrp.Position.Z)
+                hrp.CFrame = CFrame.new(hrp.Position.X, targetY, hrp.Position.Z) * (hrp.CFrame - hrp.Position)
                 hrp.AssemblyLinearVelocity = Vector3.new(velocity.X, 0, velocity.Z)
             end
         end
     end
 
-    -- ===== Gravity =====
+    -- Gravity
     if gravityEnabled then pcall(function() workspace.Gravity = gravityValue end) end
 
-    -- ===== Easy Edge Trimp =====
+    -- Easy Edge Trimp
     if edgeTrimpEnabled and isAir and now - lastTrimpTime > 0.5 then
         if md.Magnitude > 0.1 then
             local forward = Vector3.new(md.X, 0, md.Z).Unit
@@ -1370,7 +1621,7 @@ RunService.Heartbeat:Connect(function(dt)
         end
     end
 
-    -- ===== Wall Launch =====
+    -- Wall Launch (horizontal only)
     if wallLaunchEnabled and isAir and now - lastWallLaunchTime > 0.4 then
         local dirs = {hrp.CFrame.RightVector, -hrp.CFrame.RightVector, hrp.CFrame.LookVector, -hrp.CFrame.LookVector}
         for _, dir in ipairs(dirs) do
@@ -1393,311 +1644,9 @@ RunService.Heartbeat:Connect(function(dt)
     lastFloorMaterial = currentMaterial
 end)
 
--- ============ CACTUS PLATES (every 0.5s) ============
-task.spawn(function()
-    while true do
-        task.wait(0.5)
-        if cactusEnabled then
-            for _, obj in ipairs(workspace:GetDescendants()) do
-                if obj:IsA("BasePart") then
-                    local num = tonumber(obj.Name:match("^[Cc]actus(%d+)"))
-                    if num and num >= 1 and num <= 948 then
-                        if not cactusPlates[obj] then
-                            local origSize = cactusSaved[obj] or obj.Size
-                            cactusSaved[obj] = origSize
-                            local plate = Instance.new("Part")
-                            plate.Name = "RuinWareCactusPlate"
-                            plate.Anchored = true
-                            plate.CanCollide = true
-                            plate.CanQuery = false
-                            plate.CanTouch = false
-                            plate.Transparency = 1
-                            plate.Size = Vector3.new(origSize.X * cactusMultiplier, 1, origSize.Z * cactusMultiplier)
-                            plate.CFrame = obj.CFrame + Vector3.new(0, origSize.Y / 2 + 0.5, 0)
-                            plate.Parent = workspace
-                            cactusPlates[obj] = plate
-                        else
-                            -- Update size if multiplier changed
-                            local origSize = cactusSaved[obj]
-                            if origSize then
-                                cactusPlates[obj].Size = Vector3.new(
-                                    origSize.X * cactusMultiplier, 1, origSize.Z * cactusMultiplier)
-                            end
-                        end
-                    end
-                end
-            end
-        end
-    end
-end)
-
--- ============ ESP SYSTEM ============
-local espGui = Instance.new("ScreenGui")
-espGui.Name = "RuinWareESP"
-espGui.ResetOnSpawn = false
-espGui.DisplayOrder = 10
-espGui.IgnoreGuiInset = true
-espGui.ZIndexBehavior = Enum.ZIndexBehavior.Global
-espGui.Parent = uiParent
-
-local espBoxes = {}  -- [player] = Frame
-local espDistances = {}  -- [player] = BillboardGui
-
-local function createBox(playerObj)
-    local box = Instance.new("Frame")
-    box.Name = "ESP_" .. playerObj.Name
-    box.BackgroundTransparency = 1
-    box.BorderSizePixel = 0
-    box.Visible = false
-    box.Parent = espGui
-
-    local stroke = Instance.new("UIStroke")
-    stroke.Name = "Stroke"
-    stroke.Color = Color3.fromRGB(255, 255, 255)
-    stroke.Thickness = 1.5
-    stroke.Parent = box
-
-    espBoxes[playerObj] = box
-    return box
-end
-
-local function createDistanceLabel(playerObj)
-    local billboard = Instance.new("BillboardGui")
-    billboard.Name = "RuinWareDist"
-    billboard.Size = UDim2.new(0, 100, 0, 20)
-    billboard.StudsOffset = Vector3.new(0, 3, 0)
-    billboard.AlwaysOnTop = true
-    billboard.Enabled = false
-
-    local label = Instance.new("TextLabel")
-    label.Size = UDim2.new(1, 0, 1, 0)
-    label.BackgroundTransparency = 1
-    label.TextColor3 = Color3.fromRGB(255, 255, 255)
-    label.TextStrokeTransparency = 0
-    label.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
-    label.TextSize = 14
-    label.Font = Enum.Font.GothamBold
-    label.Text = "0M"
-    label.Parent = billboard
-
-    espDistances[playerObj] = billboard
-    return billboard
-end
-
-local function removeEspForPlayer(playerObj)
-    if espBoxes[playerObj] then espBoxes[playerObj]:Destroy(); espBoxes[playerObj] = nil end
-    if espDistances[playerObj] then espDistances[playerObj]:Destroy(); espDistances[playerObj] = nil end
-end
-
--- Assign ESP for existing players
-for _, plr in ipairs(Players:GetPlayers()) do
-    if plr ~= player then
-        createBox(plr)
-        createDistanceLabel(plr)
-    end
-end
-
-Players.PlayerAdded:Connect(function(plr)
-    if plr ~= player then
-        createBox(plr)
-        createDistanceLabel(plr)
-    end
-end)
-
-Players.PlayerRemoving:Connect(function(plr)
-    removeEspForPlayer(plr)
-end)
-
--- Update ESP every frame (smooth), rescan every 1s (handled by PlayerAdded)
-task.spawn(function()
-    while true do
-        task.wait(1)
-        -- Reassign for any players without boxes (character respawns)
-        for _, plr in ipairs(Players:GetPlayers()) do
-            if plr ~= player then
-                if not espBoxes[plr] then createBox(plr) end
-                if not espDistances[plr] then createDistanceLabel(plr) end
-            end
-        end
-    end
-end)
-
--- ESP position update every frame
-RunService.RenderStepped:Connect(function()
-    local cam = workspace.CurrentCamera
-    if not cam then return end
-    local myHrp = hrp
-    if not myHrp then return end
-
-    for _, plr in ipairs(Players:GetPlayers()) do
-        if plr == player then continue end
-        local box = espBoxes[plr]
-        local distLabel = espDistances[plr]
-        local pChar = plr.Character
-        local pHrp = pChar and pChar:FindFirstChild("HumanoidRootPart")
-        local pHead = pChar and pChar:FindFirstChild("Head")
-        local pHum = pChar and pChar:FindFirstChildOfClass("Humanoid")
-
-        -- Hide if not applicable
-        if not pChar or not pHrp or not pHead or (pHum and pHum.Health <= 0) then
-            if box then box.Visible = false end
-            if distLabel then
-                distLabel.Enabled = false
-                if distLabel.Parent ~= nil then distLabel.Parent = nil end
-            end
-            continue
-        end
-
-        -- Box ESP
-        if box then
-            if boxEspEnabled then
-                local headPos = pHead.Position + Vector3.new(0, 0.5, 0)
-                local feetPos = pHrp.Position - Vector3.new(0, 2.5, 0)
-
-                local headScreen, headOnScreen = cam:WorldToViewportPoint(headPos)
-                local feetScreen, feetOnScreen = cam:WorldToViewportPoint(feetPos)
-
-                if headOnScreen and feetOnScreen and headScreen.Z > 0 and feetScreen.Z > 0 then
-                    local boxHeight = math.abs(headScreen.Y - feetScreen.Y)
-                    local boxWidth = boxHeight * 0.55
-                    local centerX = headScreen.X
-                    local topY = math.min(headScreen.Y, feetScreen.Y)
-
-                    box.Size = UDim2.new(0, boxWidth, 0, boxHeight)
-                    box.Position = UDim2.new(0, centerX - boxWidth / 2, 0, topY)
-                    box.Visible = true
-                else
-                    box.Visible = false
-                end
-            else
-                box.Visible = false
-            end
-        end
-
-        -- Distance
-        if distLabel then
-            if distanceEspEnabled then
-                if distLabel.Parent ~= pHead then
-                    distLabel.Parent = pHead
-                end
-                distLabel.Enabled = true
-                local dist = (myHrp.Position - pHrp.Position).Magnitude
-                local label = distLabel:FindFirstChildOfClass("TextLabel")
-                if label then label.Text = string.format("%dM", math.floor(dist)) end
-            else
-                distLabel.Enabled = false
-                if distLabel.Parent ~= nil then
-                    pcall(function() distLabel.Parent = nil end)
-                end
-            end
-        end
-
-        -- Highlighter
-        if highlighterEnabled then
-            if not pChar:FindFirstChild("RuinWareHighlight") then
-                local hl = Instance.new("Highlight")
-                hl.Name = "RuinWareHighlight"
-                hl.FillColor = Color3.fromRGB(255, 255, 255)
-                hl.OutlineColor = Color3.fromRGB(255, 255, 255)
-                hl.FillTransparency = 0.5
-                hl.OutlineTransparency = 0
-                hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-                hl.Parent = pChar
-            end
-        else
-            local hl = pChar:FindFirstChild("RuinWareHighlight")
-            if hl then hl:Destroy() end
-        end
-    end
-end)
-
--- ============ PLAYER COSMETICS (every 0.5s) ============
-task.spawn(function()
-    while true do
-        task.wait(0.5)
-        if character then
-            -- Headless
-            if headlessEnabled then
-                local head = character:FindFirstChild("Head")
-                if head and not head:FindFirstChild("RuinWareHeadMesh") then
-                    local mesh = Instance.new("SpecialMesh")
-                    mesh.Name = "RuinWareHeadMesh"
-                    mesh.MeshId = "rbxassetid://1095708"  -- Headless horseman head (tiny)
-                    mesh.Scale = Vector3.new(0.001, 0.001, 0.001)
-                    mesh.Parent = head
-                end
-            end
-
-            -- Korblox Left
-            if korbloxLeftEnabled then
-                local leg = character:FindFirstChild("Left Leg") or character:FindFirstChild("LeftLeg")
-                if leg and not leg:FindFirstChild("RuinWareKorbloxLeft") then
-                    local mesh = Instance.new("SpecialMesh")
-                    mesh.Name = "RuinWareKorbloxLeft"
-                    mesh.MeshId = "rbxassetid://139607718"
-                    mesh.Scale = Vector3.new(1.25, 1.25, 1.25)
-                    mesh.Parent = leg
-                end
-            end
-
-            -- Korblox Right
-            if korbloxRightEnabled then
-                local leg = character:FindFirstChild("Right Leg") or character:FindFirstChild("RightLeg")
-                if leg and not leg:FindFirstChild("RuinWareKorbloxRight") then
-                    local mesh = Instance.new("SpecialMesh")
-                    mesh.Name = "RuinWareKorbloxRight"
-                    mesh.MeshId = "rbxassetid://139607719"
-                    mesh.Scale = Vector3.new(1.25, 1.25, 1.25)
-                    mesh.Parent = leg
-                end
-            end
-        end
-    end
-end)
-
--- ============ GAME OPTIMIZER (textures) ============
-task.spawn(function()
-    while true do
-        task.wait(2)
-        if gameOptimizerEnabled then
-            for _, obj in ipairs(workspace:GetDescendants()) do
-                if obj:IsA("Decal") or obj:IsA("Texture") then
-                    pcall(function() obj:Destroy() end)
-                elseif obj:IsA("SurfaceAppearance") then
-                    pcall(function() obj:Destroy() end)
-                elseif obj:IsA("BasePart") then
-                    pcall(function()
-                        if obj.Material ~= Enum.Material.SmoothPlastic then
-                            obj.Material = Enum.Material.SmoothPlastic
-                        end
-                    end)
-                end
-            end
-        end
-    end
-end)
-
-player.CharacterAdded:Connect(function()
-    task.wait(0.3)
-    jumpModule.refresh()
-    destroySpeedBV()
-    destroyFlyBV()
-    destroyJumpForce()
-    -- Restore CanCollide if noclip is off
-    if not noclipEnabled and character then
-        for _, part in ipairs(character:GetDescendants()) do
-            if part:IsA("BasePart") then part.CanCollide = true; part.CanTouch = true end
-        end
-    end
-end)
-
-pcall(function() lagSwitchModule.prebuild() end)
-pcall(function() keyboardOverlayModule.prebuild() end)
-pcall(function() mouseOverlayModule.prebuild() end)
-
 Rayfield:Notify({
     Title = "RuinWare Loaded",
-    Content = "Main + Visuals tab ready.",
+    Content = "Main tab features ready.",
     Duration = 5,
     Image = "check-circle",
 })
