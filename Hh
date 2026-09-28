@@ -32,7 +32,6 @@ local Settings   = Window:CreateTab("Settings",   "settings")
 local Config     = Window:CreateTab("Config",     "save")
 
 local player = Players.LocalPlayer
-local camera = workspace.CurrentCamera
 
 -- ============ DYNAMIC INPUT ============
 local currentInputMethod = UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled and "mobile" or "pc"
@@ -73,9 +72,9 @@ local unlockJumpEnabled, bypassEmotesEnabled = false, false
 local wallLaunchEnabled, yLockEnabled = false, false
 local cactusEnabled, flyEnabled, noclipEnabled = false, false, false
 local playerRemoverEnabled, portalLagEnabled = false, false
--- Visuals
 local boxEspEnabled, distanceEnabled, highlighterEnabled = false, false, false
 local gameOptimizerEnabled = false
+local headlessEnabled, korbloxLeftEnabled, korbloxRightEnabled = false, false, false
 
 local BOUNCE_COEFF, EASY_BOUNCE_MULT, HARD_BOUNCE_MULT = 0.75, 1.80, 1.80
 local LEGIT_BOUNCE_MULT = 1.68
@@ -100,11 +99,9 @@ local savedDefaultJumpPower = 50
 local savedDefaultHipHeight = 0
 
 local lagSwitchModule, desyncModule, keyboardOverlayModule, mouseOverlayModule, jumpModule
-local cactusSaved = {}
 local cactusPlates = {}
 local yLockPlate = nil
-local playerRemoverLastRun = 0
-local portalLagLastRun = 0
+local noclipFloor = nil
 
 -- ============ UI ============
 local okMain, errMain = pcall(function()
@@ -131,12 +128,8 @@ local okMain, errMain = pcall(function()
     Main:CreateToggle({ Name = "Y Lock", CurrentValue = false, Flag = "YLock",
         Callback = function(v)
             yLockEnabled = v
-            if v and hrp then
-                yLockValue = hrp.Position.Y
-            else
-                yLockValue = nil
-                if yLockPlate then yLockPlate:Destroy(); yLockPlate = nil end
-            end
+            if v and hrp then yLockValue = hrp.Position.Y
+            else yLockValue = nil end
         end })
 
     Main:CreateSection("Speed")
@@ -193,7 +186,7 @@ local okMain, errMain = pcall(function()
         Callback = function(v) edgeTrimpPower = v end })
     Main:CreateToggle({ Name = "Wall Launch", CurrentValue = false, Flag = "WallLaunch",
         Callback = function(v) wallLaunchEnabled = v end })
-    Main:CreateSlider({ Name = "Wall Launch Power", Range = {10, 300}, Increment = 5,
+    Main:CreateSlider({ Name = "Wall Launch Power", Range = {10, 500}, Increment = 5,
         Suffix = " pwr", CurrentValue = wallLaunchPower, Flag = "WallLaunchPower",
         Callback = function(v) wallLaunchPower = v end })
 
@@ -254,14 +247,7 @@ local okMain, errMain = pcall(function()
         Suffix = "x", CurrentValue = cactusMultiplier, Flag = "CactusMult",
         Callback = function(v) cactusMultiplier = v end })
     Main:CreateToggle({ Name = "Noclip", CurrentValue = false, Flag = "Noclip",
-        Callback = function(v)
-            noclipEnabled = v
-            if not v and character then
-                for _, part in ipairs(character:GetDescendants()) do
-                    if part:IsA("BasePart") then part.CanCollide = true end
-                end
-            end
-        end })
+        Callback = function(v) noclipEnabled = v end })
 
     Main:CreateSection("Movement (cont.)")
     Main:CreateToggle({ Name = "Down Fly", CurrentValue = false, Flag = "DownFly",
@@ -279,46 +265,12 @@ local okVis, errVis = pcall(function()
         Callback = function(v) highlighterEnabled = v; if not v then clearHighlighter() end end })
 
     Visuals:CreateSection("Player")
-    Visuals:CreateButton({ Name = "Headless", Callback = function()
-        if not character then return end
-        local head = character:FindFirstChild("Head")
-        if head then
-            head.Transparency = 1
-            for _, c in ipairs(head:GetChildren()) do
-                if c:IsA("Decal") then c:Destroy() end
-            end
-        end
-    end })
-    Visuals:CreateButton({ Name = "Korblox Left Leg", Callback = function()
-        if not character then return end
-        local leg = character:FindFirstChild("Left Leg") or character:FindFirstChild("LeftUpperLeg")
-        if not leg then return end
-        leg.BrickColor = BrickColor.new("Really black")
-        if leg:IsA("MeshPart") then
-            leg.MeshId = "rbxassetid://1393812159"
-        else
-            local mesh = leg:FindFirstChildOfClass("SpecialMesh")
-            if not mesh then mesh = Instance.new("SpecialMesh"); mesh.Parent = leg end
-            mesh.MeshId = "rbxassetid://1393812159"
-            mesh.TextureId = ""
-            mesh.Scale = Vector3.new(1, 1, 1)
-        end
-    end })
-    Visuals:CreateButton({ Name = "Korblox Right Leg", Callback = function()
-        if not character then return end
-        local leg = character:FindFirstChild("Right Leg") or character:FindFirstChild("RightUpperLeg")
-        if not leg then return end
-        leg.BrickColor = BrickColor.new("Really black")
-        if leg:IsA("MeshPart") then
-            leg.MeshId = "rbxassetid://1393811753"
-        else
-            local mesh = leg:FindFirstChildOfClass("Mesh")
-            if not mesh then mesh = Instance.new("SpecialMesh"); mesh.Parent = leg end
-            mesh.MeshId = "rbxassetid://1393811753"
-            mesh.TextureId = ""
-            mesh.Scale = Vector3.new(1, 1, 1)
-        end
-    end })
+    Visuals:CreateToggle({ Name = "Headless", CurrentValue = false, Flag = "Headless",
+        Callback = function(v) headlessEnabled = v end })
+    Visuals:CreateToggle({ Name = "Korblox Left Leg", CurrentValue = false, Flag = "KorbloxL",
+        Callback = function(v) korbloxLeftEnabled = v end })
+    Visuals:CreateToggle({ Name = "Korblox Right Leg", CurrentValue = false, Flag = "KorbloxR",
+        Callback = function(v) korbloxRightEnabled = v end })
     Visuals:CreateToggle({ Name = "Game Optimizer", CurrentValue = false, Flag = "GameOptimizer",
         Callback = function(v)
             gameOptimizerEnabled = v
@@ -435,7 +387,6 @@ local function createDragBar(parent, position, size)
     hitbox.Text = ""
     hitbox.ZIndex = 11
     hitbox.Parent = parent
-
     return dragBar, hitbox
 end
 
@@ -565,14 +516,8 @@ lagSwitchModule = (function()
         prebuild = function() pcall(build) end,
         setEnabled = function(enabled)
             active = enabled
-            if enabled then
-                shownMode = nil
-                applyCurrentMode()
-            else
-                if screenGui then screenGui.Enabled = false end
-                shownMode = nil
-                locked = false
-            end
+            if enabled then shownMode = nil; applyCurrentMode()
+            else if screenGui then screenGui.Enabled = false end; shownMode = nil; locked = false end
         end
     }
 end)()
@@ -582,18 +527,12 @@ desyncModule = (function()
     local active = false
     local savedCFrame = nil
     local skyY = 20000
-
     local function blockOutgoing()
-        return pcall(function()
-            game:GetService("NetworkClient"):SetOutgoingKBPSLimit(0.001)
-        end)
+        return pcall(function() game:GetService("NetworkClient"):SetOutgoingKBPSLimit(0.001) end)
     end
     local function restoreOutgoing()
-        pcall(function()
-            game:GetService("NetworkClient"):SetOutgoingKBPSLimit(1e9)
-        end)
+        pcall(function() game:GetService("NetworkClient"):SetOutgoingKBPSLimit(1e9) end)
     end
-
     local function onEnable()
         if not character or not hrp or not humanoid then return end
         active = true
@@ -603,9 +542,7 @@ desyncModule = (function()
             humanoid:ChangeState(Enum.HumanoidStateType.Physics)
         end)
         task.wait(0.05)
-        pcall(function()
-            hrp.CFrame = CFrame.new(hrp.Position.X, skyY, hrp.Position.Z)
-        end)
+        pcall(function() hrp.CFrame = CFrame.new(hrp.Position.X, skyY, hrp.Position.Z) end)
         task.wait(0.15)
         local ok = blockOutgoing()
         task.wait(0.05)
@@ -620,7 +557,6 @@ desyncModule = (function()
             Duration = 4, Image = "wifi-off",
         })
     end
-
     local function onDisable()
         if not active then return end
         active = false
@@ -634,12 +570,7 @@ desyncModule = (function()
             end)
         end
     end
-
-    return {
-        setEnabled = function(enabled)
-            if enabled then onEnable() else onDisable() end
-        end
-    }
+    return { setEnabled = function(e) if e then onEnable() else onDisable() end end }
 end)()
 
 -- ============ KEYBOARD OVERLAY ============
@@ -647,7 +578,6 @@ keyboardOverlayModule = (function()
     local screenGui, container, dragBar, dragHitbox
     local keyFrames = {}
     local built = false
-
     local KEY_W, KEY_H, GAP = 38, 38, 4
     local layout = {
         { keys = {"Q", "W", "E", "R"},      offsetX = 20 },
@@ -670,7 +600,6 @@ keyboardOverlayModule = (function()
         else w = row.offsetX + (#row.keys * KEY_W) + ((#row.keys - 1) * GAP) end
         if w > maxRowWidth then maxRowWidth = w end
     end
-
     local padX, padTop, padBottom = 10, 10, 24
     local containerW = maxRowWidth + (padX * 2)
     local containerH = padTop + (#layout * (KEY_H + GAP)) - GAP + padBottom
@@ -685,7 +614,6 @@ keyboardOverlayModule = (function()
         screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Global
         screenGui.Enabled = false
         screenGui.Parent = uiParent
-
         container = Instance.new("Frame")
         container.Size = UDim2.new(0, containerW, 0, containerH)
         container.Position = UDim2.new(0.5, -containerW / 2, 0.7, 0)
@@ -693,7 +621,6 @@ keyboardOverlayModule = (function()
         container.BorderSizePixel = 0
         container.Active = false
         container.Parent = screenGui
-
         local currentY = padTop
         for _, row in ipairs(layout) do
             local currentX = padX + row.offsetX
@@ -703,7 +630,6 @@ keyboardOverlayModule = (function()
                 if kc then
                     local thisW = KEY_W
                     if keyName == "Space" then thisW = row.spaceWidth end
-
                     local kf = Instance.new("Frame")
                     kf.Name = keyName
                     kf.Size = UDim2.new(0, thisW, 0, KEY_H)
@@ -712,9 +638,7 @@ keyboardOverlayModule = (function()
                     kf.BackgroundTransparency = 0.2
                     kf.BorderSizePixel = 0
                     kf.Parent = container
-
                     local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, 10); c.Parent = kf
-
                     local lbl = Instance.new("TextLabel")
                     lbl.Size = UDim2.new(1, 0, 1, 0)
                     lbl.BackgroundTransparency = 1
@@ -723,20 +647,17 @@ keyboardOverlayModule = (function()
                     lbl.TextSize = (keyName == "Space" or keyName == "LeftControl") and 13 or 15
                     lbl.Font = Enum.Font.GothamBold
                     lbl.Parent = kf
-
                     keyFrames[kc] = { frame = kf, label = lbl }
                     currentX = currentX + thisW + GAP
                 end
             end
             currentY = currentY + KEY_H + GAP
         end
-
         dragBar, dragHitbox = createDragBar(container, UDim2.new(0.5, -30, 1, -14), UDim2.new(0, 60, 0, 5))
         attachDrag(dragHitbox, container, dragBar)
         built = true
         return true
     end
-
     local function setPressed(kc, pressed)
         local k = keyFrames[kc]
         if not k then return end
@@ -750,18 +671,16 @@ keyboardOverlayModule = (function()
             k.label.TextColor3 = Color3.fromRGB(235, 235, 240)
         end
     end
-
     UserInputService.InputBegan:Connect(function(i)
         if keyboardOverlayOn then setPressed(i.KeyCode, true) end
     end)
     UserInputService.InputEnded:Connect(function(i)
         if keyboardOverlayOn then setPressed(i.KeyCode, false) end
     end)
-
     return {
         prebuild = function() pcall(build) end,
-        setEnabled = function(enabled)
-            if enabled then pcall(build); if screenGui then screenGui.Enabled = true end
+        setEnabled = function(e)
+            if e then pcall(build); if screenGui then screenGui.Enabled = true end
             else if screenGui then screenGui.Enabled = false end end
         end
     }
@@ -772,11 +691,9 @@ mouseOverlayModule = (function()
     local screenGui, container, dragBar, dragHitbox
     local lmbFrame, rmbFrame
     local built = false
-
     local BTN_W, BTN_H, GAP = 95, 36, 6
     local containerW = BTN_W * 2 + GAP + 16
     local containerH = BTN_H + 40
-
     local function build()
         if built then return true end
         screenGui = Instance.new("ScreenGui")
@@ -787,7 +704,6 @@ mouseOverlayModule = (function()
         screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Global
         screenGui.Enabled = false
         screenGui.Parent = uiParent
-
         container = Instance.new("Frame")
         container.Size = UDim2.new(0, containerW, 0, containerH)
         container.Position = UDim2.new(0.5, -containerW / 2, 0.7, 0)
@@ -795,7 +711,6 @@ mouseOverlayModule = (function()
         container.BorderSizePixel = 0
         container.Active = false
         container.Parent = screenGui
-
         lmbFrame = Instance.new("Frame")
         lmbFrame.Size = UDim2.new(0, BTN_W, 0, BTN_H)
         lmbFrame.Position = UDim2.new(0, 8, 0, 4)
@@ -808,7 +723,6 @@ mouseOverlayModule = (function()
         l1.Size = UDim2.new(1, 0, 1, 0); l1.BackgroundTransparency = 1
         l1.Text = "LMB"; l1.TextColor3 = Color3.fromRGB(235, 235, 240)
         l1.TextSize = 14; l1.Font = Enum.Font.GothamBold; l1.Parent = lmbFrame
-
         rmbFrame = Instance.new("Frame")
         rmbFrame.Size = UDim2.new(0, BTN_W, 0, BTN_H)
         rmbFrame.Position = UDim2.new(0, 8 + BTN_W + GAP, 0, 4)
@@ -821,13 +735,11 @@ mouseOverlayModule = (function()
         l3.Size = UDim2.new(1, 0, 1, 0); l3.BackgroundTransparency = 1
         l3.Text = "RMB"; l3.TextColor3 = Color3.fromRGB(235, 235, 240)
         l3.TextSize = 14; l3.Font = Enum.Font.GothamBold; l3.Parent = rmbFrame
-
         dragBar, dragHitbox = createDragBar(container, UDim2.new(0.5, -30, 1, -14), UDim2.new(0, 60, 0, 5))
         attachDrag(dragHitbox, container, dragBar)
         built = true
         return true
     end
-
     local function setPressed(which, pressed)
         local f = (which == "LMB") and lmbFrame or rmbFrame
         if not f then return end
@@ -839,7 +751,6 @@ mouseOverlayModule = (function()
             f.BackgroundTransparency = 0.2
         end
     end
-
     UserInputService.InputBegan:Connect(function(i)
         if not mouseOverlayOn then return end
         if i.UserInputType == Enum.UserInputType.MouseButton1 then setPressed("LMB", true)
@@ -850,11 +761,10 @@ mouseOverlayModule = (function()
         if i.UserInputType == Enum.UserInputType.MouseButton1 then setPressed("LMB", false)
         elseif i.UserInputType == Enum.UserInputType.MouseButton2 then setPressed("RMB", false) end
     end)
-
     return {
         prebuild = function() pcall(build) end,
-        setEnabled = function(enabled)
-            if enabled then pcall(build); if screenGui then screenGui.Enabled = true end
+        setEnabled = function(e)
+            if e then pcall(build); if screenGui then screenGui.Enabled = true end
             else if screenGui then screenGui.Enabled = false end end
         end
     }
@@ -930,26 +840,29 @@ local function createFlyBV()
     flyBV.Parent = hrp
 end
 
+-- ============ WALL LAUNCH BV ============
+local wallLaunchBV = nil
+local wallLaunchEndTime = 0
+local function destroyWallLaunchBV()
+    if wallLaunchBV then pcall(function() wallLaunchBV:Destroy() end); wallLaunchBV = nil end
+end
+
 -- ============ JUMP FORCE ============
 local jumpForce = nil
 local function destroyJumpForce()
     if jumpForce then pcall(function() jumpForce:Destroy() end); jumpForce = nil end
 end
 
--- ============ EMOTE SPIN (Y-AXIS = turn like shift-lock mouse drag) ============
+-- ============ EMOTE SPIN ============
 local emoteSpinAngle = 0
 local emoteSpinLastStep = 0
-local emoteSpinAtt = nil
-local emoteSpinAlign = nil
-local emoteSpinSavedAutoRotate = nil
+local emoteSpinAtt, emoteSpinAlign, emoteSpinSavedAutoRotate
 
 local function startEmoteSpin()
-    if emoteSpinAlign then return end
-    if not hrp then return end
+    if emoteSpinAlign or not hrp then return end
     emoteSpinAtt = Instance.new("Attachment")
     emoteSpinAtt.Name = "RuinWareSpinAtt"
     emoteSpinAtt.Parent = hrp
-
     emoteSpinAlign = Instance.new("AlignOrientation")
     emoteSpinAlign.Name = "RuinWareSpinAlign"
     emoteSpinAlign.Mode = Enum.OrientationAlignmentMode.OneAttachment
@@ -958,7 +871,6 @@ local function startEmoteSpin()
     emoteSpinAlign.Responsiveness = 100
     emoteSpinAlign.CFrame = CFrame.Angles(0, 0, 0)
     emoteSpinAlign.Parent = hrp
-
     if humanoid then
         emoteSpinSavedAutoRotate = humanoid.AutoRotate
         humanoid.AutoRotate = false
@@ -993,13 +905,12 @@ RunService.Heartbeat:Connect(function()
     end
 end)
 
--- ============ UNLOCK JUMP (debounced, no flying) ============
+-- ============ UNLOCK JUMP ============
 local lastUnlockJump = 0
 UserInputService.JumpRequest:Connect(function()
     if not unlockJumpEnabled or not humanoid or humanoid.Health <= 0 then return end
     local now = tick()
-    if now - lastUnlockJump < 0.2 then return end
-    -- Don't spam if already airborne
+    if now - lastUnlockJump < 0.15 then return end
     local state = humanoid:GetState()
     if state == Enum.HumanoidStateType.Freefall or state == Enum.HumanoidStateType.Jumping then return end
     lastUnlockJump = now
@@ -1048,32 +959,33 @@ espScreenGui.DisplayOrder = 2147483000
 espScreenGui.IgnoreGuiInset = true
 espScreenGui.Parent = uiParent
 
-local espBoxes = {}      -- [player] = Frame
-local espLabels = {}     -- [player] = BillboardGui
-local espHighlights = {} -- [player] = Highlight
+local espBoxes, espLabels, espHighlights = {}, {}, {}
 
-local function clearBoxEsp()
+function clearBoxEsp()
     for _, frame in pairs(espBoxes) do
         if frame and frame.Parent then frame:Destroy() end
     end
     espBoxes = {}
 end
 
-local function clearDistanceEsp()
+function clearDistanceEsp()
     for _, bg in pairs(espLabels) do
         if bg and bg.Parent then bg:Destroy() end
     end
     espLabels = {}
 end
 
-local function clearHighlighter()
+function clearHighlighter()
     for _, hl in pairs(espHighlights) do
         if hl and hl.Parent then hl:Destroy() end
     end
     espHighlights = {}
 end
 
+local camera = workspace.CurrentCamera
+
 local function updateEsp()
+    local camPos = camera.CFrame.Position
     for _, plr in ipairs(Players:GetPlayers()) do
         if plr == player then continue end
         local char = plr.Character
@@ -1081,16 +993,14 @@ local function updateEsp()
         local charHead = char and char:FindFirstChild("Head")
         local hum = char and char:FindFirstChildOfClass("Humanoid")
         if not (char and charHrp and hum and hum.Health > 0) then
-            -- Clean up stale entries
             if espBoxes[plr] then espBoxes[plr]:Destroy(); espBoxes[plr] = nil end
             if espLabels[plr] then espLabels[plr]:Destroy(); espLabels[plr] = nil end
             if espHighlights[plr] then espHighlights[plr]:Destroy(); espHighlights[plr] = nil end
             continue
         end
 
-        -- === Box ESP ===
         if boxEspEnabled then
-            if not espBoxes[plr] then
+            if not espBoxes[plr] or not espBoxes[plr].Parent then
                 local f = Instance.new("Frame")
                 f.Name = "ESP_" .. plr.Name
                 f.BackgroundTransparency = 1
@@ -1103,22 +1013,17 @@ local function updateEsp()
                 espBoxes[plr] = f
             end
             local f = espBoxes[plr]
-            local headPos, onScreenHead = camera:WorldToViewportPoint(charHrp.Position + Vector3.new(0, 3, 0))
-            local footPos, onScreenFoot = camera:WorldToViewportPoint(charHrp.Position - Vector3.new(0, 3, 0))
-            if onScreenHead and onScreenFoot then
-                -- Distance-based resizing: closer = bigger, farther = smaller
-                local distance = (camera.CFrame.Position - charHrp.Position).Magnitude
-                local scale = math.clamp(200 / math.max(distance, 1), 0.4, 2.2)
-                local boxTop = headPos.Y
-                local boxBottom = footPos.Y
-                local midX = (headPos.X + footPos.X) / 2
-                local boxHeight = math.abs(boxBottom - boxTop) * scale
+            local headPos, onHead = camera:WorldToViewportPoint(charHrp.Position + Vector3.new(0, 3, 0))
+            local footPos, onFoot = camera:WorldToViewportPoint(charHrp.Position - Vector3.new(0, 3, 0))
+            if onHead and onFoot then
+                local distance = (camPos - charHrp.Position).Magnitude
+                local scale = math.clamp(60 / math.max(distance, 1) + 0.4, 0.4, 2.2)
+                local boxHeight = math.abs(footPos.Y - headPos.Y) * scale
                 local boxWidth = boxHeight * 0.55
-                boxHeight = math.abs(boxBottom - boxTop)
-                boxWidth = boxHeight * 0.55 * scale
+                local midX = (headPos.X + footPos.X) / 2
                 f.Visible = true
                 f.Size = UDim2.new(0, boxWidth, 0, boxHeight)
-                f.Position = UDim2.new(0, midX - boxWidth / 2, 0, math.min(boxTop, boxBottom))
+                f.Position = UDim2.new(0, midX - boxWidth / 2, 0, math.min(headPos.Y, footPos.Y))
             else
                 f.Visible = false
             end
@@ -1126,9 +1031,8 @@ local function updateEsp()
             if espBoxes[plr] then espBoxes[plr]:Destroy(); espBoxes[plr] = nil end
         end
 
-        -- === Distance ===
         if distanceEnabled then
-            if not espLabels[plr] then
+            if not espLabels[plr] or not espLabels[plr].Parent then
                 local bg = Instance.new("BillboardGui")
                 bg.Name = "Dist_" .. plr.Name
                 bg.Size = UDim2.new(0, 100, 0, 20)
@@ -1148,7 +1052,7 @@ local function updateEsp()
             end
             local bg = espLabels[plr]
             if bg and bg.Parent then
-                local dist = (camera.CFrame.Position - charHrp.Position).Magnitude
+                local dist = (camPos - charHrp.Position).Magnitude
                 local label = bg:FindFirstChildOfClass("TextLabel")
                 if label then label.Text = string.format("%dM", math.floor(dist)) end
             end
@@ -1156,7 +1060,6 @@ local function updateEsp()
             if espLabels[plr] then espLabels[plr]:Destroy(); espLabels[plr] = nil end
         end
 
-        -- === Highlighter ===
         if highlighterEnabled then
             if not espHighlights[plr] or not espHighlights[plr].Parent then
                 local hl = Instance.new("Highlight")
@@ -1175,12 +1078,9 @@ local function updateEsp()
     end
 end
 
--- ============ PERIODIC ESP UPDATE (every 1s) ============
-task.spawn(function()
-    while true do
-        task.wait(1)
-        pcall(updateEsp)
-    end
+-- RenderStepped (fastest possible, ~60+fps)
+RunService.RenderStepped:Connect(function()
+    pcall(updateEsp)
 end)
 
 Players.PlayerRemoving:Connect(function(plr)
@@ -1189,7 +1089,7 @@ Players.PlayerRemoving:Connect(function(plr)
     if espHighlights[plr] then espHighlights[plr]:Destroy(); espHighlights[plr] = nil end
 end)
 
--- ============ PERIODIC: PLAYER REMOVER (1s) ============
+-- ============ PLAYER REMOVER (1s) ============
 task.spawn(function()
     while true do
         task.wait(1)
@@ -1206,7 +1106,7 @@ task.spawn(function()
     end
 end)
 
--- ============ PERIODIC: PORTAL LAG (1s) ============
+-- ============ PORTAL LAG (1s) ============
 task.spawn(function()
     while true do
         task.wait(1)
@@ -1235,34 +1135,52 @@ task.spawn(function()
     end
 end)
 
--- ============ PERIODIC: CACTUS PLATES (1s) ============
+-- ============ CACTUS PLATES (1s) - broad match ============
 task.spawn(function()
     while true do
         task.wait(1)
         if cactusEnabled then
             for _, obj in ipairs(workspace:GetDescendants()) do
-                if obj:IsA("BasePart") then
-                    local num = tonumber(obj.Name:match("^[Cc]actus(%d+)"))
-                    if num and num >= 1 and num <= 948 then
-                        local plate = cactusPlates[obj]
-                        if not plate or not plate.Parent then
-                            plate = Instance.new("Part")
-                            plate.Name = "RuinWareCactusPlate"
-                            plate.Size = Vector3.new(obj.Size.X * cactusMultiplier, 1, obj.Size.Z * cactusMultiplier)
-                            plate.Position = obj.Position + Vector3.new(0, obj.Size.Y / 2 + 0.5, 0)
-                            plate.Anchored = true
-                            plate.CanCollide = true
-                            plate.CanQuery = false
-                            plate.CanTouch = false
-                            plate.Transparency = 1
-                            plate.Material = Enum.Material.SmoothPlastic
-                            plate.Parent = workspace
-                            cactusPlates[obj] = plate
-                        else
-                            -- Update size based on current multiplier
-                            plate.Size = Vector3.new(obj.Size.X * cactusMultiplier, 1, obj.Size.Z * cactusMultiplier)
-                            plate.Position = obj.Position + Vector3.new(0, obj.Size.Y / 2 + 0.5, 0)
-                        end
+                local isCactus = false
+                local part
+                if obj:IsA("BasePart") and obj.Name:lower():match("^cactus") then
+                    isCactus = true
+                    part = obj
+                elseif obj:IsA("Model") and obj.Name:lower():match("^cactus") then
+                    part = obj.PrimaryPart or obj:FindFirstChildWhichIsA("BasePart")
+                    if part then isCactus = true end
+                end
+
+                if isCactus and part then
+                    local existing = cactusPlates[part]
+                    if not existing or not existing.Parent then
+                        local plate = Instance.new("Part")
+                        plate.Name = "RuinWareCactusPlate"
+                        plate.Size = Vector3.new(
+                            math.max(part.Size.X * cactusMultiplier, 4),
+                            2,
+                            math.max(part.Size.Z * cactusMultiplier, 4))
+                        plate.Position = Vector3.new(
+                            part.Position.X,
+                            part.Position.Y + part.Size.Y / 2 + 1,
+                            part.Position.Z)
+                        plate.Anchored = true
+                        plate.CanCollide = true
+                        plate.CanQuery = false
+                        plate.CanTouch = false
+                        plate.Transparency = 1
+                        plate.Material = Enum.Material.SmoothPlastic
+                        plate.Parent = workspace
+                        cactusPlates[part] = plate
+                    else
+                        existing.Size = Vector3.new(
+                            math.max(part.Size.X * cactusMultiplier, 4),
+                            2,
+                            math.max(part.Size.Z * cactusMultiplier, 4))
+                        existing.Position = Vector3.new(
+                            part.Position.X,
+                            part.Position.Y + part.Size.Y / 2 + 1,
+                            part.Position.Z)
                     end
                 end
             end
@@ -1270,7 +1188,7 @@ task.spawn(function()
     end
 end)
 
--- ============ PERIODIC: GAME OPTIMIZER (1s) ============
+-- ============ GAME OPTIMIZER (1s) ============
 task.spawn(function()
     while true do
         task.wait(1)
@@ -1286,27 +1204,84 @@ task.spawn(function()
     end
 end)
 
--- ============ Y LOCK PLATE (spawn + follow player) ============
+-- ============ HEADLESS / KORBLOX (continuous, 0.5s) ============
 task.spawn(function()
     while true do
-        RunService.Heartbeat:Wait()
-        if yLockEnabled and yLockValue and hrp and hrp.Parent then
-            if not yLockPlate or not yLockPlate.Parent then
-                yLockPlate = Instance.new("Part")
-                yLockPlate.Name = "RuinWareYLockPlate"
-                yLockPlate.Size = Vector3.new(20, 1, 20)
-                yLockPlate.Anchored = true
-                yLockPlate.CanCollide = true
-                yLockPlate.CanQuery = false
-                yLockPlate.CanTouch = false
-                yLockPlate.Transparency = 1
-                yLockPlate.Material = Enum.Material.SmoothPlastic
-                yLockPlate.Parent = workspace
+        task.wait(0.5)
+        if not character then continue end
+
+        if headlessEnabled then
+            local head = character:FindFirstChild("Head")
+            if head then
+                pcall(function() head.Transparency = 1 end)
+                for _, c in ipairs(head:GetChildren()) do
+                    if c:IsA("Decal") then pcall(function() c:Destroy() end) end
+                end
             end
-            yLockPlate.Position = Vector3.new(hrp.Position.X, yLockValue - 3.5, hrp.Position.Z)
-        elseif not yLockEnabled and yLockPlate then
-            yLockPlate:Destroy()
-            yLockPlate = nil
+        end
+
+        if korbloxLeftEnabled then
+            local existing = character:FindFirstChild("RuinWareKorbloxL")
+            if not existing then
+                local cm = Instance.new("CharacterMesh")
+                cm.Name = "RuinWareKorbloxL"
+                cm.MeshId = 1393812159
+                cm.BodyPart = Enum.BodyPart.LeftLeg
+                cm.OverlayTextureId = 0
+                cm.Parent = character
+            end
+            local leg = character:FindFirstChild("Left Leg") or character:FindFirstChild("LeftUpperLeg") or character:FindFirstChild("LeftLowerLeg")
+            if leg and leg:IsA("BasePart") then
+                pcall(function() leg.BrickColor = BrickColor.new("Really black") end)
+            end
+        elseif character:FindFirstChild("RuinWareKorbloxL") then
+            character.RuinWareKorbloxL:Destroy()
+        end
+
+        if korbloxRightEnabled then
+            local existing = character:FindFirstChild("RuinWareKorbloxR")
+            if not existing then
+                local cm = Instance.new("CharacterMesh")
+                cm.Name = "RuinWareKorbloxR"
+                cm.MeshId = 1393811753
+                cm.BodyPart = Enum.BodyPart.RightLeg
+                cm.OverlayTextureId = 0
+                cm.Parent = character
+            end
+            local leg = character:FindFirstChild("Right Leg") or character:FindFirstChild("RightUpperLeg") or character:FindFirstChild("RightLowerLeg")
+            if leg and leg:IsA("BasePart") then
+                pcall(function() leg.BrickColor = BrickColor.new("Really black") end)
+            end
+        elseif character:FindFirstChild("RuinWareKorbloxR") then
+            character.RuinWareKorbloxR:Destroy()
+        end
+    end
+end)
+
+-- ============ Y LOCK - force position every frame ============
+RunService.RenderStepped:Connect(function()
+    if yLockEnabled and yLockValue and hrp and hrp.Parent and humanoid then
+        local p = hrp.Position
+        if math.abs(p.Y - yLockValue) > 0.05 then
+            local look = hrp.CFrame.LookVector
+            hrp.CFrame = CFrame.lookAt(
+                Vector3.new(p.X, yLockValue, p.Z),
+                Vector3.new(p.X, yLockValue, p.Z) + Vector3.new(look.X, 0, look.Z).Unit)
+        end
+        local v = hrp.AssemblyLinearVelocity
+        if math.abs(v.Y) > 0.1 then
+            hrp.AssemblyLinearVelocity = Vector3.new(v.X, 0, v.Z)
+        end
+    end
+end)
+
+-- ============ NOCLIP - RenderStepped ============
+RunService.RenderStepped:Connect(function()
+    if not noclipEnabled or not character then return end
+    if hrp then hrp.CanCollide = false end
+    for _, part in ipairs(character:GetDescendants()) do
+        if part:IsA("BasePart") and part.CanCollide then
+            part.CanCollide = false
         end
     end
 end)
@@ -1317,15 +1292,11 @@ player.CharacterAdded:Connect(function()
     destroySpeedBV()
     destroyFlyBV()
     destroyJumpForce()
-    -- Restore character collision if noclip is off
+    destroyWallLaunchBV()
     if not noclipEnabled and character then
         for _, part in ipairs(character:GetDescendants()) do
             if part:IsA("BasePart") then part.CanCollide = true end
         end
-    end
-    -- Rebuild Y-lock plate for new character
-    if yLockEnabled and yLockValue then
-        if yLockPlate then yLockPlate:Destroy(); yLockPlate = nil end
     end
 end)
 
@@ -1333,7 +1304,7 @@ pcall(function() lagSwitchModule.prebuild() end)
 pcall(function() keyboardOverlayModule.prebuild() end)
 pcall(function() mouseOverlayModule.prebuild() end)
 
--- ============ SPEED / AIR STATE ============
+-- ============ MAIN LOOP ============
 local isInAir = false
 local airStartTime, airTime = 0, 0
 local lastFloorMaterial = Enum.Material.Air
@@ -1344,14 +1315,10 @@ local lastWallLaunchTime = 0
 local movementStartTime = 0
 local wasMoving = false
 local lastJumpingState = false
-
--- Air speed state
-local airMode = nil              -- nil | "jump" | "fall"
-local airDirRelative = "forward" -- "forward" | "backward"
-local airLandPending = false
-
--- Jump tracking (to detect "jumped while moving" vs "walked off edge")
 local justJumpedFlag = false
+local airMode = nil
+local airDirRelative = "forward"
+
 task.spawn(function()
     UserInputService.JumpRequest:Connect(function()
         justJumpedFlag = true
@@ -1377,32 +1344,18 @@ RunService.Heartbeat:Connect(function(dt)
             lastFallSpeed = 0
             lastHorizontalVel = Vector3.zero
 
-            -- Determine air mode at the moment we enter air
-            if justJumpedFlag and md.Magnitude > 0.1 then
-                airMode = "jump"
-                -- Determine forward/backward at jump moment (vs camera flat)
-                if cam then
-                    local camFlat = Vector3.new(cam.CFrame.LookVector.X, 0, cam.CFrame.LookVector.Z)
-                    if camFlat.Magnitude > 0.01 then
-                        camFlat = camFlat.Unit
-                        local moveFlat = Vector3.new(md.X, 0, md.Z)
-                        if moveFlat.Magnitude > 0.05 then
-                            airDirRelative = moveFlat.Unit:Dot(camFlat) >= 0 and "forward" or "backward"
-                        end
+            -- Determine air mode + relative direction at entry
+            if md.Magnitude > 0.1 and cam then
+                local camFlat = Vector3.new(cam.CFrame.LookVector.X, 0, cam.CFrame.LookVector.Z)
+                if camFlat.Magnitude > 0.01 then
+                    camFlat = camFlat.Unit
+                    local moveFlat = Vector3.new(md.X, 0, md.Z)
+                    if moveFlat.Magnitude > 0.05 then
+                        airDirRelative = moveFlat.Unit:Dot(camFlat) >= 0 and "forward" or "backward"
                     end
                 end
-            elseif md.Magnitude > 0.1 then
-                airMode = "fall"
-                if cam then
-                    local camFlat = Vector3.new(cam.CFrame.LookVector.X, 0, cam.CFrame.LookVector.Z)
-                    if camFlat.Magnitude > 0.01 then
-                        camFlat = camFlat.Unit
-                        local moveFlat = Vector3.new(md.X, 0, md.Z)
-                        if moveFlat.Magnitude > 0.05 then
-                            airDirRelative = moveFlat.Unit:Dot(camFlat) >= 0 and "forward" or "backward"
-                        end
-                    end
-                end
+                if justJumpedFlag then airMode = "jump"
+                else airMode = "fall" end
             else
                 airMode = nil
             end
@@ -1422,16 +1375,12 @@ RunService.Heartbeat:Connect(function(dt)
         airTime = 0
         lastFallSpeed = 0
         destroyJumpForce()
-
-        -- Reset air speed state
         airMode = nil
         airDirRelative = "forward"
-        -- Restart speed delay countdown
         if speedEnabled and md.Magnitude > 0.05 then
             movementStartTime = now
             wasMoving = true
         end
-
         local angle = getFloorAngle()
 
         if easyBounceEnabled and landedAirTime >= 1.6 then
@@ -1466,10 +1415,8 @@ RunService.Heartbeat:Connect(function(dt)
         end
     end
 
-    -- Hip Height
     if hipHeightEnabled and humanoid then humanoid.HipHeight = hipHeightValue end
 
-    -- Jump Height
     if jumpHeightEnabled and humanoid then
         local g = workspace.Gravity
         local targetPower = math.sqrt(2 * g * jumpHeightValue)
@@ -1477,7 +1424,6 @@ RunService.Heartbeat:Connect(function(dt)
         else humanoid.JumpHeight = jumpHeightValue end
     end
 
-    -- Jump Speed Multiplier
     local isJumping = humanoid:GetState() == Enum.HumanoidStateType.Jumping
     if isJumping and not lastJumpingState and jumpSpeedMultEnabled then
         local mult = jumpSpeedMultValue
@@ -1493,19 +1439,31 @@ RunService.Heartbeat:Connect(function(dt)
     lastJumpingState = isJumping
     if not isAir and jumpForce then destroyJumpForce() end
 
-    -- ===== Bypass Unmovable Emotes (always 33.3 sps while toggle is on) =====
+    -- ===== Bypass Unmovable Emotes (always-on while toggle active) =====
     if bypassEmotesEnabled then
-        local hasInput, dir = getMovementInput()
-        if hasInput then
-            local worldDir = dir
-            if cam then
-                local camLook = cam.CFrame.LookVector
-                local camRight = cam.CFrame.RightVector
-                worldDir = Vector3.new(
-                    camRight.X * dir.X + camLook.X * -dir.Z,
-                    0,
-                    camRight.Z * dir.X + camLook.Z * -dir.Z)
+        -- Unanchor if anchored (some emotes anchor the HRP)
+        if hrp.Anchored then hrp.Anchored = false end
+        if humanoid.WalkSpeed < 33.3 then humanoid.WalkSpeed = 33.3 end
+        -- Force state out of any locked emote state
+        pcall(function()
+            local state = humanoid:GetState()
+            if state ~= Enum.HumanoidStateType.Running
+               and state ~= Enum.HumanoidStateType.RunningNoPhysics
+               and state ~= Enum.HumanoidStateType.Jumping
+               and state ~= Enum.HumanoidStateType.Freefall
+               and state ~= Enum.HumanoidStateType.Landed then
+                humanoid:ChangeState(Enum.HumanoidStateType.Running)
             end
+        end)
+
+        local hasInput, dir = getMovementInput()
+        if hasInput and cam then
+            local camLook = cam.CFrame.LookVector
+            local camRight = cam.CFrame.RightVector
+            local worldDir = Vector3.new(
+                camRight.X * dir.X + camLook.X * -dir.Z,
+                0,
+                camRight.Z * dir.X + camLook.Z * -dir.Z)
             if worldDir.Magnitude > 0.01 then
                 worldDir = worldDir.Unit
                 hrp.AssemblyLinearVelocity = Vector3.new(worldDir.X * 33.3, velocity.Y, worldDir.Z * 33.3)
@@ -1513,34 +1471,33 @@ RunService.Heartbeat:Connect(function(dt)
         end
     end
 
-    -- ===== Speed (STP) =====
+    -- ===== Speed =====
     if speedEnabled then
         if isAir then
-            -- IN AIR: locked direction relative to camera, custom multipliers
-            if airMode then
+            if airMode and speedBV then
+                -- already have BV from ground phase
+            end
+            if airMode and cam then
                 if not speedBV or speedBV.Parent ~= hrp then createSpeedBV() end
-                if speedBV and cam then
-                    local camFlat = Vector3.new(cam.CFrame.LookVector.X, 0, cam.CFrame.LookVector.Z)
-                    if camFlat.Magnitude > 0.01 then camFlat = camFlat.Unit end
-                    local dir
-                    if airDirRelative == "forward" then dir = camFlat
-                    else dir = -camFlat end
-                    local mult
-                    if airMode == "jump" then mult = 1.23
-                    else mult = 0.05 end
-                    local targetSpeed = stpValue * mult
+                local camFlat = Vector3.new(cam.CFrame.LookVector.X, 0, cam.CFrame.LookVector.Z)
+                if camFlat.Magnitude > 0.01 then camFlat = camFlat.Unit end
+                local dir = airDirRelative == "forward" and camFlat or -camFlat
+                local mult
+                if airMode == "jump" and airDirRelative == "forward" then
+                    mult = 1.23
+                else
+                    mult = 0.05
+                end
+                local targetSpeed = stpValue * mult
+                if speedBV then
                     speedBV.MaxForce = Vector3.new(math.huge, 0, math.huge)
                     speedBV.Velocity = Vector3.new(dir.X * targetSpeed, 0, dir.Z * targetSpeed)
                 end
-            else
-                if speedBV then speedBV.MaxForce = Vector3.zero; speedBV.Velocity = Vector3.zero end
             end
         else
-            -- ON GROUND
             local moving = md.Magnitude > 0.05
             if moving and not wasMoving then movementStartTime = now end
             wasMoving = moving
-
             if moving then
                 if (now - movementStartTime) >= speedDelay then
                     if not speedBV or speedBV.Parent ~= hrp then createSpeedBV() end
@@ -1579,24 +1536,6 @@ RunService.Heartbeat:Connect(function(dt)
         if flyBV and cam then flyBV.Velocity = cam.CFrame.LookVector * flySpeed end
     elseif flyBV then destroyFlyBV() end
 
-    -- Noclip: disable character collision, snap to floor via raycast
-    if noclipEnabled and character then
-        if hrp then hrp.CanCollide = false end
-        for _, part in ipairs(character:GetDescendants()) do
-            if part:IsA("BasePart") and part.CanCollide then part.CanCollide = false end
-        end
-        -- Floor snap: keep player standing on surfaces
-        rayParams.FilterDescendantsInstances = {character}
-        local snapRay = workspace:Raycast(hrp.Position + Vector3.new(0, 1, 0), Vector3.new(0, -8, 0), rayParams)
-        if snapRay and snapRay.Normal.Y > 0.5 and velocity.Y <= 0 then
-            local targetY = snapRay.Position.Y + 3
-            if hrp.Position.Y < targetY then
-                hrp.CFrame = CFrame.new(hrp.Position.X, targetY, hrp.Position.Z) * (hrp.CFrame - hrp.Position)
-                hrp.AssemblyLinearVelocity = Vector3.new(velocity.X, 0, velocity.Z)
-            end
-        end
-    end
-
     -- Gravity
     if gravityEnabled then pcall(function() workspace.Gravity = gravityValue end) end
 
@@ -1621,8 +1560,12 @@ RunService.Heartbeat:Connect(function(dt)
         end
     end
 
-    -- Wall Launch (horizontal only)
-    if wallLaunchEnabled and isAir and now - lastWallLaunchTime > 0.4 then
+    -- Wall Launch (BodyVelocity for sustained push)
+    if wallLaunchEndTime > 0 and now > wallLaunchEndTime then
+        destroyWallLaunchBV()
+        wallLaunchEndTime = 0
+    end
+    if wallLaunchEnabled and isAir and now - lastWallLaunchTime > 0.4 and not wallLaunchBV then
         local dirs = {hrp.CFrame.RightVector, -hrp.CFrame.RightVector, hrp.CFrame.LookVector, -hrp.CFrame.LookVector}
         for _, dir in ipairs(dirs) do
             rayParams.FilterDescendantsInstances = {character}
@@ -1631,8 +1574,14 @@ RunService.Heartbeat:Connect(function(dt)
                 local launchDir = Vector3.new(hit.Normal.X, 0, hit.Normal.Z)
                 if launchDir.Magnitude > 0.01 then
                     launchDir = launchDir.Unit
-                    hrp.AssemblyLinearVelocity = Vector3.new(
+                    wallLaunchBV = Instance.new("BodyVelocity")
+                    wallLaunchBV.Name = "RuinWareWallLaunchBV"
+                    wallLaunchBV.Velocity = Vector3.new(
                         launchDir.X * wallLaunchPower, 0, launchDir.Z * wallLaunchPower)
+                    wallLaunchBV.MaxForce = Vector3.new(math.huge, 0, math.huge)
+                    wallLaunchBV.P = math.huge
+                    wallLaunchBV.Parent = hrp
+                    wallLaunchEndTime = now + 0.6
                     lastWallLaunchTime = now
                 end
                 break
