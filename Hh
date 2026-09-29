@@ -4,7 +4,6 @@ local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local Lighting = game:GetService("Lighting")
-local TweenService = game:GetService("TweenService")
 local SoundService = game:GetService("SoundService")
 
 if not game:IsLoaded() then game.Loaded:Wait() end
@@ -25,27 +24,73 @@ local Window = Rayfield:CreateWindow({
     KeySystem = false,
 })
 
--- ============ TABS ============
-local Main       = Window:CreateTab("Main",        "home")
-local Visuals    = Window:CreateTab("Visuals",     "eye")
-local JumpMacro  = Window:CreateTab("Jump Macro",  "rabbit")
-local TASRec     = Window:CreateTab("TAS REC",     "video")
-local AutoFarm   = Window:CreateTab("Auto Farm",   "wheat")
-local Atmosphere = Window:CreateTab("Atmosphere",  "cloud")
-local Map        = Window:CreateTab("Map",         "map")
+-- ============ SAFE NOTIFY ============
+local function notify(title, content, duration)
+    pcall(function()
+        Rayfield:Notify({
+            Title = title or "RuinWare",
+            Content = content or "",
+            Duration = duration or 3,
+            Image = 4483362458,
+        })
+    end)
+end
 
+-- ============ EARLY DECLARATIONS (fix callback errors) ============
 local player = Players.LocalPlayer
+local camera = workspace.CurrentCamera
 
--- ============ STATE ============
+local character, humanoid, hrp
+local defaultWalkSpeed = 16
+local savedDefaultJumpHeight, savedDefaultJumpPower = 7.2, 50
+local currentInputMethod = (UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled) and "mobile" or "pc"
+
+-- Forward declarations of modules (used in callbacks)
+local lagSwitchModule, desyncModule, keyboardOverlayModule, mouseOverlayModule, jumpModule
+local flyBV, jumpForce, wallLaunchBV, wallLaunchEndTime = nil, nil, nil, 0
+local speedBV, iraBV = nil, nil
+local hcParts = {}
+local cactusPlates = {}
+local yLockValue = nil
+local mapSpawnCFrame = nil
+
+-- Forward decl of visual state
+local fogAtmos, ccEffect = nil, nil
+local skyboxInstance = nil
+local rainPart, rainSound, snowPart, snowSound = nil, nil, nil, nil
+local watermarkGui, watermarkMain, watermarkSub = nil, nil, nil
+local hiddenHudStates = {}
+local savedLighting = {}
+
+-- ESP
+local espScreenGui, espBoxes, espLabels
+
+-- ============ UI PARENT ============
+local function getUIParent()
+    if gethui then
+        local ok, hui = pcall(gethui)
+        if ok and hui then return hui end
+    end
+    local ok, cg = pcall(function() return game:GetService("CoreGui") end)
+    if ok and cg then
+        local test = pcall(function()
+            local f = Instance.new("Folder"); f.Name = "_rw_test"; f.Parent = cg; f:Destroy()
+        end)
+        if test then return cg end
+    end
+    return player:WaitForChild("PlayerGui")
+end
+local uiParent = getUIParent()
+
+-- ============ STATE VARIABLES ============
 local autoJumpEnabled, easyBounceEnabled, hardBounceEnabled = false, false, false
 local legitBounceEnabled, emoteFlingEnabled = false, false
-local legitJumpEnabled, holdJumpEnabled = false, false
+local legitJumpEnabled, holdJumpEnabled, unlockJumpEnabled = false, false, false
 local jumpMacroEnabled, lagSwitchEnabled, desyncEnabled = false, false, false
 local frontJumpEnabled, backJumpEnabled, keyboardOverlayOn = false, false, false
 local downFlyEnabled, mouseOverlayOn = false, false
-local emoteSpinEnabled, speedEnabled = false, false
+local emoteSpinEnabled, speedEnabled, iraEnabled = false, false, false
 local gravityEnabled, edgeTrimpEnabled = false, false
-local hipHeightEnabled = false
 local jumpHeightEnabled, jumpSpeedMultEnabled = false, false
 local bypassEmotesEnabled = false
 local wallLaunchEnabled, yLockEnabled = false, false
@@ -59,11 +104,11 @@ local fovEnabled, thirdPersonEnabled, watermarkEnabled = false, false, false
 local rainEnabled, rainSoundEnabled = false, false
 local snowEnabled, snowSoundEnabled = false, false
 local skyboxEnabled, skyboxReapplyEnabled = false, false
-local avatarSpooferEnabled, avatarReapplyEnabled = false, false
+local avatarReapplyEnabled = false
 local fogEnabled, brightnessEnabled, colorCorrectionEnabled, timeChangerEnabled = false, false, false, false
 local autoFarmEnabled, ladderGlideEnabled, nextbotImmunityEnabled = false, false, false
 local tasRecording, tasPlaying, tasLoop = false, false, false
--- Jump macro settings
+
 local jmSpeed = 0.01
 local jmOnlyLookDown, jmOnlyMove = false, false
 local jmKeybind = "Q"
@@ -79,16 +124,12 @@ local gravityValue = 196.2
 local savedGravity = workspace.Gravity
 local edgeTrimpPower = 55
 local wallLaunchPower = 80
-local hipHeightValue = 0
 local jumpHeightValue = 7.2
 local jumpSpeedMultValue = 1.5
 local speedDelay = 0.3
 local cactusMultiplier = 2.0
 local flySpeed = 60
-local yLockValue = nil
-local savedDefaultJumpHeight, savedDefaultJumpPower = 7.2, 50
 local legitJumpDelay = 0.08
-local jmSpeedMax = 0.2
 local fogDistance, fogIntensity = 500, 1.5
 local fogColor = Color3.fromRGB(128, 128, 128)
 local brightnessValue = 2
@@ -105,566 +146,20 @@ local mapAssetId = ""
 local mapSaveName = ""
 local savedMaps = {}
 
--- Hitbox creator state
+-- Hitbox creator
 local hcSizeX, hcSizeY, hcSizeZ = "4", "4", "4"
 local hcRotX, hcRotY, hcRotZ = "0", "0", "0"
+local hcTransparency = 0
 local hcSmooth, hcCanTouch, hcCanCollide = false, false, true
 local hcFollowX, hcFollowY, hcFollowZ = false, false, false
-local hcParts = {}
 
-local lagSwitchModule, desyncModule, keyboardOverlayModule, mouseOverlayModule, jumpModule
-local yLockPlate = nil
+-- TAS
 local tasData = {}
 local tasStartTime = 0
 local tasPlaybackStart = 0
 local tasPlaybackIdx = 1
 
--- ============ UI: MAIN ============
-local okMain, errMain = pcall(function()
-    Main:CreateSection("Movement")
-    Main:CreateToggle({ Name = "Auto Jump", CurrentValue = false, Flag = "AutoJump",
-        Callback = function(v) autoJumpEnabled = v end })
-    Main:CreateToggle({ Name = "Easy Bounce", CurrentValue = false, Flag = "EasyBounce",
-        Callback = function(v) easyBounceEnabled = v end })
-    Main:CreateToggle({ Name = "Hard Bounce", CurrentValue = false, Flag = "HardBounce",
-        Callback = function(v) hardBounceEnabled = v end })
-    Main:CreateToggle({ Name = "Legit Bounce", CurrentValue = false, Flag = "LegitBounce",
-        Callback = function(v) legitBounceEnabled = v end })
-    Main:CreateToggle({ Name = "Legit Jump", CurrentValue = false, Flag = "LegitJump",
-        Callback = function(v) legitJumpEnabled = v end })
-    Main:CreateSlider({ Name = "Bounce Strength", Range = {0.1, 1.5}, Increment = 0.05,
-        Suffix = "x", CurrentValue = BOUNCE_COEFF, Flag = "BounceStrength",
-        Callback = function(v) BOUNCE_COEFF = v end })
-    Main:CreateToggle({ Name = "Hip Height", CurrentValue = false, Flag = "HipHeight",
-        Callback = function(v)
-            hipHeightEnabled = v
-            if not v and humanoid then humanoid.HipHeight = -0.2 end
-        end })
-    Main:CreateSlider({ Name = "Hip Height Value", Range = {-3, 15}, Increment = 0.5,
-        Suffix = " studs", CurrentValue = hipHeightValue, Flag = "HipHeightValue",
-        Callback = function(v) hipHeightValue = v end })
-    Main:CreateToggle({ Name = "Y Lock", CurrentValue = false, Flag = "YLock",
-        Callback = function(v)
-            yLockEnabled = v
-            if v and hrp then yLockValue = hrp.Position.Y else yLockValue = nil end
-        end })
-
-    Main:CreateSection("Speed")
-    Main:CreateToggle({ Name = "Speed (STP)", CurrentValue = false, Flag = "SpeedToggle",
-        Callback = function(v) speedEnabled = v end })
-    Main:CreateSlider({ Name = "STP Value", Range = {16, 500}, Increment = 4,
-        Suffix = " stp", CurrentValue = stpValue, Flag = "STPValue",
-        Callback = function(v) stpValue = v end })
-    Main:CreateToggle({ Name = "Jump Height", CurrentValue = false, Flag = "JumpHeight",
-        Callback = function(v)
-            jumpHeightEnabled = v
-            if not v and humanoid then
-                pcall(function()
-                    humanoid.UseJumpPower = false
-                    humanoid.JumpHeight = savedDefaultJumpHeight
-                end)
-            end
-        end })
-    Main:CreateSlider({ Name = "Jump Height Value", Range = {1, 100}, Increment = 0.5,
-        Suffix = " studs", CurrentValue = jumpHeightValue, Flag = "JumpHeightValue",
-        Callback = function(v) jumpHeightValue = v end })
-    Main:CreateToggle({ Name = "Jump Speed Multiplier", CurrentValue = false, Flag = "JumpSpeedMult",
-        Callback = function(v)
-            jumpSpeedMultEnabled = v
-            if not v and jumpForce then jumpForce:Destroy(); jumpForce = nil end
-        end })
-    Main:CreateSlider({ Name = "Jump Speed Mult", Range = {0.1, 5}, Increment = 0.1,
-        Suffix = "x", CurrentValue = jumpSpeedMultValue, Flag = "JumpSpeedMultValue",
-        Callback = function(v) jumpSpeedMultValue = v end })
-    Main:CreateToggle({ Name = "Hold Jump", CurrentValue = false, Flag = "HoldJump",
-        Callback = function(v) holdJumpEnabled = v end })
-    Main:CreateToggle({ Name = "Bypass Unmovable Emotes", CurrentValue = false, Flag = "BypassEmotes",
-        Callback = function(v) bypassEmotesEnabled = v end })
-    Main:CreateToggle({ Name = "Gravity", CurrentValue = false, Flag = "GravityToggle",
-        Callback = function(v)
-            gravityEnabled = v
-            if not v then pcall(function() workspace.Gravity = savedGravity end) end
-        end })
-    Main:CreateSlider({ Name = "Gravity Value", Range = {10, 500}, Increment = 5,
-        Suffix = " g", CurrentValue = gravityValue, Flag = "GravityValue",
-        Callback = function(v) gravityValue = v end })
-    Main:CreateToggle({ Name = "Fly", CurrentValue = false, Flag = "Fly",
-        Callback = function(v) flyEnabled = v; if not v and flyBV then flyBV:Destroy(); flyBV = nil end end })
-    Main:CreateSlider({ Name = "Fly Speed", Range = {10, 300}, Increment = 5,
-        Suffix = " sps", CurrentValue = flySpeed, Flag = "FlySpeed",
-        Callback = function(v) flySpeed = v end })
-
-    Main:CreateSection("Wall Movement")
-    Main:CreateToggle({ Name = "Easy Edge Trimp", CurrentValue = false, Flag = "EdgeTrimp",
-        Callback = function(v) edgeTrimpEnabled = v end })
-    Main:CreateSlider({ Name = "Edge Trimp Power", Range = {10, 200}, Increment = 5,
-        Suffix = " pwr", CurrentValue = edgeTrimpPower, Flag = "EdgeTrimpPower",
-        Callback = function(v) edgeTrimpPower = v end })
-    Main:CreateToggle({ Name = "Wall Launch", CurrentValue = false, Flag = "WallLaunch",
-        Callback = function(v) wallLaunchEnabled = v end })
-    Main:CreateSlider({ Name = "Wall Launch Power", Range = {10, 500}, Increment = 5,
-        Suffix = " pwr", CurrentValue = wallLaunchPower, Flag = "WallLaunchPower",
-        Callback = function(v) wallLaunchPower = v end })
-
-    Main:CreateSection("Network")
-    Main:CreateToggle({ Name = "Lag Switch", CurrentValue = false, Flag = "LagSwitch",
-        Callback = function(v) lagSwitchEnabled = v; if lagSwitchModule then lagSwitchModule.setEnabled(v) end end })
-    Main:CreateSlider({ Name = "Freeze Duration", Range = {0.25, 1.5}, Increment = 0.05,
-        Suffix = "s", CurrentValue = LAG_FREEZE_TIME, Flag = "LagFreezeTime",
-        Callback = function(v) LAG_FREEZE_TIME = v end })
-    Main:CreateToggle({ Name = "Desync", CurrentValue = false, Flag = "Desync",
-        Callback = function(v) desyncEnabled = v; if desyncModule then desyncModule.setEnabled(v) end end })
-
-    Main:CreateSection("Camera Jump")
-    Main:CreateToggle({ Name = "Frontal Jump", CurrentValue = false, Flag = "FrontJump",
-        Callback = function(v)
-            frontJumpEnabled = v
-            if jumpModule then jumpModule.setMode(v and "front" or (backJumpEnabled and "back" or nil)) end
-        end })
-    Main:CreateSlider({ Name = "Frontal Speed", Range = {5, 250}, Increment = 5,
-        Suffix = " sps", CurrentValue = FRONT_JUMP_SPEED, Flag = "FrontSpeed",
-        Callback = function(v) FRONT_JUMP_SPEED = v end })
-    Main:CreateToggle({ Name = "Backwards Jump", CurrentValue = false, Flag = "BackJump",
-        Callback = function(v)
-            backJumpEnabled = v
-            if jumpModule then jumpModule.setMode(v and "back" or (frontJumpEnabled and "front" or nil)) end
-        end })
-    Main:CreateSlider({ Name = "Backwards Speed", Range = {5, 250}, Increment = 5,
-        Suffix = " sps", CurrentValue = BACK_JUMP_SPEED, Flag = "BackSpeed",
-        Callback = function(v) BACK_JUMP_SPEED = v end })
-
-    Main:CreateSection("Interface")
-    Main:CreateToggle({ Name = "Keyboard Overlay", CurrentValue = false, Flag = "KeyboardOverlay",
-        Callback = function(v) keyboardOverlayOn = v; if keyboardOverlayModule then keyboardOverlayModule.setEnabled(v) end end })
-    Main:CreateToggle({ Name = "Mouse Overlay", CurrentValue = false, Flag = "MouseOverlay",
-        Callback = function(v) mouseOverlayOn = v; if mouseOverlayModule then mouseOverlayModule.setEnabled(v) end end })
-
-    Main:CreateSection("Emote")
-    Main:CreateToggle({ Name = "Emote Spin", CurrentValue = false, Flag = "EmoteSpin",
-        Callback = function(v) emoteSpinEnabled = v end })
-    Main:CreateSlider({ Name = "Spin Speed", Range = {0.05, 1}, Increment = 0.05,
-        Suffix = "s", CurrentValue = emoteSpinSpeed, Flag = "EmoteSpinSpeed",
-        Callback = function(v) emoteSpinSpeed = v end })
-    Main:CreateToggle({ Name = "Emote Fling (5x)", CurrentValue = false, Flag = "EmoteFling",
-        Callback = function(v) emoteFlingEnabled = v end })
-
-    Main:CreateSection("World")
-    Main:CreateToggle({ Name = "Expand Cactus Hitbox", CurrentValue = false, Flag = "Cactus",
-        Callback = function(v) cactusEnabled = v end })
-    Main:CreateSlider({ Name = "Cactus Multiplier", Range = {1, 10}, Increment = 0.1,
-        Suffix = "x", CurrentValue = cactusMultiplier, Flag = "CactusMult",
-        Callback = function(v) cactusMultiplier = v end })
-
-    Main:CreateSection("Movement (cont.)")
-    Main:CreateToggle({ Name = "Down Fly", CurrentValue = false, Flag = "DownFly",
-        Callback = function(v) downFlyEnabled = v end })
-end)
-if not okMain then warn("[RuinWare] Main tab error: " .. tostring(errMain)) end
-
--- ============ UI: VISUALS ============
-local okVis, errVis = pcall(function()
-    Visuals:CreateSection("ESP")
-    Visuals:CreateToggle({ Name = "Box ESP", CurrentValue = false, Flag = "BoxESP",
-        Callback = function(v) boxEspEnabled = v; if not v then clearBoxEsp() end end })
-    Visuals:CreateToggle({ Name = "Distance", CurrentValue = false, Flag = "Distance",
-        Callback = function(v) distanceEnabled = v; if not v then clearDistanceEsp() end end })
-
-    Visuals:CreateSection("Player")
-    Visuals:CreateToggle({ Name = "Headless", CurrentValue = false, Flag = "Headless",
-        Callback = function(v) headlessEnabled = v end })
-    Visuals:CreateToggle({ Name = "Korblox Left Leg", CurrentValue = false, Flag = "KorbloxL",
-        Callback = function(v) korbloxLeftEnabled = v end })
-    Visuals:CreateToggle({ Name = "Korblox Right Leg", CurrentValue = false, Flag = "KorbloxR",
-        Callback = function(v) korbloxRightEnabled = v end })
-    Visuals:CreateToggle({ Name = "Game Optimizer", CurrentValue = false, Flag = "GameOptimizer",
-        Callback = function(v) gameOptimizerEnabled = v; portalLagEnabled = v end })
-
-    Visuals:CreateSection("HUD & Lighting")
-    Visuals:CreateToggle({ Name = "Hide HUD", CurrentValue = false, Flag = "HideHUD",
-        Callback = function(v)
-            hideHudEnabled = v
-            if not v then restoreHud() else hideHud() end
-        end })
-    Visuals:CreateToggle({ Name = "Fullbright", CurrentValue = false, Flag = "Fullbright",
-        Callback = function(v)
-            fullbrightEnabled = v
-            if v then applyFullbright() else restoreFullbright() end
-        end })
-
-    Visuals:CreateSection("Avatar")
-    Visuals:CreateInput({ Name = "Username", CurrentValue = "", PlaceholderText = "Enter username",
-        RemoveTextAfterFocusLost = false, Flag = "AvatarName",
-        Callback = function(txt) avatarName = txt end })
-    Visuals:CreateButton({ Name = "Load Avatar", Callback = function()
-        if avatarName ~= "" and humanoid then
-            pcall(function()
-                local userId = Players:GetUserIdFromNameAsync(avatarName)
-                local desc = Players:GetHumanoidDescriptionFromUserId(userId)
-                humanoid:ApplyDescription(desc)
-            end)
-        end
-    end })
-    Visuals:CreateToggle({ Name = "Reapply on Respawn", CurrentValue = false, Flag = "AvatarReapply",
-        Callback = function(v) avatarReapplyEnabled = v end })
-
-    Visuals:CreateSection("Skybox")
-    Visuals:CreateInput({ Name = "Skybox Asset ID", CurrentValue = "", PlaceholderText = "rbxassetid://...",
-        RemoveTextAfterFocusLost = false, Flag = "SkyboxId",
-        Callback = function(txt) skyboxId = txt end })
-    Visuals:CreateToggle({ Name = "Enable Skybox", CurrentValue = false, Flag = "Skybox",
-        Callback = function(v)
-            skyboxEnabled = v
-            if v then applySkybox(skyboxId) else removeSkybox() end
-        end })
-    Visuals:CreateToggle({ Name = "Reapply on Respawn", CurrentValue = false, Flag = "SkyboxReapply",
-        Callback = function(v) skyboxReapplyEnabled = v end })
-
-    Visuals:CreateSection("Weather")
-    Visuals:CreateToggle({ Name = "Rain", CurrentValue = false, Flag = "Rain",
-        Callback = function(v) rainEnabled = v; if v then startRain() else stopRain() end end })
-    Visuals:CreateToggle({ Name = "Rain Sound", CurrentValue = false, Flag = "RainSound",
-        Callback = function(v) rainSoundEnabled = v end })
-    Visuals:CreateSlider({ Name = "Rain Volume", Range = {0, 2}, Increment = 0.05,
-        Suffix = "v", CurrentValue = rainVolume, Flag = "RainVol",
-        Callback = function(v) rainVolume = v end })
-    Visuals:CreateToggle({ Name = "Snow", CurrentValue = false, Flag = "Snow",
-        Callback = function(v) snowEnabled = v; if v then startSnow() else stopSnow() end end })
-    Visuals:CreateToggle({ Name = "Snow Sound", CurrentValue = false, Flag = "SnowSound",
-        Callback = function(v) snowSoundEnabled = v end })
-    Visuals:CreateSlider({ Name = "Snow Volume", Range = {0, 2}, Increment = 0.05,
-        Suffix = "v", CurrentValue = snowVolume, Flag = "SnowVol",
-        Callback = function(v) snowVolume = v end })
-
-    Visuals:CreateSection("Camera")
-    Visuals:CreateToggle({ Name = "FOV Changer", CurrentValue = false, Flag = "FOV",
-        Callback = function(v) fovEnabled = v; if not v and camera then camera.FieldOfView = 70 end end })
-    Visuals:CreateSlider({ Name = "FOV Value", Range = {70, 120}, Increment = 1,
-        Suffix = "", CurrentValue = fovValue, Flag = "FOVValue",
-        Callback = function(v) fovValue = v end })
-    Visuals:CreateToggle({ Name = "Third Person", CurrentValue = false, Flag = "ThirdPerson",
-        Callback = function(v)
-            thirdPersonEnabled = v
-            if v then
-                player.CameraMode = Enum.CameraMode.Classic
-                player.CameraMinZoomDistance = thirdPersonDist
-                player.CameraMaxZoomDistance = thirdPersonDist
-            else
-                player.CameraMinZoomDistance = 0.5
-                player.CameraMaxZoomDistance = 400
-            end
-        end })
-    Visuals:CreateSlider({ Name = "Third Person Distance", Range = {5, 50}, Increment = 1,
-        Suffix = " studs", CurrentValue = thirdPersonDist, Flag = "3PDist",
-        Callback = function(v)
-            thirdPersonDist = v
-            if thirdPersonEnabled then
-                player.CameraMinZoomDistance = v
-                player.CameraMaxZoomDistance = v
-            end
-        end })
-
-    Visuals:CreateSection("Watermark")
-    Visuals:CreateToggle({ Name = "Watermark", CurrentValue = false, Flag = "Watermark",
-        Callback = function(v)
-            watermarkEnabled = v
-            if v then createWatermark() else destroyWatermark() end
-        end })
-    Visuals:CreateInput({ Name = "Watermark Text", CurrentValue = "RuinWare", PlaceholderText = "Text",
-        RemoveTextAfterFocusLost = false, Flag = "WmText",
-        Callback = function(txt)
-            watermarkText = txt
-            updateWatermark()
-        end })
-
-    Visuals:CreateSection("World")
-    Visuals:CreateToggle({ Name = "Hide Players", CurrentValue = false, Flag = "HidePlayers",
-        Callback = function(v) playerRemoverEnabled = v end })
-    Visuals:CreateToggle({ Name = "Remove Portal Lag", CurrentValue = false, Flag = "PortalLag",
-        Callback = function(v) portalLagEnabled = v end })
-end)
-if not okVis then warn("[RuinWare] Visuals tab error: " .. tostring(errVis)) end
-
--- ============ UI: JUMP MACRO ============
-local okJM, errJM = pcall(function()
-    JumpMacro:CreateSection("Jump Macro")
-    JumpMacro:CreateToggle({ Name = "Jump Macro", CurrentValue = false, Flag = "JumpMacro",
-        Callback = function(v) jumpMacroEnabled = v end })
-
-    JumpMacro:CreateSection("Settings")
-    JumpMacro:CreateSlider({ Name = "Jump Speed", Range = {0.01, 0.2}, Increment = 0.01,
-        Suffix = "s", CurrentValue = 0.01, Flag = "JMSpeed",
-        Callback = function(v) jmSpeed = v end })
-    JumpMacro:CreateToggle({ Name = "Only Look Down", CurrentValue = false, Flag = "JMLookDown",
-        Callback = function(v) jmOnlyLookDown = v end })
-    JumpMacro:CreateToggle({ Name = "Only Move", CurrentValue = false, Flag = "JMMove",
-        Callback = function(v) jmOnlyMove = v end })
-    JumpMacro:CreateKeybind({ Name = "Toggle Keybind", CurrentKeybind = "Q", HoldToInteract = false,
-        Flag = "JMKeybind",
-        Callback = function(key)
-            jmKeybind = key
-            jumpMacroEnabled = not jumpMacroEnabled
-            Rayfield:Notify({ Title = "Jump Macro", Content = jumpMacroEnabled and "Enabled" or "Disabled",
-                Duration = 2, Image = "zap" })
-        end })
-end)
-if not okJM then warn("[RuinWare] Jump Macro tab error: " .. tostring(errJM)) end
-
--- ============ UI: TAS REC ============
-local okTAS, errTAS = pcall(function()
-    TASRec:CreateSection("TAS Recording")
-    TASRec:CreateToggle({ Name = "Record", CurrentValue = false, Flag = "TASRecord",
-        Callback = function(v)
-            if v then
-                tasData = {}
-                tasStartTime = tick()
-                tasRecording = true
-                Rayfield:Notify({ Title = "TAS", Content = "Recording started.", Duration = 3, Image = "circle-dot" })
-            else
-                tasRecording = false
-                Rayfield:Notify({ Title = "TAS", Content = "Recorded " .. #tasData .. " frames.", Duration = 3, Image = "circle-dot" })
-            end
-        end })
-    TASRec:CreateToggle({ Name = "Play", CurrentValue = false, Flag = "TASPlay",
-        Callback = function(v)
-            if v then
-                if #tasData == 0 then
-                    Rayfield:Notify({ Title = "TAS", Content = "No recording to play.", Duration = 3, Image = "alert-triangle" })
-                    return
-                end
-                tasPlaying = true
-                tasPlaybackStart = tick()
-                tasPlaybackIdx = 1
-            else
-                tasPlaying = false
-                if hrp then
-                    pcall(function() hrp.Anchored = false end)
-                end
-            end
-        end })
-    TASRec:CreateToggle({ Name = "Loop", CurrentValue = false, Flag = "TASLoop",
-        Callback = function(v) tasLoop = v end })
-    TASRec:CreateButton({ Name = "Clear Recording", Callback = function()
-        tasData = {}
-        Rayfield:Notify({ Title = "TAS", Content = "Recording cleared.", Duration = 3, Image = "trash-2" })
-    end })
-    TASRec:CreateButton({ Name = "Stop Playback", Callback = function()
-        tasPlaying = false
-        if hrp then pcall(function() hrp.Anchored = false end) end
-    end })
-end)
-if not okTAS then warn("[RuinWare] TAS tab error: " .. tostring(errTAS)) end
-
--- ============ UI: AUTO FARM ============
-local okAF, errAF = pcall(function()
-    AutoFarm:CreateSection("Auto Farm")
-    AutoFarm:CreateToggle({ Name = "AFK Farm", CurrentValue = false, Flag = "AFKFarm",
-        Callback = function(v) autoFarmEnabled = v end })
-    AutoFarm:CreateToggle({ Name = "Ladder Glide", CurrentValue = false, Flag = "LadderGlide",
-        Callback = function(v) ladderGlideEnabled = v end })
-    AutoFarm:CreateToggle({ Name = "Nextbot Immunity", CurrentValue = false, Flag = "NextbotImmunity",
-        Callback = function(v)
-            nextbotImmunityEnabled = v
-            if not v and humanoid then humanoid.HipHeight = -0.2 end
-        end })
-end)
-if not okAF then warn("[RuinWare] Auto Farm tab error: " .. tostring(errAF)) end
-
--- ============ UI: ATMOSPHERE ============
-local okAtm, errAtm = pcall(function()
-    Atmosphere:CreateSection("Fog")
-    Atmosphere:CreateToggle({ Name = "Better Fog", CurrentValue = false, Flag = "Fog",
-        Callback = function(v)
-            fogEnabled = v
-            if v then applyFog() else removeFog() end
-        end })
-    Atmosphere:CreateSlider({ Name = "Fog Distance", Range = {10, 5000}, Increment = 10,
-        Suffix = " studs", CurrentValue = fogDistance, Flag = "FogDist",
-        Callback = function(v) fogDistance = v; if fogEnabled then applyFog() end end })
-    Atmosphere:CreateSlider({ Name = "Fog Intensity", Range = {0, 5}, Increment = 0.1,
-        Suffix = "", CurrentValue = fogIntensity, Flag = "FogInt",
-        Callback = function(v) fogIntensity = v; if fogEnabled then applyFog() end end })
-    Atmosphere:CreateColorPicker({ Name = "Fog Color", Color = Color3.fromRGB(128, 128, 128),
-        Flag = "FogColor",
-        Callback = function(c) fogColor = c; if fogEnabled then applyFog() end end })
-
-    Atmosphere:CreateSection("Lighting")
-    Atmosphere:CreateToggle({ Name = "Brightness", CurrentValue = false, Flag = "Brightness",
-        Callback = function(v)
-            brightnessEnabled = v
-            if v then Lighting.Brightness = brightnessValue
-            else Lighting.Brightness = 1 end
-        end })
-    Atmosphere:CreateSlider({ Name = "Brightness Value", Range = {0, 10}, Increment = 0.1,
-        Suffix = "", CurrentValue = brightnessValue, Flag = "BrightnessVal",
-        Callback = function(v) brightnessValue = v; if brightnessEnabled then Lighting.Brightness = v end end })
-
-    Atmosphere:CreateSection("Color Correction")
-    Atmosphere:CreateToggle({ Name = "Color Correction", CurrentValue = false, Flag = "CC",
-        Callback = function(v)
-            colorCorrectionEnabled = v
-            if v then applyColorCorrection() else removeColorCorrection() end
-        end })
-    Atmosphere:CreateSlider({ Name = "Intensity", Range = {0, 1}, Increment = 0.05,
-        Suffix = "", CurrentValue = ccIntensity, Flag = "CCInt",
-        Callback = function(v) ccIntensity = v; if colorCorrectionEnabled then applyColorCorrection() end end })
-    Atmosphere:CreateColorPicker({ Name = "Color", Color = Color3.fromRGB(255, 255, 255),
-        Flag = "CCColor",
-        Callback = function(c) ccColor = c; if colorCorrectionEnabled then applyColorCorrection() end end })
-
-    Atmosphere:CreateSection("Time")
-    Atmosphere:CreateToggle({ Name = "Time Changer", CurrentValue = false, Flag = "TimeChanger",
-        Callback = function(v) timeChangerEnabled = v end })
-    Atmosphere:CreateSlider({ Name = "Time", Range = {0, 24}, Increment = 0.5,
-        Suffix = "h", CurrentValue = timeValue, Flag = "TimeVal",
-        Callback = function(v) timeValue = v; if timeChangerEnabled then Lighting.ClockTime = v end end })
-end)
-if not okAtm then warn("[RuinWare] Atmosphere tab error: " .. tostring(errAtm)) end
-
--- ============ UI: MAP ============
-local okMap, errMap = pcall(function()
-    Map:CreateSection("World")
-    Map:CreateButton({ Name = "Clear Invis Walls", Callback = function()
-        pcall(function()
-            local map = workspace:FindFirstChild("Map")
-            local invis = map and map:FindFirstChild("InvisParts")
-            if invis then invis:ClearAllChildren() end
-            Rayfield:Notify({ Title = "Map", Content = "Cleared invis walls.", Duration = 3, Image = "check" })
-        end)
-    end })
-
-    Map:CreateSection("Map Changer")
-    Map:CreateInput({ Name = "Asset ID", CurrentValue = "", PlaceholderText = "rbxassetid://...",
-        RemoveTextAfterFocusLost = false, Flag = "MapId",
-        Callback = function(txt) mapAssetId = txt end })
-    Map:CreateInput({ Name = "Save Name", CurrentValue = "", PlaceholderText = "Name (optional)",
-        RemoveTextAfterFocusLost = false, Flag = "MapSaveName",
-        Callback = function(txt) mapSaveName = txt end })
-    Map:CreateButton({ Name = "Load", Callback = function()
-        if mapAssetId == "" then return end
-        local id = mapAssetId:gsub("rbxassetid://", ""):gsub("%D", "")
-        pcall(function()
-            -- Clear target folders
-            local mapFolder = workspace:FindFirstChild("Map")
-            if not mapFolder then return end
-            local partsFolder = mapFolder:FindFirstChild("Parts")
-            if partsFolder then
-                local toClear = {"Lights", "Ladders", "brick", "Water", "Props", "ImmovableProps", "Mapstuff"}
-                for _, name in ipairs(toClear) do
-                    local folder = partsFolder:FindFirstChild(name)
-                    if folder then folder:ClearAllChildren() end
-                end
-            end
-            local invis = mapFolder:FindFirstChild("InvisParts")
-            if invis then invis:ClearAllChildren() end
-
-            -- Load new map
-            local objects = game:GetObjects("rbxassetid://" .. id)
-            local target = partsFolder and partsFolder:FindFirstChild("Map")
-            if not target then target = mapFolder end
-            for _, obj in ipairs(objects) do
-                if obj then obj.Parent = target end
-            end
-            Rayfield:Notify({ Title = "Map", Content = "Map loaded.", Duration = 3, Image = "check" })
-        end)
-    end })
-    Map:CreateButton({ Name = "Save Asset", Callback = function()
-        if mapAssetId == "" then return end
-        local name = mapSaveName ~= "" and mapSaveName or mapAssetId
-        savedMaps[name] = mapAssetId
-        Rayfield:Notify({ Title = "Map", Content = "Saved: " .. name, Duration = 3, Image = "save" })
-        if mapDropdown then
-            local opts = {}
-            for k, _ in pairs(savedMaps) do table.insert(opts, k) end
-            pcall(function() mapDropdown:Refresh(opts) end)
-        end
-    end })
-    mapDropdown = Map:CreateDropdown({ Name = "Load Saved", Options = {},
-        CurrentOption = {},
-        Flag = "MapDropdown",
-        Callback = function(opt)
-            local key = type(opt) == "table" and opt[1] or opt
-            if key and savedMaps[key] then
-                mapAssetId = savedMaps[key]
-                Rayfield:Notify({ Title = "Map", Content = "Loaded: " .. key, Duration = 3, Image = "check" })
-            end
-        end })
-
-    Map:CreateSection("Hitbox Creator")
-    Map:CreateInput({ Name = "X Size", CurrentValue = "4", PlaceholderText = "4",
-        RemoveTextAfterFocusLost = false, Flag = "HCSizeX",
-        Callback = function(txt) hcSizeX = txt end })
-    Map:CreateInput({ Name = "Y Size", CurrentValue = "4", PlaceholderText = "4",
-        RemoveTextAfterFocusLost = false, Flag = "HCSizeY",
-        Callback = function(txt) hcSizeY = txt end })
-    Map:CreateInput({ Name = "Z Size", CurrentValue = "4", PlaceholderText = "4",
-        RemoveTextAfterFocusLost = false, Flag = "HCSizeZ",
-        Callback = function(txt) hcSizeZ = txt end })
-    Map:CreateInput({ Name = "X Rotation", CurrentValue = "0", PlaceholderText = "0",
-        RemoveTextAfterFocusLost = false, Flag = "HCRotX",
-        Callback = function(txt) hcRotX = txt end })
-    Map:CreateInput({ Name = "Y Rotation", CurrentValue = "0", PlaceholderText = "0",
-        RemoveTextAfterFocusLost = false, Flag = "HCRotY",
-        Callback = function(txt) hcRotY = txt end })
-    Map:CreateInput({ Name = "Z Rotation", CurrentValue = "0", PlaceholderText = "0",
-        RemoveTextAfterFocusLost = false, Flag = "HCRotZ",
-        Callback = function(txt) hcRotZ = txt end })
-    Map:CreateToggle({ Name = "Smooth Surface", CurrentValue = false, Flag = "HCSmooth",
-        Callback = function(v) hcSmooth = v end })
-    Map:CreateToggle({ Name = "Can Touch", CurrentValue = false, Flag = "HCTouch",
-        Callback = function(v) hcCanTouch = v end })
-    Map:CreateToggle({ Name = "Can Collide", CurrentValue = true, Flag = "HCCol",
-        Callback = function(v) hcCanCollide = v end })
-    Map:CreateToggle({ Name = "Follow Player X", CurrentValue = false, Flag = "HCFX",
-        Callback = function(v) hcFollowX = v end })
-    Map:CreateToggle({ Name = "Follow Player Y", CurrentValue = false, Flag = "HCFY",
-        Callback = function(v) hcFollowY = v end })
-    Map:CreateToggle({ Name = "Follow Player Z", CurrentValue = false, Flag = "HCFZ",
-        Callback = function(v) hcFollowZ = v end })
-    Map:CreateButton({ Name = "Create Part", Callback = function()
-        if not hrp then return end
-        local look = hrp.CFrame.LookVector
-        local pos = hrp.Position + look * 5
-        local sx = tonumber(hcSizeX) or 4
-        local sy = tonumber(hcSizeY) or 4
-        local sz = tonumber(hcSizeZ) or 4
-        local rx = math.rad(tonumber(hcRotX) or 0)
-        local ry = math.rad(tonumber(hcRotY) or 0)
-        local rz = math.rad(tonumber(hcRotZ) or 0)
-        local part = Instance.new("Part")
-        part.Size = Vector3.new(sx, sy, sz)
-        part.CFrame = CFrame.new(pos) * CFrame.Angles(rx, ry, rz)
-        part.Anchored = true
-        part.CanCollide = hcCanCollide
-        part.CanTouch = hcCanTouch
-        if hcSmooth then part.Material = Enum.Material.SmoothPlastic end
-        part.Parent = workspace
-        table.insert(hcParts, {part = part, offset = pos - hrp.Position})
-        Rayfield:Notify({ Title = "Hitbox", Content = "Part created.", Duration = 2, Image = "square" })
-    end })
-end)
-if not okMap then warn("[RuinWare] Map tab error: " .. tostring(errMap)) end
-
--- ============ CHARACTER ============
-local function getUIParent()
-    if gethui then
-        local ok, hui = pcall(gethui)
-        if ok and hui then return hui end
-    end
-    local ok, cg = pcall(function() return game:GetService("CoreGui") end)
-    if ok and cg then
-        local test = pcall(function()
-            local f = Instance.new("Folder"); f.Name = "_rw_test"; f.Parent = cg; f:Destroy()
-        end)
-        if test then return cg end
-    end
-    return player:WaitForChild("PlayerGui")
-end
-local uiParent = getUIParent()
-local camera = workspace.CurrentCamera
-
-local character, humanoid, hrp
-local defaultWalkSpeed = 16
-
+-- ============ CHARACTER BIND (before UI) ============
 local function bindCharacter(char)
     character = char
     humanoid = char:WaitForChild("Humanoid")
@@ -681,7 +176,7 @@ if player.Character then task.spawn(bindCharacter, player.Character)
 else task.spawn(function() bindCharacter(player.CharacterAdded:Wait()) end) end
 player.CharacterAdded:Connect(bindCharacter)
 
--- ============ HELPERS ============
+-- ============ HELPER FUNCTIONS ============
 local rayParams = RaycastParams.new()
 rayParams.FilterType = Enum.RaycastFilterType.Exclude
 
@@ -708,6 +203,7 @@ local function tryJump()
 end
 
 local function getJumpVelocity()
+    if not humanoid then return 50 end
     if humanoid.UseJumpPower then return humanoid.JumpPower
     else return math.sqrt(2 * workspace.Gravity * humanoid.JumpHeight) end
 end
@@ -772,403 +268,40 @@ local function attachDrag(hitbox, frame, dragBar)
     end)
 end
 
--- ============ LAG SWITCH ============
-lagSwitchModule = (function()
-    local screenGui, frame, dragBar, dragHitbox
-    local locked, lastTapTime, active = false, 0, false
-
-    local function trigger()
-        task.spawn(function()
-            local s = tick()
-            while tick() - s < LAG_FREEZE_TIME do end
-        end)
-    end
-
-    local function build()
-        if screenGui then return true end
-        screenGui = Instance.new("ScreenGui")
-        screenGui.Name = "RuinWareLagSwitch"
-        screenGui.ResetOnSpawn = false
-        screenGui.DisplayOrder = 2147483647
-        screenGui.IgnoreGuiInset = true
-        screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Global
-        screenGui.Enabled = false
-        screenGui.Parent = uiParent
-        frame = Instance.new("Frame")
-        frame.Size = UDim2.new(0, 140, 0, 140)
-        frame.Position = UDim2.new(0.5, -70, 0.35, -70)
-        frame.BackgroundColor3 = Color3.fromRGB(20, 20, 22)
-        frame.BackgroundTransparency = 0.25
-        frame.BorderSizePixel = 0
-        frame.Active = true
-        frame.Parent = screenGui
-        local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, 18); c.Parent = frame
-        local label = Instance.new("TextLabel")
-        label.Size = UDim2.new(1, -20, 1, -30)
-        label.Position = UDim2.new(0, 10, 0, 10)
-        label.BackgroundTransparency = 1
-        label.Text = "Lag Switch"
-        label.TextColor3 = Color3.fromRGB(240, 240, 240)
-        label.TextSize = 18
-        label.Font = Enum.Font.GothamBold
-        label.TextWrapped = true
-        label.TextYAlignment = Enum.TextYAlignment.Center
-        label.Parent = frame
-        dragBar, dragHitbox = createDragBar(frame)
-        attachDrag(dragHitbox, frame, dragBar)
-        local tapButton = Instance.new("TextButton")
-        tapButton.Size = UDim2.new(1, 0, 1, 0)
-        tapButton.BackgroundTransparency = 1
-        tapButton.Text = ""
-        tapButton.ZIndex = 5
-        tapButton.Parent = frame
-        tapButton.MouseButton1Click:Connect(function()
-            local now = tick()
-            if now - lastTapTime < 0.35 then locked = not locked; lastTapTime = 0; return end
-            lastTapTime = now
-            trigger()
-        end)
-        return true
-    end
-
-    UserInputService.InputBegan:Connect(function(input, processed)
-        if processed or not active or currentInputMethod ~= "pc" then return end
-        if input.KeyCode == Enum.KeyCode.X then trigger() end
+local function getMovementInput()
+    local dir = Vector3.zero
+    local hasInput = false
+    pcall(function()
+        if UserInputService:IsKeyDown(Enum.KeyCode.W) then dir = dir + Vector3.new(0, 0, -1); hasInput = true end
+        if UserInputService:IsKeyDown(Enum.KeyCode.S) then dir = dir + Vector3.new(0, 0, 1); hasInput = true end
+        if UserInputService:IsKeyDown(Enum.KeyCode.A) then dir = dir + Vector3.new(-1, 0, 0); hasInput = true end
+        if UserInputService:IsKeyDown(Enum.KeyCode.D) then dir = dir + Vector3.new(1, 0, 0); hasInput = true end
     end)
-
-    return {
-        prebuild = function() pcall(build) end,
-        setEnabled = function(e)
-            active = e
-            if e then
-                if currentInputMethod == "mobile" then
-                    pcall(build)
-                    if screenGui then screenGui.Enabled = true end
-                else
-                    Rayfield:Notify({ Title = "Lag Switch", Content = "Press X to trigger.", Duration = 4, Image = "zap" })
-                end
-            else
-                if screenGui then screenGui.Enabled = false end
-                locked = false
-            end
-        end
-    }
-end)()
-
-local currentInputMethod = UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled and "mobile" or "pc"
-UserInputService.LastInputTypeChanged:Connect(function(inputType)
-    if inputType == Enum.UserInputType.Touch then currentInputMethod = "mobile"
-    elseif inputType == Enum.UserInputType.Keyboard
-        or inputType == Enum.UserInputType.MouseButton1
-        or inputType == Enum.UserInputType.MouseButton2
-        or inputType == Enum.UserInputType.MouseMovement then currentInputMethod = "pc" end
-end)
-
--- ============ DESYNC ============
-desyncModule = (function()
-    local active = false
-    local savedCFrame = nil
-    local function blockOutgoing()
-        return pcall(function() game:GetService("NetworkClient"):SetOutgoingKBPSLimit(0.001) end)
-    end
-    local function restoreOutgoing()
-        pcall(function() game:GetService("NetworkClient"):SetOutgoingKBPSLimit(1e9) end)
-    end
-    return {
-        setEnabled = function(enabled)
-            if enabled then
-                if not character or not hrp or not humanoid then return end
-                active = true
-                savedCFrame = hrp.CFrame
-                pcall(function()
-                    humanoid:SetStateEnabled(Enum.HumanoidStateType.Physics, true)
-                    humanoid:ChangeState(Enum.HumanoidStateType.Physics)
-                end)
-                task.wait(0.05)
-                pcall(function() hrp.CFrame = CFrame.new(hrp.Position.X, 20000, hrp.Position.Z) end)
-                task.wait(0.15)
-                local ok = blockOutgoing()
-                task.wait(0.05)
-                if hrp and hrp.Parent then
-                    hrp.CFrame = savedCFrame
-                    pcall(function() hrp.AssemblyLinearVelocity = Vector3.zero end)
-                    pcall(function() humanoid:ChangeState(Enum.HumanoidStateType.Running) end)
-                end
-                Rayfield:Notify({ Title = "Desync", Content = ok and "Frozen." or "Failed.", Duration = 4, Image = "wifi-off" })
-            else
-                if not active then return end
-                active = false
-                restoreOutgoing()
-                task.wait(0.1)
-                if hrp and hrp.Parent and savedCFrame then
-                    pcall(function()
-                        humanoid:ChangeState(Enum.HumanoidStateType.Running)
-                        hrp.CFrame = savedCFrame
-                        hrp.AssemblyLinearVelocity = Vector3.zero
-                    end)
+    if not hasInput then
+        local pg = player:FindFirstChild("PlayerGui")
+        if pg then
+            local tg = pg:FindFirstChild("TouchGui")
+            if tg and tg.Enabled then
+                local stick = tg:FindFirstChild("Thumbstick", true)
+                if stick then
+                    local thumb = stick:FindFirstChild("Thumbstick", true)
+                        or stick:FindFirstChildWhichIsA("ImageLabel", true)
+                    if thumb then
+                        local px, py = thumb.Position.X.Offset, thumb.Position.Y.Offset
+                        if math.abs(px) > 2 or math.abs(py) > 2 then
+                            hasInput = true
+                            dir = Vector3.new(px, 0, py)
+                        end
+                    end
                 end
             end
         end
-    }
-end)()
-
--- ============ KEYBOARD OVERLAY ============
-keyboardOverlayModule = (function()
-    local screenGui, container, dragBar, dragHitbox
-    local keyFrames = {}
-    local built = false
-    local KEY_W, KEY_H, GAP = 38, 38, 4
-    local layout = {
-        { keys = {"Q", "W", "E", "R"},      offsetX = 20 },
-        { keys = {"A", "S", "D", "F"},      offsetX = 10 },
-        { keys = {"LeftControl", "X", "C"}, offsetX = 0 },
-        { keys = {"Space"},                 offsetX = 0, spaceWidth = 122 },
-    }
-    local keyCodeMap = {
-        Q = Enum.KeyCode.Q, W = Enum.KeyCode.W, E = Enum.KeyCode.E, R = Enum.KeyCode.R,
-        A = Enum.KeyCode.A, S = Enum.KeyCode.S, D = Enum.KeyCode.D, F = Enum.KeyCode.F,
-        X = Enum.KeyCode.X, C = Enum.KeyCode.C,
-        LeftControl = Enum.KeyCode.LeftControl, Space = Enum.KeyCode.Space,
-    }
-    local displayMap = { LeftControl = "CTRL", Space = "SPACE" }
-    local maxRowWidth = 0
-    for _, row in ipairs(layout) do
-        local w
-        if row.spaceWidth then w = row.offsetX + row.spaceWidth
-        else w = row.offsetX + (#row.keys * KEY_W) + ((#row.keys - 1) * GAP) end
-        if w > maxRowWidth then maxRowWidth = w end
     end
-    local padX, padTop, padBottom = 10, 10, 24
-    local containerW = maxRowWidth + (padX * 2)
-    local containerH = padTop + (#layout * (KEY_H + GAP)) - GAP + padBottom
-    local function build()
-        if built then return true end
-        screenGui = Instance.new("ScreenGui")
-        screenGui.Name = "RuinWareKeyboardOverlay"
-        screenGui.ResetOnSpawn = false
-        screenGui.DisplayOrder = 2147483647
-        screenGui.IgnoreGuiInset = true
-        screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Global
-        screenGui.Enabled = false
-        screenGui.Parent = uiParent
-        container = Instance.new("Frame")
-        container.Size = UDim2.new(0, containerW, 0, containerH)
-        container.Position = UDim2.new(0.5, -containerW / 2, 0.7, 0)
-        container.BackgroundTransparency = 1
-        container.BorderSizePixel = 0
-        container.Active = false
-        container.Parent = screenGui
-        local currentY = padTop
-        for _, row in ipairs(layout) do
-            local currentX = padX + row.offsetX
-            if row.spaceWidth then currentX = padX + (maxRowWidth - row.spaceWidth) / 2 end
-            for _, keyName in ipairs(row.keys) do
-                local kc = keyCodeMap[keyName]
-                if kc then
-                    local thisW = KEY_W
-                    if keyName == "Space" then thisW = row.spaceWidth end
-                    local kf = Instance.new("Frame")
-                    kf.Name = keyName
-                    kf.Size = UDim2.new(0, thisW, 0, KEY_H)
-                    kf.Position = UDim2.new(0, currentX, 0, currentY)
-                    kf.BackgroundColor3 = Color3.fromRGB(20, 20, 22)
-                    kf.BackgroundTransparency = 0.2
-                    kf.BorderSizePixel = 0
-                    kf.Parent = container
-                    local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, 10); c.Parent = kf
-                    local lbl = Instance.new("TextLabel")
-                    lbl.Size = UDim2.new(1, 0, 1, 0)
-                    lbl.BackgroundTransparency = 1
-                    lbl.Text = displayMap[keyName] or keyName
-                    lbl.TextColor3 = Color3.fromRGB(235, 235, 240)
-                    lbl.TextSize = (keyName == "Space" or keyName == "LeftControl") and 13 or 15
-                    lbl.Font = Enum.Font.GothamBold
-                    lbl.Parent = kf
-                    keyFrames[kc] = { frame = kf, label = lbl }
-                    currentX = currentX + thisW + GAP
-                end
-            end
-            currentY = currentY + KEY_H + GAP
-        end
-        dragBar, dragHitbox = createDragBar(container, UDim2.new(0.5, -30, 1, -14), UDim2.new(0, 60, 0, 5))
-        attachDrag(dragHitbox, container, dragBar)
-        built = true
-        return true
-    end
-    local function setPressed(kc, pressed)
-        local k = keyFrames[kc]
-        if not k then return end
-        if pressed then
-            k.frame.BackgroundColor3 = Color3.fromRGB(200, 55, 55)
-            k.frame.BackgroundTransparency = 0.1
-            k.label.TextColor3 = Color3.fromRGB(255, 255, 255)
-        else
-            k.frame.BackgroundColor3 = Color3.fromRGB(20, 20, 22)
-            k.frame.BackgroundTransparency = 0.2
-            k.label.TextColor3 = Color3.fromRGB(235, 235, 240)
-        end
-    end
-    UserInputService.InputBegan:Connect(function(i)
-        if keyboardOverlayOn then setPressed(i.KeyCode, true) end
-    end)
-    UserInputService.InputEnded:Connect(function(i)
-        if keyboardOverlayOn then setPressed(i.KeyCode, false) end
-    end)
-    return {
-        prebuild = function() pcall(build) end,
-        setEnabled = function(e)
-            if e then pcall(build); if screenGui then screenGui.Enabled = true end
-            else if screenGui then screenGui.Enabled = false end end
-        end
-    }
-end)()
-
--- ============ MOUSE OVERLAY ============
-mouseOverlayModule = (function()
-    local screenGui, container, dragBar, dragHitbox
-    local lmbFrame, rmbFrame
-    local built = false
-    local BTN_W, BTN_H, GAP = 95, 36, 6
-    local containerW = BTN_W * 2 + GAP + 16
-    local containerH = BTN_H + 40
-    local function build()
-        if built then return true end
-        screenGui = Instance.new("ScreenGui")
-        screenGui.Name = "RuinWareMouseOverlay"
-        screenGui.ResetOnSpawn = false
-        screenGui.DisplayOrder = 2147483647
-        screenGui.IgnoreGuiInset = true
-        screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Global
-        screenGui.Enabled = false
-        screenGui.Parent = uiParent
-        container = Instance.new("Frame")
-        container.Size = UDim2.new(0, containerW, 0, containerH)
-        container.Position = UDim2.new(0.5, -containerW / 2, 0.7, 0)
-        container.BackgroundTransparency = 1
-        container.BorderSizePixel = 0
-        container.Active = false
-        container.Parent = screenGui
-        lmbFrame = Instance.new("Frame")
-        lmbFrame.Size = UDim2.new(0, BTN_W, 0, BTN_H)
-        lmbFrame.Position = UDim2.new(0, 8, 0, 4)
-        lmbFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 22)
-        lmbFrame.BackgroundTransparency = 0.2
-        lmbFrame.BorderSizePixel = 0
-        lmbFrame.Parent = container
-        local c1 = Instance.new("UICorner"); c1.CornerRadius = UDim.new(0, 10); c1.Parent = lmbFrame
-        local l1 = Instance.new("TextLabel")
-        l1.Size = UDim2.new(1, 0, 1, 0); l1.BackgroundTransparency = 1
-        l1.Text = "LMB"; l1.TextColor3 = Color3.fromRGB(235, 235, 240)
-        l1.TextSize = 14; l1.Font = Enum.Font.GothamBold; l1.Parent = lmbFrame
-        rmbFrame = Instance.new("Frame")
-        rmbFrame.Size = UDim2.new(0, BTN_W, 0, BTN_H)
-        rmbFrame.Position = UDim2.new(0, 8 + BTN_W + GAP, 0, 4)
-        rmbFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 22)
-        rmbFrame.BackgroundTransparency = 0.2
-        rmbFrame.BorderSizePixel = 0
-        rmbFrame.Parent = container
-        local c3 = Instance.new("UICorner"); c3.CornerRadius = UDim.new(0, 10); c3.Parent = rmbFrame
-        local l3 = Instance.new("TextLabel")
-        l3.Size = UDim2.new(1, 0, 1, 0); l3.BackgroundTransparency = 1
-        l3.Text = "RMB"; l3.TextColor3 = Color3.fromRGB(235, 235, 240)
-        l3.TextSize = 14; l3.Font = Enum.Font.GothamBold; l3.Parent = rmbFrame
-        dragBar, dragHitbox = createDragBar(container, UDim2.new(0.5, -30, 1, -14), UDim2.new(0, 60, 0, 5))
-        attachDrag(dragHitbox, container, dragBar)
-        built = true
-        return true
-    end
-    local function setPressed(which, pressed)
-        local f = (which == "LMB") and lmbFrame or rmbFrame
-        if not f then return end
-        if pressed then
-            f.BackgroundColor3 = Color3.fromRGB(200, 55, 55)
-            f.BackgroundTransparency = 0.1
-        else
-            f.BackgroundColor3 = Color3.fromRGB(20, 20, 22)
-            f.BackgroundTransparency = 0.2
-        end
-    end
-    UserInputService.InputBegan:Connect(function(i)
-        if not mouseOverlayOn then return end
-        if i.UserInputType == Enum.UserInputType.MouseButton1 then setPressed("LMB", true)
-        elseif i.UserInputType == Enum.UserInputType.MouseButton2 then setPressed("RMB", true) end
-    end)
-    UserInputService.InputEnded:Connect(function(i)
-        if not mouseOverlayOn then return end
-        if i.UserInputType == Enum.UserInputType.MouseButton1 then setPressed("LMB", false)
-        elseif i.UserInputType == Enum.UserInputType.MouseButton2 then setPressed("RMB", false) end
-    end)
-    return {
-        prebuild = function() pcall(build) end,
-        setEnabled = function(e)
-            if e then pcall(build); if screenGui then screenGui.Enabled = true end
-            else if screenGui then screenGui.Enabled = false end end
-        end
-    }
-end)()
-
--- ============ FRONT/BACK JUMP ============
-jumpModule = (function()
-    local mode, bv = nil, nil
-    local function destroyBV() if bv then pcall(function() bv:Destroy() end); bv = nil end end
-    local function createBV()
-        destroyBV()
-        if not hrp then return end
-        bv = Instance.new("BodyVelocity")
-        bv.Name = "RuinWareJumpBV"
-        bv.Velocity = Vector3.zero
-        bv.MaxForce = Vector3.new(math.huge, 0, math.huge)
-        bv.P = math.huge
-        bv.Parent = hrp
-    end
-    local function restore()
-        destroyBV()
-        if humanoid then humanoid.WalkSpeed = defaultWalkSpeed end
-    end
-    return {
-        setMode = function(m) mode = m; if m then createBV() else restore() end end,
-        getMode = function() return mode end,
-        update = function()
-            if not mode or not humanoid or not hrp or humanoid.Health <= 0 then return end
-            if not bv or not bv.Parent then createBV() end
-            local cam = workspace.CurrentCamera
-            if not cam then return end
-            local look = cam.CFrame.LookVector
-            local dir = Vector3.new(look.X, 0, look.Z)
-            if dir.Magnitude > 0.001 then dir = dir.Unit else dir = Vector3.new(0, 0, -1) end
-            local speed = (mode == "front") and FRONT_JUMP_SPEED or BACK_JUMP_SPEED
-            local pushDir = (mode == "front") and dir or -dir
-            if bv then bv.Velocity = Vector3.new(pushDir.X * speed, 0, pushDir.Z * speed) end
-            if isGrounded() then tryJump() end
-        end,
-        refresh = function() if mode then createBV() end end
-    }
-end)()
-
--- ============ SPEED BV ============
-local speedBV = nil
-local function destroySpeedBV()
-    if speedBV then pcall(function() speedBV:Destroy() end); speedBV = nil end
-end
-local function createSpeedBV()
-    destroySpeedBV()
-    if not hrp then return end
-    speedBV = Instance.new("BodyVelocity")
-    speedBV.Name = "RuinWareSpeedBV"
-    speedBV.Velocity = Vector3.zero
-    speedBV.MaxForce = Vector3.zero
-    speedBV.P = math.huge
-    speedBV.Parent = hrp
+    if hasInput and dir.Magnitude > 0.01 then dir = dir.Unit end
+    return hasInput, dir
 end
 
--- ============ FLY / JUMP FORCE / WALL LAUNCH ============
-local flyBV = nil
-local jumpForce = nil
-local wallLaunchBV = nil
-local wallLaunchEndTime = 0
-
--- ============ FULLBRIGHT ============
-local savedLighting = {}
+-- ============ VISUAL FUNCTIONS ============
 local function applyFullbright()
     savedLighting = {
         Brightness = Lighting.Brightness,
@@ -1191,15 +324,13 @@ local function restoreFullbright()
     if savedLighting.ClockTime then Lighting.ClockTime = savedLighting.ClockTime end
 end
 
--- ============ HUD HIDE ============
-local hiddenHudStates = {}
 local function hideHud()
     local pg = player:FindFirstChild("PlayerGui")
     if not pg then return end
     for _, gui in ipairs(pg:GetChildren()) do
         if gui:IsA("ScreenGui") then
-            local name = gui.Name:lower()
-            if not (name:find("chat") or name:find("rayfield") or name:find("touchgui") or name:find("ruinware")) then
+            local nm = gui.Name:lower()
+            if not (nm:find("chat") or nm:find("rayfield") or nm:find("touchgui") or nm:find("ruinware")) then
                 hiddenHudStates[gui] = gui.Enabled
                 gui.Enabled = false
             end
@@ -1213,8 +344,6 @@ local function restoreHud()
     hiddenHudStates = {}
 end
 
--- ============ SKYBOX ============
-local skyboxInstance = nil
 local function applySkybox(id)
     if not id or id == "" then return end
     local numId = id:gsub("rbxassetid://", ""):gsub("%D", "")
@@ -1233,9 +362,6 @@ local function removeSkybox()
     if skyboxInstance then skyboxInstance:Destroy(); skyboxInstance = nil end
 end
 
--- ============ RAIN / SNOW ============
-local rainPart, rainSound = nil, nil
-local snowPart, snowSound = nil, nil
 local function startRain()
     if rainPart then return end
     rainPart = Instance.new("Part")
@@ -1251,8 +377,6 @@ local function startRain()
     emitter.Lifetime = NumberRange.new(1, 2)
     emitter.Speed = NumberRange.new(80, 120)
     emitter.SpreadAngle = Vector2.new(0, 0)
-    emitter.Rotation = NumberRange.new(0, 0)
-    emitter.RotSpeed = NumberRange.new(0, 0)
     emitter.Size = NumberSequence.new(0.5)
     emitter.Transparency = NumberSequence.new(0.5)
     emitter.Color = ColorSequence.new(Color3.fromRGB(180, 200, 255))
@@ -1260,14 +384,15 @@ local function startRain()
     rainSound = Instance.new("Sound")
     rainSound.SoundId = "rbxassetid://5153712922"
     rainSound.Looped = true
-    rainSound.Volume = rainVolume
+    rainSound.Volume = rainSoundEnabled and rainVolume or 0
     rainSound.Parent = SoundService
-    if rainSoundEnabled then rainSound:Play() end
+    if rainSoundEnabled then pcall(function() rainSound:Play() end) end
 end
 local function stopRain()
     if rainPart then rainPart:Destroy(); rainPart = nil end
     if rainSound then rainSound:Destroy(); rainSound = nil end
 end
+
 local function startSnow()
     if snowPart then return end
     snowPart = Instance.new("Part")
@@ -1290,17 +415,15 @@ local function startSnow()
     snowSound = Instance.new("Sound")
     snowSound.SoundId = "rbxassetid://5153712922"
     snowSound.Looped = true
-    snowSound.Volume = snowVolume * 0.3
+    snowSound.Volume = snowSoundEnabled and (snowVolume * 0.3) or 0
     snowSound.Parent = SoundService
-    if snowSoundEnabled then snowSound:Play() end
+    if snowSoundEnabled then pcall(function() snowSound:Play() end) end
 end
 local function stopSnow()
     if snowPart then snowPart:Destroy(); snowPart = nil end
     if snowSound then snowSound:Destroy(); snowSound = nil end
 end
 
--- ============ WATERMARK ============
-local watermarkGui, watermarkMain, watermarkSub
 local function createWatermark()
     if watermarkGui then return end
     watermarkGui = Instance.new("ScreenGui")
@@ -1343,8 +466,6 @@ local function updateWatermark()
     if watermarkMain then watermarkMain.Text = watermarkText end
 end
 
--- ============ FOG / CC ============
-local fogAtmos = nil
 local function applyFog()
     if not fogAtmos then
         fogAtmos = Instance.new("Atmosphere")
@@ -1364,7 +485,6 @@ local function removeFog()
     Lighting.FogStart = 0
     Lighting.FogEnd = 100000
 end
-local ccEffect = nil
 local function applyColorCorrection()
     if not ccEffect then
         ccEffect = Instance.new("ColorCorrectionEffect")
@@ -1372,30 +492,30 @@ local function applyColorCorrection()
     end
     ccEffect.Brightness = 0
     ccEffect.Contrast = 0
-    ccEffect.Saturation = 0
+    ccEffect.Saturation = ccIntensity
     ccEffect.TintColor = ccColor
 end
 local function removeColorCorrection()
     if ccEffect then ccEffect:Destroy(); ccEffect = nil end
 end
 
--- ============ ESP ============
-local espScreenGui = Instance.new("ScreenGui")
+-- ============ ESP SYSTEM ============
+espScreenGui = Instance.new("ScreenGui")
 espScreenGui.Name = "RuinWareESP"
 espScreenGui.ResetOnSpawn = false
 espScreenGui.DisplayOrder = 2147483000
 espScreenGui.IgnoreGuiInset = true
 espScreenGui.Parent = uiParent
 
-local espBoxes, espLabels = {}, {}
+espBoxes, espLabels = {}, {}
 
-function clearBoxEsp()
+local function clearBoxEsp()
     for _, frame in pairs(espBoxes) do
         if frame and frame.Parent then frame:Destroy() end
     end
     espBoxes = {}
 end
-function clearDistanceEsp()
+local function clearDistanceEsp()
     for _, bg in pairs(espLabels) do
         if bg and bg.Parent then bg:Destroy() end
     end
@@ -1505,78 +625,1015 @@ local function updateEsp()
     end
 end
 
-RunService.RenderStepped:Connect(function()
-    pcall(updateEsp)
+-- ============ TABS ============
+local Main       = Window:CreateTab("Main",        "home")
+local Visuals    = Window:CreateTab("Visuals",     "eye")
+local JumpMacro  = Window:CreateTab("Jump Macro",  "rabbit")
+local TASRec     = Window:CreateTab("TAS REC",     "video")
+local AutoFarm   = Window:CreateTab("Auto Farm",   "wheat")
+local Atmosphere = Window:CreateTab("Atmosphere",  "cloud")
+local Map        = Window:CreateTab("Map",         "map")
+
+-- ============ UI: MAIN ============
+pcall(function()
+    Main:CreateSection("Movement")
+    Main:CreateToggle({ Name = "Auto Jump", CurrentValue = false,
+        Callback = function(v) autoJumpEnabled = v end })
+    Main:CreateToggle({ Name = "Hold Jump", CurrentValue = false,
+        Callback = function(v) holdJumpEnabled = v end })
+    Main:CreateToggle({ Name = "Easy Bounce", CurrentValue = false,
+        Callback = function(v) easyBounceEnabled = v end })
+    Main:CreateToggle({ Name = "Hard Bounce", CurrentValue = false,
+        Callback = function(v) hardBounceEnabled = v end })
+    Main:CreateToggle({ Name = "Legit Bounce", CurrentValue = false,
+        Callback = function(v) legitBounceEnabled = v end })
+    Main:CreateToggle({ Name = "Legit Jump", CurrentValue = false,
+        Callback = function(v) legitJumpEnabled = v end })
+    Main:CreateSlider({ Name = "Bounce Strength", Range = {0.1, 1.5}, Increment = 0.05,
+        Suffix = "x", CurrentValue = BOUNCE_COEFF,
+        Callback = function(v) BOUNCE_COEFF = v end })
+    Main:CreateToggle({ Name = "Y Lock", CurrentValue = false,
+        Callback = function(v)
+            yLockEnabled = v
+            if v and hrp then yLockValue = hrp.Position.Y else yLockValue = nil end
+        end })
+
+    Main:CreateSection("Speed")
+    Main:CreateToggle({ Name = "Speed (STP)", CurrentValue = false,
+        Callback = function(v) speedEnabled = v end })
+    Main:CreateSlider({ Name = "STP Value", Range = {16, 500}, Increment = 4,
+        Suffix = " stp", CurrentValue = stpValue,
+        Callback = function(v) stpValue = v end })
+    Main:CreateToggle({ Name = "Instant Run Acceleration", CurrentValue = false,
+        Callback = function(v) iraEnabled = v end })
+    Main:CreateToggle({ Name = "Jump Height", CurrentValue = false,
+        Callback = function(v)
+            jumpHeightEnabled = v
+            if not v and humanoid then
+                pcall(function()
+                    humanoid.UseJumpPower = false
+                    humanoid.JumpHeight = savedDefaultJumpHeight
+                end)
+            end
+        end })
+    Main:CreateSlider({ Name = "Jump Height Value", Range = {1, 100}, Increment = 0.5,
+        Suffix = " studs", CurrentValue = jumpHeightValue,
+        Callback = function(v) jumpHeightValue = v end })
+    Main:CreateToggle({ Name = "Jump Speed Multiplier", CurrentValue = false,
+        Callback = function(v)
+            jumpSpeedMultEnabled = v
+            if not v and jumpForce then jumpForce:Destroy(); jumpForce = nil end
+        end })
+    Main:CreateSlider({ Name = "Jump Speed Mult", Range = {0.1, 5}, Increment = 0.1,
+        Suffix = "x", CurrentValue = jumpSpeedMultValue,
+        Callback = function(v) jumpSpeedMultValue = v end })
+    Main:CreateToggle({ Name = "Unlock Jump", CurrentValue = false,
+        Callback = function(v) unlockJumpEnabled = v end })
+    Main:CreateToggle({ Name = "Bypass Unmovable Emotes", CurrentValue = false,
+        Callback = function(v) bypassEmotesEnabled = v end })
+    Main:CreateToggle({ Name = "Gravity", CurrentValue = false,
+        Callback = function(v)
+            gravityEnabled = v
+            if not v then pcall(function() workspace.Gravity = savedGravity end) end
+        end })
+    Main:CreateSlider({ Name = "Gravity Value", Range = {10, 500}, Increment = 5,
+        Suffix = " g", CurrentValue = gravityValue,
+        Callback = function(v) gravityValue = v end })
+    Main:CreateToggle({ Name = "Fly", CurrentValue = false,
+        Callback = function(v)
+            flyEnabled = v
+            if not v and flyBV then flyBV:Destroy(); flyBV = nil end
+        end })
+    Main:CreateSlider({ Name = "Fly Speed", Range = {10, 300}, Increment = 5,
+        Suffix = " sps", CurrentValue = flySpeed,
+        Callback = function(v) flySpeed = v end })
+
+    Main:CreateSection("Wall Movement")
+    Main:CreateToggle({ Name = "Easy Edge Trimp", CurrentValue = false,
+        Callback = function(v) edgeTrimpEnabled = v end })
+    Main:CreateSlider({ Name = "Edge Trimp Power", Range = {10, 200}, Increment = 5,
+        Suffix = " pwr", CurrentValue = edgeTrimpPower,
+        Callback = function(v) edgeTrimpPower = v end })
+    Main:CreateToggle({ Name = "Wall Launch", CurrentValue = false,
+        Callback = function(v) wallLaunchEnabled = v end })
+    Main:CreateSlider({ Name = "Wall Launch Power", Range = {10, 500}, Increment = 5,
+        Suffix = " pwr", CurrentValue = wallLaunchPower,
+        Callback = function(v) wallLaunchPower = v end })
+
+    Main:CreateSection("Network")
+    Main:CreateToggle({ Name = "Lag Switch", CurrentValue = false,
+        Callback = function(v)
+            lagSwitchEnabled = v
+            if lagSwitchModule then lagSwitchModule.setEnabled(v) end
+        end })
+    Main:CreateSlider({ Name = "Freeze Duration", Range = {0.25, 1.5}, Increment = 0.05,
+        Suffix = "s", CurrentValue = LAG_FREEZE_TIME,
+        Callback = function(v) LAG_FREEZE_TIME = v end })
+    Main:CreateToggle({ Name = "Desync", CurrentValue = false,
+        Callback = function(v)
+            desyncEnabled = v
+            if desyncModule then desyncModule.setEnabled(v) end
+        end })
+
+    Main:CreateSection("Camera Jump")
+    Main:CreateToggle({ Name = "Frontal Jump", CurrentValue = false,
+        Callback = function(v)
+            frontJumpEnabled = v
+            if jumpModule then jumpModule.setMode(v and "front" or (backJumpEnabled and "back" or nil)) end
+        end })
+    Main:CreateSlider({ Name = "Frontal Speed", Range = {5, 250}, Increment = 5,
+        Suffix = " sps", CurrentValue = FRONT_JUMP_SPEED,
+        Callback = function(v) FRONT_JUMP_SPEED = v end })
+    Main:CreateToggle({ Name = "Backwards Jump", CurrentValue = false,
+        Callback = function(v)
+            backJumpEnabled = v
+            if jumpModule then jumpModule.setMode(v and "back" or (frontJumpEnabled and "front" or nil)) end
+        end })
+    Main:CreateSlider({ Name = "Backwards Speed", Range = {5, 250}, Increment = 5,
+        Suffix = " sps", CurrentValue = BACK_JUMP_SPEED,
+        Callback = function(v) BACK_JUMP_SPEED = v end })
+
+    Main:CreateSection("Interface")
+    Main:CreateToggle({ Name = "Keyboard Overlay", CurrentValue = false,
+        Callback = function(v)
+            keyboardOverlayOn = v
+            if keyboardOverlayModule then keyboardOverlayModule.setEnabled(v) end
+        end })
+    Main:CreateToggle({ Name = "Mouse Overlay", CurrentValue = false,
+        Callback = function(v)
+            mouseOverlayOn = v
+            if mouseOverlayModule then mouseOverlayModule.setEnabled(v) end
+        end })
+
+    Main:CreateSection("Emote")
+    Main:CreateToggle({ Name = "Emote Spin", CurrentValue = false,
+        Callback = function(v) emoteSpinEnabled = v end })
+    Main:CreateSlider({ Name = "Spin Speed", Range = {0.05, 1}, Increment = 0.05,
+        Suffix = "s", CurrentValue = emoteSpinSpeed,
+        Callback = function(v) emoteSpinSpeed = v end })
+    Main:CreateToggle({ Name = "Emote Fling (5x)", CurrentValue = false,
+        Callback = function(v) emoteFlingEnabled = v end })
+
+    Main:CreateSection("World")
+    Main:CreateToggle({ Name = "Expand Cactus Hitbox", CurrentValue = false,
+        Callback = function(v) cactusEnabled = v end })
+    Main:CreateSlider({ Name = "Cactus Multiplier", Range = {1, 10}, Increment = 0.1,
+        Suffix = "x", CurrentValue = cactusMultiplier,
+        Callback = function(v) cactusMultiplier = v end })
+
+    Main:CreateSection("Movement (cont.)")
+    Main:CreateToggle({ Name = "Down Fly", CurrentValue = false,
+        Callback = function(v) downFlyEnabled = v end })
 end)
 
-Players.PlayerRemoving:Connect(function(plr)
-    if espBoxes[plr] then espBoxes[plr]:Destroy(); espBoxes[plr] = nil end
-    if espLabels[plr] then espLabels[plr]:Destroy(); espLabels[plr] = nil end
+-- ============ UI: VISUALS ============
+pcall(function()
+    Visuals:CreateSection("ESP")
+    Visuals:CreateToggle({ Name = "Box ESP", CurrentValue = false,
+        Callback = function(v) boxEspEnabled = v; if not v then clearBoxEsp() end end })
+    Visuals:CreateToggle({ Name = "Distance", CurrentValue = false,
+        Callback = function(v) distanceEnabled = v; if not v then clearDistanceEsp() end end })
+
+    Visuals:CreateSection("Player")
+    Visuals:CreateToggle({ Name = "Headless", CurrentValue = false,
+        Callback = function(v) headlessEnabled = v end })
+    Visuals:CreateToggle({ Name = "Korblox Left Leg", CurrentValue = false,
+        Callback = function(v) korbloxLeftEnabled = v end })
+    Visuals:CreateToggle({ Name = "Korblox Right Leg", CurrentValue = false,
+        Callback = function(v) korbloxRightEnabled = v end })
+    Visuals:CreateToggle({ Name = "Game Optimizer", CurrentValue = false,
+        Callback = function(v) gameOptimizerEnabled = v; portalLagEnabled = v end })
+
+    Visuals:CreateSection("HUD & Lighting")
+    Visuals:CreateToggle({ Name = "Hide HUD", CurrentValue = false,
+        Callback = function(v)
+            hideHudEnabled = v
+            if not v then restoreHud() else hideHud() end
+        end })
+    Visuals:CreateToggle({ Name = "Fullbright", CurrentValue = false,
+        Callback = function(v)
+            fullbrightEnabled = v
+            if v then applyFullbright() else restoreFullbright() end
+        end })
+
+    Visuals:CreateSection("Avatar")
+    Visuals:CreateInput({ Name = "Username", CurrentValue = "", PlaceholderText = "Enter username",
+        RemoveTextAfterFocusLost = false,
+        Callback = function(txt) avatarName = txt end })
+    Visuals:CreateButton({ Name = "Load Avatar", Callback = function()
+        if avatarName == "" then
+            notify("Avatar", "Enter a username first.")
+            return
+        end
+        if not humanoid then
+            notify("Avatar", "Character not loaded yet.")
+            return
+        end
+        local ok, err = pcall(function()
+            local userId = Players:GetUserIdFromNameAsync(avatarName)
+            local desc = Players:GetHumanoidDescriptionFromUserId(userId)
+            humanoid:ApplyDescription(desc)
+        end)
+        if ok then notify("Avatar", "Applied: " .. avatarName)
+        else notify("Avatar", "Failed: " .. tostring(err)) end
+    end })
+    Visuals:CreateToggle({ Name = "Reapply on Respawn", CurrentValue = false,
+        Callback = function(v) avatarReapplyEnabled = v end })
+
+    Visuals:CreateSection("Skybox")
+    Visuals:CreateInput({ Name = "Skybox Asset ID", CurrentValue = "", PlaceholderText = "rbxassetid://...",
+        RemoveTextAfterFocusLost = false,
+        Callback = function(txt) skyboxId = txt end })
+    Visuals:CreateToggle({ Name = "Enable Skybox", CurrentValue = false,
+        Callback = function(v)
+            skyboxEnabled = v
+            if v then applySkybox(skyboxId) else removeSkybox() end
+        end })
+    Visuals:CreateToggle({ Name = "Reapply on Respawn", CurrentValue = false,
+        Callback = function(v) skyboxReapplyEnabled = v end })
+
+    Visuals:CreateSection("Weather")
+    Visuals:CreateToggle({ Name = "Rain", CurrentValue = false,
+        Callback = function(v) rainEnabled = v; if v then startRain() else stopRain() end end })
+    Visuals:CreateToggle({ Name = "Rain Sound", CurrentValue = false,
+        Callback = function(v)
+            rainSoundEnabled = v
+            if rainSound then
+                if v then pcall(function() rainSound:Play() end) else rainSound:Stop() end
+            end
+        end })
+    Visuals:CreateSlider({ Name = "Rain Volume", Range = {0, 2}, Increment = 0.05,
+        Suffix = "v", CurrentValue = rainVolume,
+        Callback = function(v) rainVolume = v end })
+    Visuals:CreateToggle({ Name = "Snow", CurrentValue = false,
+        Callback = function(v) snowEnabled = v; if v then startSnow() else stopSnow() end end })
+    Visuals:CreateToggle({ Name = "Snow Sound", CurrentValue = false,
+        Callback = function(v)
+            snowSoundEnabled = v
+            if snowSound then
+                if v then pcall(function() snowSound:Play() end) else snowSound:Stop() end
+            end
+        end })
+    Visuals:CreateSlider({ Name = "Snow Volume", Range = {0, 2}, Increment = 0.05,
+        Suffix = "v", CurrentValue = snowVolume,
+        Callback = function(v) snowVolume = v end })
+
+    Visuals:CreateSection("Camera")
+    Visuals:CreateToggle({ Name = "FOV Changer", CurrentValue = false,
+        Callback = function(v)
+            fovEnabled = v
+            if not v and camera then camera.FieldOfView = 70 end
+        end })
+    Visuals:CreateSlider({ Name = "FOV Value", Range = {70, 120}, Increment = 1,
+        Suffix = "", CurrentValue = fovValue,
+        Callback = function(v) fovValue = v end })
+    Visuals:CreateToggle({ Name = "Third Person", CurrentValue = false,
+        Callback = function(v)
+            thirdPersonEnabled = v
+            if v then
+                player.CameraMode = Enum.CameraMode.Classic
+                player.CameraMinZoomDistance = thirdPersonDist
+                player.CameraMaxZoomDistance = thirdPersonDist
+            else
+                player.CameraMinZoomDistance = 0.5
+                player.CameraMaxZoomDistance = 400
+            end
+        end })
+    Visuals:CreateSlider({ Name = "Third Person Distance", Range = {5, 50}, Increment = 1,
+        Suffix = " studs", CurrentValue = thirdPersonDist,
+        Callback = function(v)
+            thirdPersonDist = v
+            if thirdPersonEnabled then
+                player.CameraMinZoomDistance = v
+                player.CameraMaxZoomDistance = v
+            end
+        end })
+
+    Visuals:CreateSection("Watermark")
+    Visuals:CreateToggle({ Name = "Watermark", CurrentValue = false,
+        Callback = function(v)
+            watermarkEnabled = v
+            if v then createWatermark() else destroyWatermark() end
+        end })
+    Visuals:CreateInput({ Name = "Watermark Text", CurrentValue = "RuinWare", PlaceholderText = "Text",
+        RemoveTextAfterFocusLost = false,
+        Callback = function(txt) watermarkText = txt; updateWatermark() end })
+
+    Visuals:CreateSection("World")
+    Visuals:CreateToggle({ Name = "Hide Players", CurrentValue = false,
+        Callback = function(v) playerRemoverEnabled = v end })
+    Visuals:CreateToggle({ Name = "Remove Portal Lag", CurrentValue = false,
+        Callback = function(v) portalLagEnabled = v end })
 end)
 
--- ============ INPUT HELPER ============
-local function getMovementInput()
-    local dir = Vector3.zero
-    local hasInput = false
-    pcall(function()
-        if UserInputService:IsKeyDown(Enum.KeyCode.W) then dir = dir + Vector3.new(0, 0, -1); hasInput = true end
-        if UserInputService:IsKeyDown(Enum.KeyCode.S) then dir = dir + Vector3.new(0, 0, 1); hasInput = true end
-        if UserInputService:IsKeyDown(Enum.KeyCode.A) then dir = dir + Vector3.new(-1, 0, 0); hasInput = true end
-        if UserInputService:IsKeyDown(Enum.KeyCode.D) then dir = dir + Vector3.new(1, 0, 0); hasInput = true end
+-- ============ UI: JUMP MACRO ============
+pcall(function()
+    JumpMacro:CreateSection("Jump Macro")
+    JumpMacro:CreateToggle({ Name = "Jump Macro", CurrentValue = false,
+        Callback = function(v) jumpMacroEnabled = v end })
+
+    JumpMacro:CreateSection("Settings")
+    JumpMacro:CreateSlider({ Name = "Jump Speed", Range = {0.01, 0.2}, Increment = 0.01,
+        Suffix = "s", CurrentValue = 0.01,
+        Callback = function(v) jmSpeed = v end })
+    JumpMacro:CreateToggle({ Name = "Only Look Down", CurrentValue = false,
+        Callback = function(v) jmOnlyLookDown = v end })
+    JumpMacro:CreateToggle({ Name = "Only Move", CurrentValue = false,
+        Callback = function(v) jmOnlyMove = v end })
+    JumpMacro:CreateInput({ Name = "Toggle Keybind", CurrentValue = "Q", PlaceholderText = "Q",
+        RemoveTextAfterFocusLost = false,
+        Callback = function(txt) jmKeybind = txt end })
+end)
+
+-- ============ UI: TAS REC ============
+pcall(function()
+    TASRec:CreateSection("TAS Recording")
+    TASRec:CreateToggle({ Name = "Record", CurrentValue = false,
+        Callback = function(v)
+            if v then
+                tasData = {}
+                tasStartTime = tick()
+                tasRecording = true
+                notify("TAS", "Recording started.")
+            else
+                tasRecording = false
+                notify("TAS", "Recorded " .. #tasData .. " frames.")
+            end
+        end })
+    TASRec:CreateToggle({ Name = "Play", CurrentValue = false,
+        Callback = function(v)
+            if v then
+                if #tasData == 0 then
+                    notify("TAS", "No recording to play.")
+                    return
+                end
+                tasPlaying = true
+                tasPlaybackStart = tick()
+                tasPlaybackIdx = 1
+            else
+                tasPlaying = false
+                if hrp then pcall(function() hrp.Anchored = false end) end
+            end
+        end })
+    TASRec:CreateToggle({ Name = "Loop", CurrentValue = false,
+        Callback = function(v) tasLoop = v end })
+    TASRec:CreateButton({ Name = "Clear Recording", Callback = function()
+        tasData = {}
+        notify("TAS", "Recording cleared.")
+    end })
+    TASRec:CreateButton({ Name = "Stop Playback", Callback = function()
+        tasPlaying = false
+        if hrp then pcall(function() hrp.Anchored = false end) end
+    end })
+end)
+
+-- ============ UI: AUTO FARM ============
+pcall(function()
+    AutoFarm:CreateSection("Auto Farm")
+    AutoFarm:CreateToggle({ Name = "AFK Farm", CurrentValue = false,
+        Callback = function(v)
+            autoFarmEnabled = v
+            if not v and hrp then pcall(function() hrp.Anchored = false end) end
+        end })
+    AutoFarm:CreateToggle({ Name = "Ladder Glide", CurrentValue = false,
+        Callback = function(v)
+            ladderGlideEnabled = v
+            if not v and hrp then pcall(function() hrp.Anchored = false end) end
+        end })
+    AutoFarm:CreateToggle({ Name = "Nextbot Immunity", CurrentValue = false,
+        Callback = function(v)
+            nextbotImmunityEnabled = v
+            if not v and humanoid then pcall(function() humanoid.HipHeight = -0.2 end) end
+        end })
+end)
+
+-- ============ UI: ATMOSPHERE ============
+pcall(function()
+    Atmosphere:CreateSection("Fog")
+    Atmosphere:CreateToggle({ Name = "Better Fog", CurrentValue = false,
+        Callback = function(v)
+            fogEnabled = v
+            if v then applyFog() else removeFog() end
+        end })
+    Atmosphere:CreateSlider({ Name = "Fog Distance", Range = {10, 5000}, Increment = 10,
+        Suffix = " studs", CurrentValue = fogDistance,
+        Callback = function(v) fogDistance = v; if fogEnabled then applyFog() end end })
+    Atmosphere:CreateSlider({ Name = "Fog Intensity", Range = {0, 5}, Increment = 0.1,
+        Suffix = "", CurrentValue = fogIntensity,
+        Callback = function(v) fogIntensity = v; if fogEnabled then applyFog() end end })
+    Atmosphere:CreateColorPicker({ Name = "Fog Color", Color = Color3.fromRGB(128, 128, 128),
+        Callback = function(c) fogColor = c; if fogEnabled then applyFog() end end })
+
+    Atmosphere:CreateSection("Lighting")
+    Atmosphere:CreateToggle({ Name = "Brightness", CurrentValue = false,
+        Callback = function(v)
+            brightnessEnabled = v
+            if v then Lighting.Brightness = brightnessValue
+            else Lighting.Brightness = 1 end
+        end })
+    Atmosphere:CreateSlider({ Name = "Brightness Value", Range = {0, 10}, Increment = 0.1,
+        Suffix = "", CurrentValue = brightnessValue,
+        Callback = function(v) brightnessValue = v; if brightnessEnabled then Lighting.Brightness = v end end })
+
+    Atmosphere:CreateSection("Color Correction")
+    Atmosphere:CreateToggle({ Name = "Color Correction", CurrentValue = false,
+        Callback = function(v)
+            colorCorrectionEnabled = v
+            if v then applyColorCorrection() else removeColorCorrection() end
+        end })
+    Atmosphere:CreateSlider({ Name = "Intensity", Range = {0, 1}, Increment = 0.05,
+        Suffix = "", CurrentValue = ccIntensity,
+        Callback = function(v) ccIntensity = v; if colorCorrectionEnabled then applyColorCorrection() end end })
+    Atmosphere:CreateColorPicker({ Name = "Color", Color = Color3.fromRGB(255, 255, 255),
+        Callback = function(c) ccColor = c; if colorCorrectionEnabled then applyColorCorrection() end end })
+
+    Atmosphere:CreateSection("Time")
+    Atmosphere:CreateToggle({ Name = "Time Changer", CurrentValue = false,
+        Callback = function(v) timeChangerEnabled = v end })
+    Atmosphere:CreateSlider({ Name = "Time", Range = {0, 24}, Increment = 0.5,
+        Suffix = "h", CurrentValue = timeValue,
+        Callback = function(v) timeValue = v; if timeChangerEnabled then Lighting.ClockTime = v end end })
+end)
+
+-- ============ UI: MAP ============
+local mapDropdown
+
+local function computeMapBounds(target)
+    local minP = Vector3.new(math.huge, math.huge, math.huge)
+    local maxP = Vector3.new(-math.huge, -math.huge, -math.huge)
+    local found = false
+    for _, obj in ipairs(target:GetDescendants()) do
+        if obj:IsA("BasePart") then
+            local p, s = obj.Position, obj.Size
+            minP = Vector3.new(math.min(minP.X, p.X - s.X/2), math.min(minP.Y, p.Y - s.Y/2), math.min(minP.Z, p.Z - s.Z/2))
+            maxP = Vector3.new(math.max(maxP.X, p.X + s.X/2), math.max(maxP.Y, p.Y + s.Y/2), math.max(maxP.Z, p.Z + s.Z/2))
+            found = true
+        end
+    end
+    if not found then return nil, nil end
+    return (minP + maxP) / 2, maxP.Y
+end
+
+pcall(function()
+    Map:CreateSection("World")
+    Map:CreateButton({ Name = "Clear Invis Walls", Callback = function()
+        pcall(function()
+            local map = workspace:FindFirstChild("Map")
+            local invis = map and map:FindFirstChild("InvisParts")
+            if invis then invis:ClearAllChildren() end
+            notify("Map", "Cleared invis walls.")
+        end)
+    end })
+
+    Map:CreateSection("Map Changer")
+    Map:CreateInput({ Name = "Asset ID", CurrentValue = "", PlaceholderText = "rbxassetid://...",
+        RemoveTextAfterFocusLost = false,
+        Callback = function(txt) mapAssetId = txt end })
+    Map:CreateInput({ Name = "Save Name", CurrentValue = "", PlaceholderText = "Name (optional)",
+        RemoveTextAfterFocusLost = false,
+        Callback = function(txt) mapSaveName = txt end })
+    Map:CreateButton({ Name = "Load", Callback = function()
+        if mapAssetId == "" then return end
+        local id = mapAssetId:gsub("rbxassetid://", ""):gsub("%D", "")
+        if id == "" then return end
+        local ok, err = pcall(function()
+            local mapFolder = workspace:FindFirstChild("Map")
+            if not mapFolder then error("workspace.Map not found") end
+            local partsFolder = mapFolder:FindFirstChild("Parts")
+
+            if partsFolder then
+                local toClear = {"Lights", "Ladders", "brick", "Water", "Props", "ImmovableProps", "Mapstuff", "Map"}
+                for _, name in ipairs(toClear) do
+                    local folder = partsFolder:FindFirstChild(name)
+                    if folder then folder:ClearAllChildren() end
+                end
+            end
+            local invis = mapFolder:FindFirstChild("InvisParts")
+            if invis then invis:ClearAllChildren() end
+
+            local objects = game:GetObjects("rbxassetid://" .. id)
+
+            local target = partsFolder and partsFolder:FindFirstChild("Map")
+            if not target then
+                target = Instance.new("Folder")
+                target.Name = "Map"
+                target.Parent = partsFolder or mapFolder
+            end
+
+            for _, obj in ipairs(objects) do
+                if obj then pcall(function() obj.Parent = target end) end
+            end
+
+            -- Smooth every surface
+            for _, obj in ipairs(target:GetDescendants()) do
+                if obj:IsA("BasePart") then
+                    pcall(function() obj.Material = Enum.Material.SmoothPlastic end)
+                end
+            end
+
+            -- Compute bounds and TP
+            local center, topY = computeMapBounds(target)
+            if center and topY and hrp then
+                local spawnPos = Vector3.new(center.X, topY + 100, center.Z)
+                hrp.CFrame = CFrame.new(spawnPos)
+                mapSpawnCFrame = CFrame.new(spawnPos)
+            end
+        end)
+        if ok then notify("Map", "Map loaded.")
+        else notify("Map", "Error: " .. tostring(err)) end
+    end })
+    Map:CreateButton({ Name = "Save Asset", Callback = function()
+        if mapAssetId == "" then return end
+        local name = mapSaveName ~= "" and mapSaveName or mapAssetId
+        savedMaps[name] = mapAssetId
+        notify("Map", "Saved: " .. name)
+    end })
+    mapDropdown = Map:CreateDropdown({ Name = "Load Saved", Options = {},
+        CurrentOption = {},
+        Callback = function(opt)
+            local key = type(opt) == "table" and opt[1] or opt
+            if key and savedMaps[key] then
+                mapAssetId = savedMaps[key]
+                notify("Map", "Selected: " .. key)
+            end
+        end })
+
+    Map:CreateSection("Hitbox Creator")
+    Map:CreateButton({ Name = "Create Part", Callback = function()
+        if not hrp then
+            notify("Hitbox", "No character.")
+            return
+        end
+        local look = hrp.CFrame.LookVector
+        local flat = Vector3.new(look.X, 0, look.Z)
+        if flat.Magnitude < 0.01 then flat = Vector3.new(0, 0, -1) end
+        flat = flat.Unit
+        local pos = hrp.Position + flat * 5
+        local sx = tonumber(hcSizeX) or 4
+        local sy = tonumber(hcSizeY) or 4
+        local sz = tonumber(hcSizeZ) or 4
+        local rx = math.rad(tonumber(hcRotX) or 0)
+        local ry = math.rad(tonumber(hcRotY) or 0)
+        local rz = math.rad(tonumber(hcRotZ) or 0)
+        local part = Instance.new("Part")
+        part.Size = Vector3.new(sx, sy, sz)
+        part.CFrame = CFrame.new(pos) * CFrame.Angles(rx, ry, rz)
+        part.Anchored = true
+        part.CanCollide = hcCanCollide
+        part.CanTouch = hcCanTouch
+        part.Transparency = hcTransparency
+        if hcSmooth then part.Material = Enum.Material.SmoothPlastic end
+        part.Parent = workspace
+        table.insert(hcParts, {part = part, offset = pos - hrp.Position})
+        notify("Hitbox", "Part created.")
+    end })
+    Map:CreateSlider({ Name = "Transparency", Range = {0, 1}, Increment = 0.05,
+        Suffix = "", CurrentValue = 0,
+        Callback = function(v) hcTransparency = v end })
+    Map:CreateInput({ Name = "X Size", CurrentValue = "4", PlaceholderText = "4",
+        RemoveTextAfterFocusLost = false,
+        Callback = function(txt) hcSizeX = txt end })
+    Map:CreateInput({ Name = "Y Size", CurrentValue = "4", PlaceholderText = "4",
+        RemoveTextAfterFocusLost = false,
+        Callback = function(txt) hcSizeY = txt end })
+    Map:CreateInput({ Name = "Z Size", CurrentValue = "4", PlaceholderText = "4",
+        RemoveTextAfterFocusLost = false,
+        Callback = function(txt) hcSizeZ = txt end })
+    Map:CreateInput({ Name = "X Rotation", CurrentValue = "0", PlaceholderText = "0",
+        RemoveTextAfterFocusLost = false,
+        Callback = function(txt) hcRotX = txt end })
+    Map:CreateInput({ Name = "Y Rotation", CurrentValue = "0", PlaceholderText = "0",
+        RemoveTextAfterFocusLost = false,
+        Callback = function(txt) hcRotY = txt end })
+    Map:CreateInput({ Name = "Z Rotation", CurrentValue = "0", PlaceholderText = "0",
+        RemoveTextAfterFocusLost = false,
+        Callback = function(txt) hcRotZ = txt end })
+    Map:CreateToggle({ Name = "Smooth Surface", CurrentValue = false,
+        Callback = function(v) hcSmooth = v end })
+    Map:CreateToggle({ Name = "Can Touch", CurrentValue = false,
+        Callback = function(v) hcCanTouch = v end })
+    Map:CreateToggle({ Name = "Can Collide", CurrentValue = true,
+        Callback = function(v) hcCanCollide = v end })
+    Map:CreateToggle({ Name = "Follow Player X", CurrentValue = false,
+        Callback = function(v) hcFollowX = v end })
+    Map:CreateToggle({ Name = "Follow Player Y", CurrentValue = false,
+        Callback = function(v) hcFollowY = v end })
+    Map:CreateToggle({ Name = "Follow Player Z", CurrentValue = false,
+        Callback = function(v) hcFollowZ = v end })
+end)
+
+-- ============ MODULE: LAG SWITCH ============
+lagSwitchModule = (function()
+    local screenGui, frame, dragBar, dragHitbox
+    local locked, lastTapTime, active = false, 0, false
+
+    local function trigger()
+        task.spawn(function()
+            local s = tick()
+            while tick() - s < LAG_FREEZE_TIME do end
+        end)
+    end
+
+    local function build()
+        if screenGui then return true end
+        screenGui = Instance.new("ScreenGui")
+        screenGui.Name = "RuinWareLagSwitch"
+        screenGui.ResetOnSpawn = false
+        screenGui.DisplayOrder = 2147483647
+        screenGui.IgnoreGuiInset = true
+        screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Global
+        screenGui.Enabled = false
+        screenGui.Parent = uiParent
+        frame = Instance.new("Frame")
+        frame.Size = UDim2.new(0, 140, 0, 140)
+        frame.Position = UDim2.new(0.5, -70, 0.35, -70)
+        frame.BackgroundColor3 = Color3.fromRGB(20, 20, 22)
+        frame.BackgroundTransparency = 0.25
+        frame.BorderSizePixel = 0
+        frame.Active = true
+        frame.Parent = screenGui
+        local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, 18); c.Parent = frame
+        local label = Instance.new("TextLabel")
+        label.Size = UDim2.new(1, -20, 1, -30)
+        label.Position = UDim2.new(0, 10, 0, 10)
+        label.BackgroundTransparency = 1
+        label.Text = "Lag Switch"
+        label.TextColor3 = Color3.fromRGB(240, 240, 240)
+        label.TextSize = 18
+        label.Font = Enum.Font.GothamBold
+        label.TextWrapped = true
+        label.TextYAlignment = Enum.TextYAlignment.Center
+        label.Parent = frame
+        dragBar, dragHitbox = createDragBar(frame)
+        attachDrag(dragHitbox, frame, dragBar)
+        local tapButton = Instance.new("TextButton")
+        tapButton.Size = UDim2.new(1, 0, 1, 0)
+        tapButton.BackgroundTransparency = 1
+        tapButton.Text = ""
+        tapButton.ZIndex = 5
+        tapButton.Parent = frame
+        tapButton.MouseButton1Click:Connect(function()
+            local now = tick()
+            if now - lastTapTime < 0.35 then locked = not locked; lastTapTime = 0; return end
+            lastTapTime = now
+            trigger()
+        end)
+        return true
+    end
+
+    UserInputService.InputBegan:Connect(function(input, processed)
+        if processed or not active or currentInputMethod ~= "pc" then return end
+        if input.KeyCode == Enum.KeyCode.X then trigger() end
     end)
-    if not hasInput then
-        local pg = player:FindFirstChild("PlayerGui")
-        if pg then
-            local tg = pg:FindFirstChild("TouchGui")
-            if tg and tg.Enabled then
-                local stick = tg:FindFirstChild("Thumbstick", true)
-                if stick then
-                    local thumb = stick:FindFirstChild("Thumbstick", true)
-                        or stick:FindFirstChildWhichIsA("ImageLabel", true)
-                    if thumb then
-                        local px, py = thumb.Position.X.Offset, thumb.Position.Y.Offset
-                        if math.abs(px) > 2 or math.abs(py) > 2 then
-                            hasInput = true
-                            dir = Vector3.new(px, 0, py)
-                        end
-                    end
+
+    return {
+        prebuild = function() pcall(build) end,
+        setEnabled = function(e)
+            active = e
+            if e then
+                if currentInputMethod == "mobile" then
+                    pcall(build)
+                    if screenGui then screenGui.Enabled = true end
+                else
+                    notify("Lag Switch", "Press X to trigger.")
+                end
+            else
+                if screenGui then screenGui.Enabled = false end
+                locked = false
+            end
+        end
+    }
+end)()
+
+UserInputService.LastInputTypeChanged:Connect(function(inputType)
+    if inputType == Enum.UserInputType.Touch then currentInputMethod = "mobile"
+    elseif inputType == Enum.UserInputType.Keyboard
+        or inputType == Enum.UserInputType.MouseButton1
+        or inputType == Enum.UserInputType.MouseButton2
+        or inputType == Enum.UserInputType.MouseMovement then currentInputMethod = "pc" end
+end)
+
+-- ============ MODULE: DESYNC ============
+desyncModule = (function()
+    local active = false
+    local savedCFrame = nil
+    return {
+        setEnabled = function(enabled)
+            if enabled then
+                if not character or not hrp or not humanoid then return end
+                active = true
+                savedCFrame = hrp.CFrame
+                pcall(function()
+                    humanoid:SetStateEnabled(Enum.HumanoidStateType.Physics, true)
+                    humanoid:ChangeState(Enum.HumanoidStateType.Physics)
+                end)
+                task.wait(0.05)
+                pcall(function() hrp.CFrame = CFrame.new(hrp.Position.X, 20000, hrp.Position.Z) end)
+                task.wait(0.15)
+                local ok = pcall(function() game:GetService("NetworkClient"):SetOutgoingKBPSLimit(0.001) end)
+                task.wait(0.05)
+                if hrp and hrp.Parent then
+                    hrp.CFrame = savedCFrame
+                    pcall(function() hrp.AssemblyLinearVelocity = Vector3.zero end)
+                    pcall(function() humanoid:ChangeState(Enum.HumanoidStateType.Running) end)
+                end
+                notify("Desync", ok and "Frozen." or "Network API unavailable.")
+            else
+                if not active then return end
+                active = false
+                pcall(function() game:GetService("NetworkClient"):SetOutgoingKBPSLimit(1e9) end)
+                task.wait(0.1)
+                if hrp and hrp.Parent and savedCFrame then
+                    pcall(function()
+                        humanoid:ChangeState(Enum.HumanoidStateType.Running)
+                        hrp.CFrame = savedCFrame
+                        hrp.AssemblyLinearVelocity = Vector3.zero
+                    end)
                 end
             end
         end
+    }
+end)()
+
+-- ============ MODULE: KEYBOARD OVERLAY ============
+keyboardOverlayModule = (function()
+    local screenGui, container, dragBar, dragHitbox
+    local keyFrames = {}
+    local built = false
+    local KEY_W, KEY_H, GAP = 38, 38, 4
+    local layout = {
+        { keys = {"Q", "W", "E", "R"},      offsetX = 20 },
+        { keys = {"A", "S", "D", "F"},      offsetX = 10 },
+        { keys = {"LeftControl", "X", "C"}, offsetX = 0 },
+        { keys = {"Space"},                 offsetX = 0, spaceWidth = 122 },
+    }
+    local keyCodeMap = {
+        Q = Enum.KeyCode.Q, W = Enum.KeyCode.W, E = Enum.KeyCode.E, R = Enum.KeyCode.R,
+        A = Enum.KeyCode.A, S = Enum.KeyCode.S, D = Enum.KeyCode.D, F = Enum.KeyCode.F,
+        X = Enum.KeyCode.X, C = Enum.KeyCode.C,
+        LeftControl = Enum.KeyCode.LeftControl, Space = Enum.KeyCode.Space,
+    }
+    local displayMap = { LeftControl = "CTRL", Space = "SPACE" }
+    local maxRowWidth = 0
+    for _, row in ipairs(layout) do
+        local w
+        if row.spaceWidth then w = row.offsetX + row.spaceWidth
+        else w = row.offsetX + (#row.keys * KEY_W) + ((#row.keys - 1) * GAP) end
+        if w > maxRowWidth then maxRowWidth = w end
     end
-    if hasInput and dir.Magnitude > 0.01 then dir = dir.Unit end
-    return hasInput, dir
+    local padX, padTop, padBottom = 10, 10, 24
+    local containerW = maxRowWidth + (padX * 2)
+    local containerH = padTop + (#layout * (KEY_H + GAP)) - GAP + padBottom
+
+    local function build()
+        if built then return true end
+        screenGui = Instance.new("ScreenGui")
+        screenGui.Name = "RuinWareKeyboardOverlay"
+        screenGui.ResetOnSpawn = false
+        screenGui.DisplayOrder = 2147483647
+        screenGui.IgnoreGuiInset = true
+        screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Global
+        screenGui.Enabled = false
+        screenGui.Parent = uiParent
+        container = Instance.new("Frame")
+        container.Size = UDim2.new(0, containerW, 0, containerH)
+        container.Position = UDim2.new(0.5, -containerW / 2, 0.7, 0)
+        container.BackgroundTransparency = 1
+        container.BorderSizePixel = 0
+        container.Active = false
+        container.Parent = screenGui
+        local currentY = padTop
+        for _, row in ipairs(layout) do
+            local currentX = padX + row.offsetX
+            if row.spaceWidth then currentX = padX + (maxRowWidth - row.spaceWidth) / 2 end
+            for _, keyName in ipairs(row.keys) do
+                local kc = keyCodeMap[keyName]
+                if kc then
+                    local thisW = KEY_W
+                    if keyName == "Space" then thisW = row.spaceWidth end
+                    local kf = Instance.new("Frame")
+                    kf.Name = keyName
+                    kf.Size = UDim2.new(0, thisW, 0, KEY_H)
+                    kf.Position = UDim2.new(0, currentX, 0, currentY)
+                    kf.BackgroundColor3 = Color3.fromRGB(20, 20, 22)
+                    kf.BackgroundTransparency = 0.2
+                    kf.BorderSizePixel = 0
+                    kf.Parent = container
+                    local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, 10); c.Parent = kf
+                    local lbl = Instance.new("TextLabel")
+                    lbl.Size = UDim2.new(1, 0, 1, 0)
+                    lbl.BackgroundTransparency = 1
+                    lbl.Text = displayMap[keyName] or keyName
+                    lbl.TextColor3 = Color3.fromRGB(235, 235, 240)
+                    lbl.TextSize = (keyName == "Space" or keyName == "LeftControl") and 13 or 15
+                    lbl.Font = Enum.Font.GothamBold
+                    lbl.Parent = kf
+                    keyFrames[kc] = { frame = kf, label = lbl }
+                    currentX = currentX + thisW + GAP
+                end
+            end
+            currentY = currentY + KEY_H + GAP
+        end
+        dragBar, dragHitbox = createDragBar(container, UDim2.new(0.5, -30, 1, -14), UDim2.new(0, 60, 0, 5))
+        attachDrag(dragHitbox, container, dragBar)
+        built = true
+        return true
+    end
+    local function setPressed(kc, pressed)
+        local k = keyFrames[kc]
+        if not k then return end
+        if pressed then
+            k.frame.BackgroundColor3 = Color3.fromRGB(200, 55, 55)
+            k.frame.BackgroundTransparency = 0.1
+            k.label.TextColor3 = Color3.fromRGB(255, 255, 255)
+        else
+            k.frame.BackgroundColor3 = Color3.fromRGB(20, 20, 22)
+            k.frame.BackgroundTransparency = 0.2
+            k.label.TextColor3 = Color3.fromRGB(235, 235, 240)
+        end
+    end
+    UserInputService.InputBegan:Connect(function(i)
+        if keyboardOverlayOn then setPressed(i.KeyCode, true) end
+    end)
+    UserInputService.InputEnded:Connect(function(i)
+        if keyboardOverlayOn then setPressed(i.KeyCode, false) end
+    end)
+    return {
+        prebuild = function() pcall(build) end,
+        setEnabled = function(e)
+            if e then pcall(build); if screenGui then screenGui.Enabled = true end
+            else if screenGui then screenGui.Enabled = false end end
+        end
+    }
+end)()
+
+-- ============ MODULE: MOUSE OVERLAY ============
+mouseOverlayModule = (function()
+    local screenGui, container, dragBar, dragHitbox
+    local lmbFrame, rmbFrame
+    local built = false
+    local BTN_W, BTN_H, GAP = 95, 36, 6
+    local containerW = BTN_W * 2 + GAP + 16
+    local containerH = BTN_H + 40
+    local function build()
+        if built then return true end
+        screenGui = Instance.new("ScreenGui")
+        screenGui.Name = "RuinWareMouseOverlay"
+        screenGui.ResetOnSpawn = false
+        screenGui.DisplayOrder = 2147483647
+        screenGui.IgnoreGuiInset = true
+        screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Global
+        screenGui.Enabled = false
+        screenGui.Parent = uiParent
+        container = Instance.new("Frame")
+        container.Size = UDim2.new(0, containerW, 0, containerH)
+        container.Position = UDim2.new(0.5, -containerW / 2, 0.7, 0)
+        container.BackgroundTransparency = 1
+        container.BorderSizePixel = 0
+        container.Active = false
+        container.Parent = screenGui
+        lmbFrame = Instance.new("Frame")
+        lmbFrame.Size = UDim2.new(0, BTN_W, 0, BTN_H)
+        lmbFrame.Position = UDim2.new(0, 8, 0, 4)
+        lmbFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 22)
+        lmbFrame.BackgroundTransparency = 0.2
+        lmbFrame.BorderSizePixel = 0
+        lmbFrame.Parent = container
+        local c1 = Instance.new("UICorner"); c1.CornerRadius = UDim.new(0, 10); c1.Parent = lmbFrame
+        local l1 = Instance.new("TextLabel")
+        l1.Size = UDim2.new(1, 0, 1, 0); l1.BackgroundTransparency = 1
+        l1.Text = "LMB"; l1.TextColor3 = Color3.fromRGB(235, 235, 240)
+        l1.TextSize = 14; l1.Font = Enum.Font.GothamBold; l1.Parent = lmbFrame
+        rmbFrame = Instance.new("Frame")
+        rmbFrame.Size = UDim2.new(0, BTN_W, 0, BTN_H)
+        rmbFrame.Position = UDim2.new(0, 8 + BTN_W + GAP, 0, 4)
+        rmbFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 22)
+        rmbFrame.BackgroundTransparency = 0.2
+        rmbFrame.BorderSizePixel = 0
+        rmbFrame.Parent = container
+        local c3 = Instance.new("UICorner"); c3.CornerRadius = UDim.new(0, 10); c3.Parent = rmbFrame
+        local l3 = Instance.new("TextLabel")
+        l3.Size = UDim2.new(1, 0, 1, 0); l3.BackgroundTransparency = 1
+        l3.Text = "RMB"; l3.TextColor3 = Color3.fromRGB(235, 235, 240)
+        l3.TextSize = 14; l3.Font = Enum.Font.GothamBold; l3.Parent = rmbFrame
+        dragBar, dragHitbox = createDragBar(container, UDim2.new(0.5, -30, 1, -14), UDim2.new(0, 60, 0, 5))
+        attachDrag(dragHitbox, container, dragBar)
+        built = true
+        return true
+    end
+    local function setPressed(which, pressed)
+        local f = (which == "LMB") and lmbFrame or rmbFrame
+        if not f then return end
+        if pressed then
+            f.BackgroundColor3 = Color3.fromRGB(200, 55, 55)
+            f.BackgroundTransparency = 0.1
+        else
+            f.BackgroundColor3 = Color3.fromRGB(20, 20, 22)
+            f.BackgroundTransparency = 0.2
+        end
+    end
+    UserInputService.InputBegan:Connect(function(i)
+        if not mouseOverlayOn then return end
+        if i.UserInputType == Enum.UserInputType.MouseButton1 then setPressed("LMB", true)
+        elseif i.UserInputType == Enum.UserInputType.MouseButton2 then setPressed("RMB", true) end
+    end)
+    UserInputService.InputEnded:Connect(function(i)
+        if not mouseOverlayOn then return end
+        if i.UserInputType == Enum.UserInputType.MouseButton1 then setPressed("LMB", false)
+        elseif i.UserInputType == Enum.UserInputType.MouseButton2 then setPressed("RMB", false) end
+    end)
+    return {
+        prebuild = function() pcall(build) end,
+        setEnabled = function(e)
+            if e then pcall(build); if screenGui then screenGui.Enabled = true end
+            else if screenGui then screenGui.Enabled = false end end
+        end
+    }
+end)()
+
+-- ============ MODULE: JUMP ============
+jumpModule = (function()
+    local mode, bv = nil, nil
+    local function destroyBV() if bv then pcall(function() bv:Destroy() end); bv = nil end end
+    local function createBV()
+        destroyBV()
+        if not hrp then return end
+        bv = Instance.new("BodyVelocity")
+        bv.Name = "RuinWareJumpBV"
+        bv.Velocity = Vector3.zero
+        bv.MaxForce = Vector3.new(math.huge, 0, math.huge)
+        bv.P = math.huge
+        bv.Parent = hrp
+    end
+    local function restore()
+        destroyBV()
+        if humanoid then humanoid.WalkSpeed = defaultWalkSpeed end
+    end
+    return {
+        setMode = function(m) mode = m; if m then createBV() else restore() end end,
+        getMode = function() return mode end,
+        update = function()
+            if not mode or not humanoid or not hrp or humanoid.Health <= 0 then return end
+            if not bv or not bv.Parent then createBV() end
+            local cam = workspace.CurrentCamera
+            if not cam then return end
+            local look = cam.CFrame.LookVector
+            local dir = Vector3.new(look.X, 0, look.Z)
+            if dir.Magnitude > 0.001 then dir = dir.Unit else dir = Vector3.new(0, 0, -1) end
+            local speed = (mode == "front") and FRONT_JUMP_SPEED or BACK_JUMP_SPEED
+            local pushDir = (mode == "front") and dir or -dir
+            if bv then bv.Velocity = Vector3.new(pushDir.X * speed, 0, pushDir.Z * speed) end
+            if isGrounded() then tryJump() end
+        end,
+        refresh = function() if mode then createBV() end end
+    }
+end)()
+
+-- ============ SPEED HELPERS ============
+local function destroySpeedBV()
+    if speedBV then pcall(function() speedBV:Destroy() end); speedBV = nil end
+end
+local function createSpeedBV()
+    destroySpeedBV()
+    if not hrp then return end
+    speedBV = Instance.new("BodyVelocity")
+    speedBV.Name = "RuinWareSpeedBV"
+    speedBV.Velocity = Vector3.zero
+    speedBV.MaxForce = Vector3.zero
+    speedBV.P = math.huge
+    speedBV.Parent = hrp
 end
 
--- ============ UNLOCK / HOLD JUMP ============
+-- ============ UNLOCK JUMP (every state) ============
 local lastUnlockJump = 0
 UserInputService.JumpRequest:Connect(function()
-    if not holdJumpEnabled or not humanoid or humanoid.Health <= 0 then return end
+    if not unlockJumpEnabled or not humanoid or humanoid.Health <= 0 then return end
     local now = tick()
-    if now - lastUnlockJump < 0.15 then return end
-    local state = humanoid:GetState()
-    if state == Enum.HumanoidStateType.Freefall or state == Enum.HumanoidStateType.Jumping then return end
+    if now - lastUnlockJump < 0.1 then return end
     lastUnlockJump = now
-    humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+    pcall(function() humanoid:ChangeState(Enum.HumanoidStateType.Jumping) end)
+end)
+
+-- ============ HOLD JUMP ============
+UserInputService.JumpRequest:Connect(function()
+    if not holdJumpEnabled or not humanoid or humanoid.Health <= 0 then return end
+    pcall(function() humanoid:ChangeState(Enum.HumanoidStateType.Jumping) end)
 end)
 
 -- ============ JUMP MACRO KEYBIND ============
 UserInputService.InputBegan:Connect(function(input, processed)
     if processed then return end
     if not jmKeybind or jmKeybind == "" then return end
-    local keyName = jmKeybind:upper()
     pcall(function()
-        local kc = Enum.KeyCode[keyName]
+        local kc = Enum.KeyCode[jmKeybind:upper()]
         if kc and input.KeyCode == kc then
             jumpMacroEnabled = not jumpMacroEnabled
-            Rayfield:Notify({ Title = "Jump Macro", Content = jumpMacroEnabled and "Enabled" or "Disabled",
-                Duration = 2, Image = "zap" })
+            notify("Jump Macro", jumpMacroEnabled and "Enabled" or "Disabled", 2)
         end
     end)
 end)
 
 -- ============ PERIODIC TASKS ============
--- Player Remover
 task.spawn(function()
     while true do
         task.wait(1)
@@ -1593,7 +1650,6 @@ task.spawn(function()
     end
 end)
 
--- Portal Lag
 task.spawn(function()
     while true do
         task.wait(1)
@@ -1622,18 +1678,14 @@ task.spawn(function()
     end
 end)
 
--- Cactus
-local cactusPlates = {}
 task.spawn(function()
     while true do
         task.wait(1)
         if cactusEnabled then
             for _, obj in ipairs(workspace:GetDescendants()) do
-                local isCactus = false
-                local part
+                local isCactus, part = false, nil
                 if obj:IsA("BasePart") and obj.Name:lower():match("^cactus") then
-                    isCactus = true
-                    part = obj
+                    isCactus, part = true, obj
                 elseif obj:IsA("Model") and obj.Name:lower():match("^cactus") then
                     part = obj.PrimaryPart or obj:FindFirstChildWhichIsA("BasePart")
                     if part then isCactus = true end
@@ -1643,9 +1695,7 @@ task.spawn(function()
                     if not existing or not existing.Parent then
                         local plate = Instance.new("Part")
                         plate.Name = "RuinWareCactusPlate"
-                        plate.Size = Vector3.new(
-                            math.max(part.Size.X * cactusMultiplier, 4), 2,
-                            math.max(part.Size.Z * cactusMultiplier, 4))
+                        plate.Size = Vector3.new(math.max(part.Size.X * cactusMultiplier, 4), 2, math.max(part.Size.Z * cactusMultiplier, 4))
                         plate.Position = Vector3.new(part.Position.X, part.Position.Y + part.Size.Y / 2 + 1, part.Position.Z)
                         plate.Anchored = true
                         plate.CanCollide = true
@@ -1655,9 +1705,7 @@ task.spawn(function()
                         plate.Parent = workspace
                         cactusPlates[part] = plate
                     else
-                        existing.Size = Vector3.new(
-                            math.max(part.Size.X * cactusMultiplier, 4), 2,
-                            math.max(part.Size.Z * cactusMultiplier, 4))
+                        existing.Size = Vector3.new(math.max(part.Size.X * cactusMultiplier, 4), 2, math.max(part.Size.Z * cactusMultiplier, 4))
                         existing.Position = Vector3.new(part.Position.X, part.Position.Y + part.Size.Y / 2 + 1, part.Position.Z)
                     end
                 end
@@ -1666,7 +1714,6 @@ task.spawn(function()
     end
 end)
 
--- Game Optimizer
 task.spawn(function()
     while true do
         task.wait(1)
@@ -1682,11 +1729,9 @@ task.spawn(function()
     end
 end)
 
--- Headless (workspace.Rigs.PlayerName.Head) + Korblox
 task.spawn(function()
     while true do
         task.wait(1)
-        -- Headless via Rigs
         if headlessEnabled then
             local rigs = workspace:FindFirstChild("Rigs")
             if rigs then
@@ -1697,11 +1742,9 @@ task.spawn(function()
                 end
             end
         end
-        -- Korblox
         if character then
             if korbloxLeftEnabled then
-                local existing = character:FindFirstChild("RuinWareKorbloxL")
-                if not existing then
+                if not character:FindFirstChild("RuinWareKorbloxL") then
                     local cm = Instance.new("CharacterMesh")
                     cm.Name = "RuinWareKorbloxL"
                     cm.MeshId = 1393812159
@@ -1717,8 +1760,7 @@ task.spawn(function()
                 character.RuinWareKorbloxL:Destroy()
             end
             if korbloxRightEnabled then
-                local existing = character:FindFirstChild("RuinWareKorbloxR")
-                if not existing then
+                if not character:FindFirstChild("RuinWareKorbloxR") then
                     local cm = Instance.new("CharacterMesh")
                     cm.Name = "RuinWareKorbloxR"
                     cm.MeshId = 1393811753
@@ -1737,7 +1779,6 @@ task.spawn(function()
     end
 end)
 
--- Avatar Reapply
 task.spawn(function()
     while true do
         task.wait(1)
@@ -1751,7 +1792,6 @@ task.spawn(function()
     end
 end)
 
--- Skybox Reapply
 task.spawn(function()
     while true do
         task.wait(1)
@@ -1763,45 +1803,83 @@ task.spawn(function()
     end
 end)
 
--- Auto Farm Tasks
+-- Auto Farm Tasks (anchor based, reliable)
+local afkOriginalAnchored = false
+local afkTargetCFrame = nil
 task.spawn(function()
-    local afkStart = 0
-    local ladderStart = 0
-    local ladderOriginal = nil
     while true do
-        task.wait(1)
-        -- AFK Farm
+        task.wait(0.1)
+        -- AFK Farm: anchor 6000 studs up
         if autoFarmEnabled and hrp and hrp.Parent then
-            if tick() - afkStart >= 15 then
-                afkStart = tick()
-                pcall(function()
-                    hrp.CFrame = CFrame.new(hrp.Position.X, hrp.Position.Y + 6000, hrp.Position.Z)
-                end)
+            if not afkTargetCFrame then
+                afkOriginalAnchored = hrp.Anchored
+                afkTargetCFrame = CFrame.new(hrp.Position.X, hrp.Position.Y + 6000, hrp.Position.Z)
+                pcall(function() hrp.Anchored = true end)
             end
+            pcall(function() hrp.CFrame = afkTargetCFrame end)
         else
-            afkStart = tick()
-        end
-        -- Ladder Glide
-        if ladderGlideEnabled and hrp and hrp.Parent then
-            if not ladderOriginal then
-                ladderOriginal = hrp.CFrame
-                pcall(function()
-                    hrp.CFrame = ladderOriginal + Vector3.new(1000, 0, 0)
-                end)
-                ladderStart = tick()
-            elseif tick() - ladderStart >= 9 then
-                ladderStart = tick()
-                pcall(function()
-                    hrp.CFrame = ladderOriginal + Vector3.new(1000, 0, 0)
-                end)
+            if afkTargetCFrame then
+                afkTargetCFrame = nil
+                if hrp and hrp.Parent then pcall(function() hrp.Anchored = false end) end
             end
-        else
-            ladderOriginal = nil
         end
     end
 end)
 
--- Y Lock force position
+local ladderOriginalCFrame = nil
+task.spawn(function()
+    while true do
+        task.wait(0.1)
+        if ladderGlideEnabled and hrp and hrp.Parent then
+            if not ladderOriginalCFrame then
+                ladderOriginalCFrame = hrp.CFrame + Vector3.new(1000, 0, 0)
+                pcall(function() hrp.Anchored = true end)
+            end
+            pcall(function() hrp.CFrame = ladderOriginalCFrame end)
+        else
+            if ladderOriginalCFrame then
+                ladderOriginalCFrame = nil
+                if hrp and hrp.Parent and not autoFarmEnabled then
+                    pcall(function() hrp.Anchored = false end)
+                end
+            end
+        end
+    end
+end)
+
+task.spawn(function()
+    while true do
+        task.wait(0.2)
+        if nextbotImmunityEnabled and humanoid then humanoid.HipHeight = 12 end
+    end
+end)
+
+task.spawn(function()
+    while true do
+        task.wait(0.5)
+        if rainSound then rainSound.Volume = rainSoundEnabled and rainVolume or 0 end
+        if snowSound then snowSound.Volume = snowSoundEnabled and (snowVolume * 0.3) or 0 end
+    end
+end)
+
+task.spawn(function()
+    while true do
+        task.wait(0.1)
+        if fovEnabled and camera then camera.FieldOfView = fovValue end
+        if timeChangerEnabled then Lighting.ClockTime = timeValue end
+        if brightnessEnabled then Lighting.Brightness = brightnessValue end
+    end
+end)
+
+task.spawn(function()
+    while true do
+        task.wait(0.5)
+        if rainPart and hrp then pcall(function() rainPart.CFrame = hrp.CFrame + Vector3.new(0, 50, 0) end) end
+        if snowPart and hrp then pcall(function() snowPart.CFrame = hrp.CFrame + Vector3.new(0, 50, 0) end) end
+    end
+end)
+
+-- Y Lock
 RunService.RenderStepped:Connect(function()
     if yLockEnabled and yLockValue and hrp and hrp.Parent then
         local p = hrp.Position
@@ -1813,13 +1891,11 @@ RunService.RenderStepped:Connect(function()
             Vector3.new(p.X, yLockValue, p.Z),
             Vector3.new(p.X, yLockValue, p.Z) + flat)
         local v = hrp.AssemblyLinearVelocity
-        if math.abs(v.Y) > 0.1 then
-            hrp.AssemblyLinearVelocity = Vector3.new(v.X, 0, v.Z)
-        end
+        if math.abs(v.Y) > 0.1 then hrp.AssemblyLinearVelocity = Vector3.new(v.X, 0, v.Z) end
     end
 end)
 
--- Hitbox creator follow
+-- Hitbox follow
 RunService.Heartbeat:Connect(function()
     for i = #hcParts, 1, -1 do
         local entry = hcParts[i]
@@ -1836,66 +1912,18 @@ RunService.Heartbeat:Connect(function()
     end
 end)
 
--- Weather volume live update
-task.spawn(function()
-    while true do
-        task.wait(0.5)
-        if rainSound then rainSound.Volume = rainSoundEnabled and rainVolume or 0 end
-        if snowSound then snowSound.Volume = snowSoundEnabled and (snowVolume * 0.3) or 0 end
-    end
-end)
-
--- FOV apply
-task.spawn(function()
-    while true do
-        task.wait(0.1)
-        if fovEnabled and camera then
-            camera.FieldOfView = fovValue
-        end
-        if timeChangerEnabled then
-            Lighting.ClockTime = timeValue
-        end
-        if brightnessEnabled then
-            Lighting.Brightness = brightnessValue
-        end
-    end
-end)
-
--- Nextbot immunity
-task.spawn(function()
-    while true do
-        task.wait(0.2)
-        if nextbotImmunityEnabled and humanoid then
-            humanoid.HipHeight = 12
-        end
-    end
-end)
-
--- Rain/snow follow player
-task.spawn(function()
-    while true do
-        task.wait(0.5)
-        if rainPart and hrp then rainPart.CFrame = hrp.CFrame + Vector3.new(0, 50, 0) end
-        if snowPart and hrp then snowPart.CFrame = hrp.CFrame + Vector3.new(0, 50, 0) end
-    end
-end)
-
 -- TAS Recording
 RunService.Heartbeat:Connect(function()
     if tasRecording and hrp then
-        table.insert(tasData, {
-            t = tick() - tasStartTime,
-            cf = hrp.CFrame,
-        })
+        table.insert(tasData, { t = tick() - tasStartTime, cf = hrp.CFrame })
     end
 end)
 
 -- TAS Playback
 RunService.RenderStepped:Connect(function()
     if tasPlaying and hrp and #tasData > 0 then
-        if hrp.Anchored == false then hrp.Anchored = true end
+        if not hrp.Anchored then hrp.Anchored = true end
         local elapsed = tick() - tasPlaybackStart
-        -- advance index
         while tasPlaybackIdx <= #tasData and tasData[tasPlaybackIdx].t <= elapsed do
             tasPlaybackIdx = tasPlaybackIdx + 1
         end
@@ -1906,30 +1934,28 @@ RunService.RenderStepped:Connect(function()
             else
                 tasPlaying = false
                 hrp.Anchored = false
-                -- Turn off the toggle in the UI when done
-                pcall(function()
-                    local toggles = Rayfield.Flags
-                end)
             end
         else
             local frame = tasData[tasPlaybackIdx]
-            if frame then
-                hrp.CFrame = frame.cf
-            end
+            if frame then hrp.CFrame = frame.cf end
         end
     end
 end)
 
--- Playback end detection helper for toggle off
-task.spawn(function()
-    while true do
-        task.wait(0.2)
-        if not tasPlaying and tasPlayingFlag then
-            tasPlayingFlag = false
-        end
-    end
+-- ESP render
+RunService.RenderStepped:Connect(function() pcall(updateEsp) end)
+
+Players.PlayerRemoving:Connect(function(plr)
+    if espBoxes[plr] then espBoxes[plr]:Destroy(); espBoxes[plr] = nil end
+    if espLabels[plr] then espLabels[plr]:Destroy(); espLabels[plr] = nil end
 end)
 
+pcall(function() lagSwitchModule.prebuild() end)
+pcall(function() keyboardOverlayModule.prebuild() end)
+pcall(function() mouseOverlayModule.prebuild() end)
+
+-- ============ CHARACTER RESPAWN ============
+local mapRespawnTask = nil
 player.CharacterAdded:Connect(function()
     task.wait(0.3)
     jumpModule.refresh()
@@ -1937,11 +1963,20 @@ player.CharacterAdded:Connect(function()
     if flyBV then flyBV:Destroy(); flyBV = nil end
     if jumpForce then jumpForce:Destroy(); jumpForce = nil end
     if wallLaunchBV then wallLaunchBV:Destroy(); wallLaunchBV = nil end
-end)
+    if iraBV then iraBV:Destroy(); iraBV = nil end
+    if afkTargetCFrame then afkTargetCFrame = nil end
+    if ladderOriginalCFrame then ladderOriginalCFrame = nil end
 
-pcall(function() lagSwitchModule.prebuild() end)
-pcall(function() keyboardOverlayModule.prebuild() end)
-pcall(function() mouseOverlayModule.prebuild() end)
+    -- Map respawn teleport
+    if mapSpawnCFrame then
+        if mapRespawnTask then task.cancel(mapRespawnTask) end
+        mapRespawnTask = task.delay(5, function()
+            if hrp and hrp.Parent and mapSpawnCFrame then
+                pcall(function() hrp.CFrame = mapSpawnCFrame end)
+            end
+        end)
+    end
+end)
 
 -- ============ MAIN LOOP ============
 local isInAir = false
@@ -1958,6 +1993,8 @@ local justJumpedFlag = false
 local airMode = nil
 local airDirRelative = "forward"
 local legitJumpPending = nil
+local iraActive = false
+local iraStartTime = 0
 
 task.spawn(function()
     UserInputService.JumpRequest:Connect(function()
@@ -2050,9 +2087,7 @@ RunService.Heartbeat:Connect(function(dt)
             tryJump()
         elseif isGrounded() and not legitJumpPending then
             local angle = getFloorAngle()
-            if angle == nil or angle < 25 then
-                legitJumpPending = now + legitJumpDelay
-            end
+            if angle == nil or angle < 25 then legitJumpPending = now + legitJumpDelay end
         end
     end
     if jumpMacroEnabled and isGrounded() then
@@ -2063,7 +2098,8 @@ RunService.Heartbeat:Connect(function(dt)
         if jmOnlyMove then
             if velocity.Magnitude < 1 then allow = false end
         end
-        if allow then
+        if allow and now - (jmSpeedLast or 0) >= jmSpeed then
+            jmSpeedLast = now
             tryJump()
         end
     end
@@ -2073,8 +2109,6 @@ RunService.Heartbeat:Connect(function(dt)
             hrp.AssemblyLinearVelocity = Vector3.new(velocity.X, getJumpVelocity(), velocity.Z)
         end
     end
-
-    if hipHeightEnabled and humanoid then humanoid.HipHeight = hipHeightValue end
 
     if jumpHeightEnabled and humanoid then
         pcall(function()
@@ -2098,17 +2132,21 @@ RunService.Heartbeat:Connect(function(dt)
     lastJumpingState = isJumping
     if not isAir and jumpForce then jumpForce:Destroy(); jumpForce = nil end
 
-    -- Bypass Unmovable Emotes: WalkSpeed = 8.7, no delay/halving
+    -- Bypass Unmovable Emotes: pure WalkSpeed force at 8.7, plus velocity push
     if bypassEmotesEnabled and humanoid then
-        pcall(function()
-            if hrp.Anchored then hrp.Anchored = false end
-            humanoid.WalkSpeed = 8.7
-        end)
-    elseif humanoid and humanoid.WalkSpeed == 8.7 then
-        pcall(function() humanoid.WalkSpeed = defaultWalkSpeed end)
+        humanoid.WalkSpeed = 8.7
+        local moveDir = Vector3.new(md.X, 0, md.Z)
+        if moveDir.Magnitude > 0.05 then
+            moveDir = moveDir.Unit
+            hrp.AssemblyLinearVelocity = Vector3.new(moveDir.X * 8.7, velocity.Y, moveDir.Z * 8.7)
+        end
+    else
+        if humanoid and humanoid.WalkSpeed == 8.7 and not speedEnabled then
+            humanoid.WalkSpeed = defaultWalkSpeed
+        end
     end
 
-    -- Speed
+    -- Speed (STP)
     if speedEnabled then
         if isAir then
             if airMode and cam then
@@ -2129,7 +2167,6 @@ RunService.Heartbeat:Connect(function(dt)
             local moving = md.Magnitude > 0.05
             if moving then
                 if not wasMoving then
-                    -- Check for backward start
                     local backward = false
                     if cam then
                         local camFlat = Vector3.new(cam.CFrame.LookVector.X, 0, cam.CFrame.LookVector.Z)
@@ -2176,13 +2213,45 @@ RunService.Heartbeat:Connect(function(dt)
         movementStartTime = 0
     end
 
+    -- Instant Run Acceleration: 33.3 speed for 5s on move start, no delay
+    if iraEnabled then
+        local moving = md.Magnitude > 0.05 and isGrounded()
+        if moving and not iraActive then
+            iraActive = true
+            iraStartTime = now
+        end
+        if iraActive then
+            if now - iraStartTime < 5 then
+                if not iraBV or iraBV.Parent ~= hrp then
+                    if iraBV then iraBV:Destroy() end
+                    iraBV = Instance.new("BodyVelocity")
+                    iraBV.Name = "RuinWareIraBV"
+                    iraBV.MaxForce = Vector3.new(math.huge, 0, math.huge)
+                    iraBV.P = math.huge
+                    iraBV.Parent = hrp
+                end
+                if moving then
+                    local moveDir = Vector3.new(md.X, 0, md.Z).Unit
+                    iraBV.Velocity = Vector3.new(moveDir.X * 33.3, 0, moveDir.Z * 33.3)
+                else
+                    iraBV.Velocity = Vector3.zero
+                end
+            else
+                iraActive = false
+                if iraBV then iraBV:Destroy(); iraBV = nil end
+            end
+        end
+    else
+        iraActive = false
+        if iraBV then iraBV:Destroy(); iraBV = nil end
+    end
+
     -- Fly
     if flyEnabled then
         if not flyBV or flyBV.Parent ~= hrp then
             if flyBV then flyBV:Destroy() end
             flyBV = Instance.new("BodyVelocity")
             flyBV.Name = "RuinWareFlyBV"
-            flyBV.Velocity = Vector3.zero
             flyBV.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
             flyBV.P = math.huge
             flyBV.Parent = hrp
@@ -2190,10 +2259,8 @@ RunService.Heartbeat:Connect(function(dt)
         if flyBV and cam then flyBV.Velocity = cam.CFrame.LookVector * flySpeed end
     elseif flyBV then flyBV:Destroy(); flyBV = nil end
 
-    -- Gravity
     if gravityEnabled then pcall(function() workspace.Gravity = gravityValue end) end
 
-    -- Easy Edge Trimp
     if edgeTrimpEnabled and isAir and now - lastTrimpTime > 0.5 then
         if md.Magnitude > 0.1 then
             local forward = Vector3.new(md.X, 0, md.Z).Unit
@@ -2214,7 +2281,6 @@ RunService.Heartbeat:Connect(function(dt)
         end
     end
 
-    -- Wall Launch
     if wallLaunchEndTime > 0 and now > wallLaunchEndTime then
         if wallLaunchBV then wallLaunchBV:Destroy(); wallLaunchBV = nil end
         wallLaunchEndTime = 0
@@ -2230,8 +2296,7 @@ RunService.Heartbeat:Connect(function(dt)
                     launchDir = launchDir.Unit
                     wallLaunchBV = Instance.new("BodyVelocity")
                     wallLaunchBV.Name = "RuinWareWallLaunchBV"
-                    wallLaunchBV.Velocity = Vector3.new(
-                        launchDir.X * wallLaunchPower, 0, launchDir.Z * wallLaunchPower)
+                    wallLaunchBV.Velocity = Vector3.new(launchDir.X * wallLaunchPower, 0, launchDir.Z * wallLaunchPower)
                     wallLaunchBV.MaxForce = Vector3.new(math.huge, 0, math.huge)
                     wallLaunchBV.P = math.huge
                     wallLaunchBV.Parent = hrp
@@ -2247,42 +2312,29 @@ RunService.Heartbeat:Connect(function(dt)
     lastFloorMaterial = currentMaterial
 end)
 
--- Emote Spin (Y-axis)
+-- Emote Spin (Y-axis, AlignOrientation)
 local emoteSpinAngle = 0
 local emoteSpinLastStep = 0
 local emoteSpinAtt, emoteSpinAlign, emoteSpinSavedAutoRotate
-local function startEmoteSpin()
-    if emoteSpinAlign or not hrp then return end
-    emoteSpinAtt = Instance.new("Attachment")
-    emoteSpinAtt.Name = "RuinWareSpinAtt"
-    emoteSpinAtt.Parent = hrp
-    emoteSpinAlign = Instance.new("AlignOrientation")
-    emoteSpinAlign.Name = "RuinWareSpinAlign"
-    emoteSpinAlign.Mode = Enum.OrientationAlignmentMode.OneAttachment
-    emoteSpinAlign.Attachment0 = emoteSpinAtt
-    emoteSpinAlign.MaxTorque = math.huge
-    emoteSpinAlign.Responsiveness = 100
-    emoteSpinAlign.CFrame = CFrame.Angles(0, 0, 0)
-    emoteSpinAlign.Parent = hrp
-    if humanoid then
-        emoteSpinSavedAutoRotate = humanoid.AutoRotate
-        humanoid.AutoRotate = false
-    end
-end
-local function stopEmoteSpin()
-    if emoteSpinAtt then pcall(function() emoteSpinAtt:Destroy() end); emoteSpinAtt = nil end
-    if emoteSpinAlign then pcall(function() emoteSpinAlign:Destroy() end); emoteSpinAlign = nil end
-    if humanoid and emoteSpinSavedAutoRotate ~= nil then
-        humanoid.AutoRotate = emoteSpinSavedAutoRotate
-    end
-    emoteSpinSavedAutoRotate = nil
-    emoteSpinAngle = 0
-    emoteSpinLastStep = 0
-end
+
 RunService.Heartbeat:Connect(function()
     if not humanoid or not hrp or not hrp.Parent then return end
     if emoteSpinEnabled then
-        startEmoteSpin()
+        if not emoteSpinAlign then
+            emoteSpinAtt = Instance.new("Attachment")
+            emoteSpinAtt.Name = "RuinWareSpinAtt"
+            emoteSpinAtt.Parent = hrp
+            emoteSpinAlign = Instance.new("AlignOrientation")
+            emoteSpinAlign.Name = "RuinWareSpinAlign"
+            emoteSpinAlign.Mode = Enum.OrientationAlignmentMode.OneAttachment
+            emoteSpinAlign.Attachment0 = emoteSpinAtt
+            emoteSpinAlign.MaxTorque = math.huge
+            emoteSpinAlign.Responsiveness = 100
+            emoteSpinAlign.CFrame = CFrame.Angles(0, 0, 0)
+            emoteSpinAlign.Parent = hrp
+            emoteSpinSavedAutoRotate = humanoid.AutoRotate
+            humanoid.AutoRotate = false
+        end
         local now = tick()
         if now - emoteSpinLastStep >= emoteSpinSpeed then
             emoteSpinLastStep = now
@@ -2292,33 +2344,15 @@ RunService.Heartbeat:Connect(function()
             emoteSpinAlign.CFrame = CFrame.Angles(0, math.rad(emoteSpinAngle), 0)
         end
     elseif emoteSpinAlign or emoteSpinAtt then
-        stopEmoteSpin()
-    end
-end)
-
--- TAS playback toggle off detection
-task.spawn(function()
-    local lastState = false
-    while true do
-        task.wait(0.2)
-        if tasPlaying and not lastState then
-            lastState = true
-        elseif not tasPlaying and lastState then
-            -- Turn off the Rayfield Play toggle
-            pcall(function()
-                local flags = Rayfield.Flags
-                if flags and flags.TASPlay then
-                    flags.TASPlay:Set(false)
-                end
-            end)
-            lastState = false
+        if emoteSpinAtt then pcall(function() emoteSpinAtt:Destroy() end); emoteSpinAtt = nil end
+        if emoteSpinAlign then pcall(function() emoteSpinAlign:Destroy() end); emoteSpinAlign = nil end
+        if humanoid and emoteSpinSavedAutoRotate ~= nil then
+            humanoid.AutoRotate = emoteSpinSavedAutoRotate
         end
+        emoteSpinSavedAutoRotate = nil
+        emoteSpinAngle = 0
+        emoteSpinLastStep = 0
     end
 end)
 
-Rayfield:Notify({
-    Title = "RuinWare Loaded",
-    Content = "All tabs ready.",
-    Duration = 5,
-    Image = "check-circle",
-})
+notify("RuinWare Loaded", "All tabs ready.", 5)
