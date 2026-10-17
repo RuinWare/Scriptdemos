@@ -1,0 +1,1874 @@
+-- RW WARNINGS
+print("RuinWare Loaded.")
+print("RuinWare Copyright 2026©")
+warn("⚠️ ANY ATTEMPT TO CRACK, DEOBFUSCATE THIS SCRIPT WILL NOT BE TOLERATED. MAY RESULT IN A BAN AND OR LEGAL ACTION.")
+
+
+-- Load main
+local Rayfield = loadstring(game:HttpGet("https://sirius.menu/gen2"))()
+
+
+-- ============================================================================
+
+-- E M O T E L O G I C
+
+-- ============================================================================
+
+
+
+local function buildEmoteChanger(tab, window)
+	local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+	local PATHS = {
+		{"Items","ItemPacks","Gamepass","Unorganized","EmotePack","Emotes"},
+		{"Items","ItemPacks","Gamepass","Unorganized","EclipseSet","Emotes"},
+		{"Items","ItemPacks","Gamepass","Unorganized","DogSet","Emotes"},
+		{"Items","ItemPacks","Gamepass","Unorganized","Cats","Emotes"},
+		{"Items","ItemPacks","Gamepass","Unorganized","Animals","Emotes"},
+		{"Items","ItemPacks","Gamepass","Legacy","StPatricks2023","Emotes"},
+		{"Items","ItemPacks","Gamepass","Legacy","Military","Emotes"},
+		{"Items","ItemPacks","Gamepass","2026","RelicEmotesNew","Emotes"},
+		{"Items","ItemPacks","Gamepass","2026","PoseidonSet","Emotes"},
+		{"Items","ItemPacks","Gamepass","2026","BeeSet","Emotes"},
+		{"Items","ItemPacks","EventsDailyShop","Thanksgiving2025","Emotes"},
+		{"Items","ItemPacks","EventsDailyShop","OldRoblox","Emotes"},
+		{"Items","ItemPacks","EventsDailyShop","NewYears2024","Emotes"},
+		{"Items","ItemPacks","EventsDailyShop","LunarNewYear","Emotes"},
+		{"Items","ItemPacks","Events","2026","Valentines2026","Emotes"},
+		{"Items","ItemPacks","Events","2026","StPatricks2026","Emotes"},
+		{"Items","ItemPacks","Events","2026","Spring2026","Emotes"},
+		{"Items","ItemPacks","Events","2026","SUMMER26","Emotes"},
+		{"Items","ItemPacks","Events","2026","HLWN2026","Emotes"},
+		{"Items","ItemPacks","Events","2025","XMAS25","Emotes","DailyShop"},
+		{"Items","ItemPacks","Events","2025","XMAS25","Emotes","Battlepass"},
+		{"Items","ItemPacks","Events","2025","Valentines2025","Emotes"},
+		{"Items","ItemPacks","Events","2025","Summer2025","Emotes"},
+		{"Items","ItemPacks","Events","2025","StPatricks2025","Emotes"},
+		{"Items","ItemPacks","Events","2025","Hlwn2025","Emotes"},
+		{"Items","ItemPacks","Events","2024","Xmas2024","Emotes"},
+		{"Items","ItemPacks","Events","2024","Valentines2024","Emotes"},
+		{"Items","ItemPacks","Events","2024","StPatricks2024","Emotes"},
+		{"Items","ItemPacks","Events","2024","Hlwn2024","Emotes"},
+		{"Items","ItemPacks","Events","2024","Halloween2024","Emotes"},
+		{"Items","ItemPacks","Events","2023","Hlwn2023","Emotes"},
+		{"Items","ItemPacks","Events","2023","Halloween2023","Emotes"},
+		{"Items","ItemPacks","Events","2023","Xmas2023","Emotes"},
+		{"Items","ItemPacks","Events","2023","Valentines2023","Emotes"},
+		{"Items","ItemPacks","Events","2023","StPatricks2023","Emotes"},
+		{"Items","ItemPacks","Events","2023","Summer2023","Emotes"},
+		{"Items","ItemPacks","Events","2022","Hlwn2022","Emotes"},
+		{"Items","ItemPacks","Events","2022","Halloween2022","Emotes"},
+		{"Items","ItemPacks","Events","2022","Xmas2022","Emotes"},
+		{"Items","ItemPacks","Events","2022","Valentines2022","Emotes"},
+		{"Items","ItemPacks","Collab","ST","Emotes"},
+		{"Items","ItemPacks","Base","Special","Emotes"},
+		{"Items","ItemPacks","Base","NewShop","Emotes"},
+		{"Items","ItemPacks","Base","LevelShop","Emotes"},
+		{"Items","ItemPacks","Base","DailyShop","Emotes"},
+		{"Items","BaseItems","Emotes"},
+		{"Items","ItemPacks","Integration","M3GAN","Emotes"},
+		{"Items","ItemPacks","Gamepass","Unorganized","Gems","Emotes"},
+		{"Items","ItemPacks","Gamepass","Unorganized","LunarNewYearSet","Emotes"},
+		{"Items","ItemPacks","Gamepass","Unorganized","MusicEmotesPack1","Emotes"},
+		{"Items","ItemPacks","Gamepass","Unorganized","RelicEmotesVaulted","Emotes"},
+	}
+
+	local EXPAND_NAMES       = { battlepass = true, dailyshop = true, admin = true }
+	local ROCKINSTRIDE_SOUND = 114846968069031
+
+	local _snapshots      = {}
+	local _displayNames   = {}
+	local _emoteCache     = nil
+	local variantState    = {}
+	local selectedVariant = 1
+
+	local state = {
+		Current       = nil,
+		SuggestedText = nil,
+		Dropdown      = nil,
+		UseTextbox    = false,
+	}
+
+	local function resolvePath(keys)
+		local ok, result = pcall(function()
+			local obj = ReplicatedStorage
+			for _, k in ipairs(keys) do obj = obj[k] end
+			return obj
+		end)
+		if ok and typeof(result) == "Instance" then return result end
+		return nil
+	end
+
+	local function getItemScript(item)
+		if item:IsA("ModuleScript") then return item end
+		for _, c in ipairs(item:GetChildren()) do
+			if c:IsA("ModuleScript") then return c end
+		end
+		return nil
+	end
+
+	local function takeSnapshot(item)
+		if _snapshots[item] then return end
+		local script = getItemScript(item)
+		local dataSnap = nil
+		if script then
+			local ok, data = pcall(require, script)
+			if ok and type(data) == "table" then
+				dataSnap = {}
+				for k, v in pairs(data) do
+					if type(v) == "table" then
+						local sub = {}
+						for k2, v2 in pairs(v) do sub[k2] = v2 end
+						dataSnap[k] = sub
+					else
+						dataSnap[k] = v
+					end
+				end
+			end
+		end
+		local childrenSnap = {}
+		for _, c in ipairs(item:GetChildren()) do
+			table.insert(childrenSnap, c:Clone())
+		end
+		_snapshots[item] = { data = dataSnap, children = childrenSnap }
+	end
+
+	local function getDisplayName(item)
+		takeSnapshot(item)
+		local cached = _displayNames[item]
+		if cached then return cached end
+		local script = getItemScript(item)
+		if script then
+			local ok, data = pcall(require, script)
+			if ok and type(data) == "table"
+				and type(data.AppearanceInfo) == "table"
+				and type(data.AppearanceInfo.Name) == "string" then
+				_displayNames[item] = data.AppearanceInfo.Name
+				return data.AppearanceInfo.Name
+			end
+		end
+		return item.Name
+	end
+
+	local function resetItem(item)
+		local snap = _snapshots[item]
+		if not snap then return false end
+		if snap.data then
+			local script = getItemScript(item)
+			if script then
+				local ok, data = pcall(require, script)
+				if ok and type(data) == "table" then
+					pcall(function()
+						for k, v in pairs(snap.data) do
+							if type(v) == "table" then
+								data[k] = data[k] or {}
+								for k2, v2 in pairs(v) do data[k][k2] = v2 end
+							else
+								data[k] = v
+							end
+						end
+					end)
+				end
+			end
+		end
+		for _, c in ipairs(item:GetChildren()) do c:Destroy() end
+		for _, c in ipairs(snap.children) do
+			pcall(function() c:Clone().Parent = item end)
+		end
+		variantState[item] = nil
+		return true
+	end
+
+	local function syncEmoteScript(target, source)
+		local tScript = getItemScript(target)
+		local sScript = getItemScript(source)
+		if not tScript or not sScript then return end
+		local ok1, tData = pcall(require, tScript)
+		local ok2, sData = pcall(require, sScript)
+		if not ok1 or not ok2 then return end
+		if type(tData) ~= "table" or type(sData) ~= "table" then return end
+
+		pcall(function()
+			if type(tData.AppearanceInfo) == "table" and type(sData.AppearanceInfo) == "table" then
+				tData.AppearanceInfo.Name    = sData.AppearanceInfo.Name
+				tData.AppearanceInfo.Desc    = sData.AppearanceInfo.Desc
+				tData.AppearanceInfo.Creator = sData.AppearanceInfo.Creator
+			end
+			if type(tData.UIInfo) == "table" and type(sData.UIInfo) == "table" then
+				tData.UIInfo.Header = sData.UIInfo.Header
+				tData.UIInfo.Rarity = sData.UIInfo.Rarity
+			end
+			if type(tData.EmoteInfo) == "table" and type(sData.EmoteInfo) == "table" then
+				tData.EmoteInfo.SpeedMult = sData.EmoteInfo.SpeedMult
+				if source.Name == "RockinStride" then
+					tData.EmoteInfo.Sound = ROCKINSTRIDE_SOUND
+				else
+					tData.EmoteInfo.Sound = sData.EmoteInfo.Sound
+				end
+			end
+		end)
+	end
+
+	local function getEmoteItems()
+		if _emoteCache then return _emoteCache end
+		local all, seen = {}, {}
+		for _, path in ipairs(PATHS) do
+			local f = resolvePath(path)
+			if f then
+				for _, child in ipairs(f:GetChildren()) do
+					if child:IsA("Folder") and EXPAND_NAMES[child.Name:lower()] then
+						for _, inner in ipairs(child:GetChildren()) do
+							if not seen[inner] then seen[inner] = true; table.insert(all, inner) end
+						end
+					else
+						if not seen[child] then seen[child] = true; table.insert(all, child) end
+					end
+				end
+			end
+		end
+		_emoteCache = all
+		return all
+	end
+
+	local function findEmote(name)
+		if not name then return nil end
+		local target = name:lower():match("^%s*(.-)%s*$")
+		if target == "" then return nil end
+		for _, it in ipairs(getEmoteItems()) do
+			if it.Name:lower() == target or getDisplayName(it):lower() == target then
+				return it
+			end
+		end
+		return nil
+	end
+
+	local function buildEmoteList()
+		local names, seen = {}, {}
+		for _, it in ipairs(getEmoteItems()) do
+			local dn = getDisplayName(it)
+			if not seen[dn] then seen[dn] = true; table.insert(names, dn) end
+		end
+		table.sort(names)
+		return names
+	end
+
+	local function cacheVariants(emote)
+		local sel = emote:FindFirstChild("Selection")
+		if not sel then return end
+		local cache = {}
+		for i = 1, 3 do
+			local v = sel:FindFirstChild(tostring(i))
+			if v then
+				local kids = {}
+				for _, c in ipairs(v:GetChildren()) do table.insert(kids, c:Clone()) end
+				cache[i] = kids
+			end
+		end
+		if next(cache) then
+			variantState[emote] = { cache = cache, applied = nil }
+			sel:Destroy()
+		end
+	end
+
+	local function applyVariant(emote)
+		local s = variantState[emote]
+		if not s or s.applied == selectedVariant then return end
+		local kids = s.cache[selectedVariant]
+		if not kids then return end
+		for _, c in ipairs(emote:GetChildren()) do c:Destroy() end
+		for _, c in ipairs(kids) do
+			pcall(function() c:Clone().Parent = emote end)
+		end
+		s.applied = selectedVariant
+	end
+
+-- ============================================================================
+-- EDITS
+-- ============================================================================
+
+        tab:CreateDivider({ text = "Emote Changer" })
+	tab:CreateToggle({
+		name = "Use Textbox",
+		value = false,
+		callback = function(v) state.UseTextbox = v end,
+	})
+
+	tab:CreateInput({
+		name = "Current Emote",
+		placeholder = "e.g. Smug",
+		callback = function(text)
+			local found = findEmote(text)
+			state.Current = found
+			window:Notify({
+				title = "Emote Swapper",
+				content = found and ("Found: "..getDisplayName(found)) or ("Not found: "..text),
+				duration = 3,
+			})
+		end,
+	})
+
+	tab:CreateInput({
+		name = "Suggested Emote",
+		placeholder = "e.g. Dance2",
+		callback = function(text)
+			local found = findEmote(text)
+			state.SuggestedText = found
+			window:Notify({
+				title = "Emote Swapper",
+				content = found and ("Found: "..getDisplayName(found)) or ("Not found: "..text),
+				duration = 3,
+			})
+		end,
+	})
+
+	tab:CreateInput({
+		name = "Variant (1-3)",
+		placeholder = "1",
+		numeric = true,
+		callback = function(text)
+			local n = tonumber(text)
+			if n and n >= 1 and n <= 3 then
+				selectedVariant = math.floor(n)
+				for _, s in pairs(variantState) do s.applied = nil end
+			end
+		end,
+	})
+
+	local EmoteDropdown = tab:CreateDropdown({
+		name = "Emote List",
+		options = buildEmoteList(),
+		multiSelect = false,
+		callback = function(selected)
+			local picked = type(selected) == "table" and selected[1] or selected
+			state.Dropdown = findEmote(picked)
+		end,
+	})
+
+	tab:CreateButton({
+		name = "Change Emotes",
+		callback = function()
+			local target = state.Current
+			if not target then
+				window:Notify({ title = "Emote Swapper", content = "Current emote not found.", duration = 5 })
+				return
+			end
+			local source = state.UseTextbox and state.SuggestedText or state.Dropdown
+			if not source then
+				window:Notify({ title = "Emote Swapper", content = "Suggested emote not found.", duration = 5 })
+				return
+			end
+			if target == source then
+				local ok = resetItem(target)
+				window:Notify({
+					title = "Emote Swapper",
+					content = ok and ("Reset "..target.Name.." to default.") or "No snapshot available to reset.",
+					duration = 5,
+				})
+				return
+			end
+			variantState[target] = nil
+			for _, c in ipairs(target:GetChildren()) do c:Destroy() end
+			local n = 0
+			for _, c in ipairs(source:GetChildren()) do
+				local ok = pcall(function() c:Clone().Parent = target end)
+				if ok then n += 1 end
+			end
+			syncEmoteScript(target, source)
+			window:Notify({
+				title = "Emote Swapper",
+				content = ("Swapped %s -> %s (%d)"):format(target.Name, getDisplayName(source), n),
+				duration = 5,
+			})
+		end,
+	})
+
+	task.spawn(function()
+		task.wait(2)
+		while true do
+			for _, emote in ipairs(getEmoteItems()) do
+				if not variantState[emote] and emote:FindFirstChild("Selection") then
+					cacheVariants(emote)
+				end
+			end
+			for emote, s in pairs(variantState) do
+				if not emote.Parent then
+					variantState[emote] = nil
+				else
+					pcall(applyVariant, emote)
+				end
+			end
+			task.wait(1)
+		end
+	end)
+
+	task.delay(5, function()
+		pcall(function()
+			_emoteCache = nil
+			EmoteDropdown:SetOptions(buildEmoteList())
+		end)
+	end)
+end
+
+-- ============================================================================
+
+-- C O S   C H A N G E R    L O G I C
+
+-- ============================================================================
+
+local function buildCosmeticChanger(tab, window)
+	local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+	local COSMETIC_PATHS = {
+		{"Items","ItemPacks","Gamepass","Legacy","StPatricks2023","Cosmetics"},
+		{"Items","ItemPacks","Base","Admin","Cosmetics"},
+		{"Items","ItemPacks","Gamepass","Legacy","Military","Cosmetics"},
+		{"Items","ItemPacks","Gamepass","2026","PoseidonSet","Cosmetics"},
+		{"Items","ItemPacks","Gamepass","2026","BeeSet","Cosmetics"},
+		{"Items","ItemPacks","EventsDailyShop","OldRoblox","Cosmetics"},
+		{"Items","ItemPacks","EventsDailyShop","NewYears2024","Cosmetics"},
+		{"Items","ItemPacks","EventsDailyShop","LunarNewYear","Cosmetics"},
+		{"Items","ItemPacks","EventsDailyShop","Easter","Cosmetics"},
+		{"Items","ItemPacks","EventsDailyShop","Birthday25","Cosmetics"},
+		{"Items","ItemPacks","EventsDailyShop","Anniversary26","Cosmetics"},
+		{"Items","ItemPacks","Collab","TowerBlitz","Cosmetics"},
+		{"Items","ItemPacks","Base","UpperLevel","Cosmetics"},
+		{"Items","ItemPacks","Base","Special","Cosmetics"},
+		{"Items","ItemPacks","Base","ForsakenCollabUpdate","Cosmetics"},
+		{"Items","ItemPacks","Base","DailyShop","Cosmetics","UnusualNew2"},
+		{"Items","ItemPacks","Base","DailyShop","Cosmetics","UnusualNew"},
+		{"Items","ItemPacks","Base","DailyShop","Cosmetics","Unusual"},
+		{"Items","ItemPacks","Base","DailyShop","Cosmetics","Normal"},
+		{"Items","ItemPacks","Base","DailyShop","Cosmetics","Character"},
+		{"Items","ItemPacks","Gamepass","Unorganized","Animals","Cosmetics"},
+		{"Items","ItemPacks","Gamepass","Unorganized","RetroCosmeticsSet","Cosmetics"},
+		{"Items","ItemPacks","Gamepass","Unorganized","LunarNewYearSet","Cosmetics"},
+		{"Items","ItemPacks","Gamepass","Unorganized","Gems","Cosmetics"},
+		{"Items","ItemPacks","Gamepass","Unorganized","Future","Cosmetics"},
+		{"Items","ItemPacks","Gamepass","Unorganized","EclipseSet","Cosmetics"},
+		{"Items","ItemPacks","Gamepass","Unorganized","DogSet","Cosmetics"},
+		{"Items","ItemPacks","Gamepass","Unorganized","Cats","Cosmetics"},
+		{"Items","ItemPacks","Events","2026","HLWN2026","Cosmetics"},
+		{"Items","ItemPacks","Events","2024","Halloween2024","Cosmetics"},
+		{"Items","ItemPacks","Events","2024","Halloween2024","Cosmetics","HLWN24EXCLUSIVE"},
+		{"Items","ItemPacks","Events","2023","Valentines2023","Cosmetics"},
+		{"Items","ItemPacks","Events","2023","Christmas2023","Cosmetics"},
+		{"Items","ItemPacks","Events","2022","Xmas2022","Cosmetics"},
+		{"Items","ItemPacks","Events","2022","Xmas2022","Cosmetics","XMASExclusive"},
+		{"Items","ItemPacks","Events","2022","Xmas2022","Cosmetics","XMasGamepass"},
+		{"Items","ItemPacks","Events","2022","Halloween2022","Cosmetics"},
+		{"Items","ItemPacks","Events","2022","Halloween2022","Cosmetics","HalloweenExclusive"},
+		{"Items","ItemPacks","Events","2026","Valentines2026","Cosmetics"},
+		{"Items","ItemPacks","Events","2026","StPatricks2026","Cosmetics"},
+		{"Items","ItemPacks","Events","2026","Spring2026","Cosmetics"},
+		{"Items","ItemPacks","Events","2026","SUMMER26","Cosmetics"},
+		{"Items","ItemPacks","Events","2025","XMAS25","Cosmetics"},
+		{"Items","ItemPacks","Events","2025","Valentines2025","Cosmetics"},
+		{"Items","ItemPacks","Events","2025","Summer2025","Cosmetics"},
+		{"Items","ItemPacks","Events","2025","StPatricks2025","Cosmetics"},
+		{"Items","ItemPacks","Events","2025","Hlwn2025","Cosmetics"},
+		{"Items","ItemPacks","Events","2024","Xmas2024","Cosmetics"},
+		{"Items","ItemPacks","Events","2024","Valentines2024","Cosmetics"},
+		{"Items","ItemPacks","Events","2024","StPatricks2024","Cosmetics"},
+	}
+
+	local _snapshots    = {}
+	local _displayNames = {}
+	local _cosmeticCache = nil
+
+	local state = {
+		Current       = nil,
+		SuggestedText = nil,
+		Dropdown      = nil,
+		UseTextbox    = false,
+	}
+
+	local function resolvePath(keys)
+		local ok, result = pcall(function()
+			local obj = ReplicatedStorage
+			for _, k in ipairs(keys) do obj = obj[k] end
+			return obj
+		end)
+		if ok and typeof(result) == "Instance" then return result end
+		return nil
+	end
+
+	local function buildContainerKeys(paths)
+		local set = {}
+		for _, p in ipairs(paths) do set[table.concat(p, "/")] = true end
+		return set
+	end
+
+	local function isTierFolder(name)
+		local n = name:lower():match("^tier%s*(%d+)$")
+		if not n then return false end
+		local num = tonumber(n)
+		return num and num >= 1 and num <= 40
+	end
+
+	local function enumerateFrom(inst, key, containerKeys)
+		local items = {}
+		for _, child in ipairs(inst:GetChildren()) do
+			local childKey = key .. "/" .. child.Name
+			if containerKeys[childKey] or isTierFolder(child.Name) then
+				for _, it in ipairs(enumerateFrom(child, childKey, containerKeys)) do
+					table.insert(items, it)
+				end
+			else
+				table.insert(items, child)
+			end
+		end
+		return items
+	end
+
+	local COSMETIC_CONTAINERS = buildContainerKeys(COSMETIC_PATHS)
+
+	local function getItemScript(item)
+		if item:IsA("ModuleScript") then return item end
+		for _, c in ipairs(item:GetChildren()) do
+			if c:IsA("ModuleScript") then return c end
+		end
+		return nil
+	end
+
+	local function takeSnapshot(item)
+		if _snapshots[item] then return end
+		local script = getItemScript(item)
+		local dataSnap = nil
+		if script then
+			local ok, data = pcall(require, script)
+			if ok and type(data) == "table" then
+				dataSnap = {}
+				for k, v in pairs(data) do
+					if type(v) == "table" then
+						local sub = {}
+						for k2, v2 in pairs(v) do sub[k2] = v2 end
+						dataSnap[k] = sub
+					else
+						dataSnap[k] = v
+					end
+				end
+			end
+		end
+		local childrenSnap = {}
+		for _, c in ipairs(item:GetChildren()) do
+			table.insert(childrenSnap, c:Clone())
+		end
+		_snapshots[item] = { data = dataSnap, children = childrenSnap }
+	end
+
+	local function getDisplayName(item)
+		takeSnapshot(item)
+		local cached = _displayNames[item]
+		if cached then return cached end
+		local script = getItemScript(item)
+		if script then
+			local ok, data = pcall(require, script)
+			if ok and type(data) == "table"
+				and type(data.AppearanceInfo) == "table"
+				and type(data.AppearanceInfo.Name) == "string" then
+				_displayNames[item] = data.AppearanceInfo.Name
+				return data.AppearanceInfo.Name
+			end
+		end
+		return item.Name
+	end
+
+	local function resetItem(item)
+		local snap = _snapshots[item]
+		if not snap then return false end
+		if snap.data then
+			local script = getItemScript(item)
+			if script then
+				local ok, data = pcall(require, script)
+				if ok and type(data) == "table" then
+					pcall(function()
+						for k, v in pairs(snap.data) do
+							if type(v) == "table" then
+								data[k] = data[k] or {}
+								for k2, v2 in pairs(v) do data[k][k2] = v2 end
+							else
+								data[k] = v
+							end
+						end
+					end)
+				end
+			end
+		end
+		for _, c in ipairs(item:GetChildren()) do c:Destroy() end
+		for _, c in ipairs(snap.children) do
+			pcall(function() c:Clone().Parent = item end)
+		end
+		return true
+	end
+
+	local function syncCosmeticScript(target, source)
+		local tScript = getItemScript(target)
+		local sScript = getItemScript(source)
+		if not tScript or not sScript then return end
+		local ok1, tData = pcall(require, tScript)
+		local ok2, sData = pcall(require, sScript)
+		if not ok1 or not ok2 then return end
+		if type(tData) ~= "table" or type(sData) ~= "table" then return end
+
+		pcall(function()
+			if type(tData.AppearanceInfo) == "table" and type(sData.AppearanceInfo) == "table" then
+				tData.AppearanceInfo.Name    = sData.AppearanceInfo.Name
+				tData.AppearanceInfo.Desc    = sData.AppearanceInfo.Desc
+				tData.AppearanceInfo.Creator = sData.AppearanceInfo.Creator
+				tData.AppearanceInfo.Icon    = sData.AppearanceInfo.Icon
+			end
+			if type(tData.UIInfo) == "table" and type(sData.UIInfo) == "table" then
+				tData.UIInfo.Header   = sData.UIInfo.Header
+				tData.UIInfo.Overview = sData.UIInfo.Overview
+				tData.UIInfo.Rarity   = sData.UIInfo.Rarity
+			end
+			if type(tData.EquipInfo) == "table" and type(sData.EquipInfo) == "table" then
+				tData.EquipInfo.SlotType = sData.EquipInfo.SlotType
+			end
+			if type(tData.CosmeticInfo) == "table" and type(sData.CosmeticInfo) == "table" then
+				tData.CosmeticInfo.Unusual = sData.CosmeticInfo.Unusual
+			end
+		end)
+	end
+
+	local function getCosmeticItems()
+		if _cosmeticCache then return _cosmeticCache end
+		local all, seen = {}, {}
+		for _, path in ipairs(COSMETIC_PATHS) do
+			local inst = resolvePath(path)
+			if inst then
+				local key = table.concat(path, "/")
+				for _, it in ipairs(enumerateFrom(inst, key, COSMETIC_CONTAINERS)) do
+					if not seen[it] then seen[it] = true; table.insert(all, it) end
+				end
+			end
+		end
+		_cosmeticCache = all
+		return all
+	end
+
+	local function findCosmetic(name)
+		if not name then return nil end
+		local target = name:lower():match("^%s*(.-)%s*$")
+		if target == "" then return nil end
+		for _, it in ipairs(getCosmeticItems()) do
+			if it.Name:lower() == target or getDisplayName(it):lower() == target then
+				return it
+			end
+		end
+		return nil
+	end
+
+	local function buildCosmeticList()
+		local names, seen = {}, {}
+		for _, it in ipairs(getCosmeticItems()) do
+			local dn = getDisplayName(it)
+			if not seen[dn] then seen[dn] = true; table.insert(names, dn) end
+		end
+		table.sort(names)
+		return names
+	end
+
+-- ============================================================================
+-- E D I T S
+-- ============================================================================
+
+        tab:CreateDivider({ text = "Cosmetic Changer" })
+	tab:CreateToggle({
+		name = "Use Textbox",
+		value = false,
+		callback = function(v) state.UseTextbox = v end,
+	})
+
+	tab:CreateInput({
+		name = "Current Cosmetic",
+		placeholder = "e.g. Hat1",
+		callback = function(text)
+			local found = findCosmetic(text)
+			state.Current = found
+			window:Notify({
+				title = "Cosmetic Swapper",
+				content = found and ("Found: "..getDisplayName(found)) or ("Not found: "..text),
+				duration = 3,
+			})
+		end,
+	})
+
+	tab:CreateInput({
+		name = "Suggested Cosmetic",
+		placeholder = "e.g. Hat2",
+		callback = function(text)
+			local found = findCosmetic(text)
+			state.SuggestedText = found
+			window:Notify({
+				title = "Cosmetic Swapper",
+				content = found and ("Found: "..getDisplayName(found)) or ("Not found: "..text),
+				duration = 3,
+			})
+		end,
+	})
+
+	local CosmeticDropdown = tab:CreateDropdown({
+		name = "Cosmetic List",
+		options = buildCosmeticList(),
+		multiSelect = false,
+		callback = function(selected)
+			local picked = type(selected) == "table" and selected[1] or selected
+			state.Dropdown = findCosmetic(picked)
+		end,
+	})
+
+	tab:CreateButton({
+		name = "Change Cosmetics",
+		callback = function()
+			local target = state.Current
+			if not target then
+				window:Notify({ title = "Cosmetic Swapper", content = "Current cosmetic not found.", duration = 5 })
+				return
+			end
+			local source = state.UseTextbox and state.SuggestedText or state.Dropdown
+			if not source then
+				window:Notify({ title = "Cosmetic Swapper", content = "Suggested cosmetic not found.", duration = 5 })
+				return
+			end
+			if target == source then
+				local ok = resetItem(target)
+				window:Notify({
+					title = "Cosmetic Swapper",
+					content = ok and ("Reset "..target.Name.." to default.") or "No snapshot available to reset.",
+					duration = 5,
+				})
+				return
+			end
+			for _, c in ipairs(target:GetChildren()) do c:Destroy() end
+			local n = 0
+			for _, c in ipairs(source:GetChildren()) do
+				local ok = pcall(function() c:Clone().Parent = target end)
+				if ok then n += 1 end
+			end
+			syncCosmeticScript(target, source)
+			window:Notify({
+				title = "Cosmetic Swapper",
+				content = ("Swapped %s -> %s (%d)"):format(target.Name, getDisplayName(source), n),
+				duration = 5,
+			})
+		end,
+	})
+
+	task.delay(5, function()
+		pcall(function()
+			_cosmeticCache = nil
+			CosmeticDropdown:SetOptions(buildCosmeticList())
+		end)
+	end)
+end
+
+
+-- ============================================================================
+-- KORBLOX AND HEADLESS
+-- ============================================================================
+
+local function buildExtras(tab, window)
+	local Players = game:GetService("Players")
+	local LP = Players.LocalPlayer
+
+	local headlessMode = "Off"
+	local korbloxMode = "Off"
+
+	-- UI Dropdowns
+-- edit
+        tab:CreateDivider({ text = "Character" })
+
+	tab:CreateDropdown({
+		name = "Headless",
+		options = { "Off", "On" },
+		currentOption = { "Off" },
+		multiSelect = false,
+		callback = function(selected)
+			headlessMode = type(selected) == "table" and selected[1] or selected
+		end,
+	})
+
+        tab:CreateDivider()
+
+	tab:CreateDropdown({
+		name = "Korblox",
+		options = { "Off", "Right Leg" },
+		currentOption = { "Off" },
+		multiSelect = false,
+		callback = function(selected)
+			korbloxMode = type(selected) == "table" and selected[1] or selected
+		end,
+	})
+
+	-- Update Loop (every 0.5 seconds)
+	task.spawn(function()
+		while true do
+			local rigs = workspace:FindFirstChild("Rigs")
+			if rigs then
+				local matchingRigs = {}
+				
+				-- Find ALL rigs with the player's name
+				for _, child in ipairs(rigs:GetChildren()) do
+					if child.Name == LP.Name then
+						table.insert(matchingRigs, child)
+					end
+				end
+
+				for _, rig in ipairs(matchingRigs) do
+					-- Handle Headless
+					if headlessMode == "On" then
+						local head = rig:FindFirstChild("Head")
+						if head then
+							head.Transparency = 1
+							for _, d in ipairs(head:GetDescendants()) do
+								if d:IsA("BasePart") or d:IsA("Decal") or d:IsA("Texture") then
+									d.Transparency = 1
+								end
+							end
+						end
+					elseif headlessMode == "Off" then
+						local head = rig:FindFirstChild("Head")
+						if head and head.Transparency == 1 then
+							head.Transparency = 0
+							for _, d in ipairs(head:GetChildren()) do
+								if d:IsA("Decal") or d:IsA("Texture") then
+									d:Destroy()
+								end
+							end
+						end
+					end
+
+					-- Handle Korblox
+					if korbloxMode == "Right Leg" then
+						local rightLeg = rig:FindFirstChild("Right Leg")
+						if rightLeg then
+							local mesh = rightLeg:FindFirstChildOfClass("SpecialMesh")
+							if not mesh then
+								mesh = Instance.new("SpecialMesh")
+								mesh.MeshType = Enum.MeshType.FileMesh
+								mesh.MeshId = "rbxassetid://14581620882"
+								mesh.TextureId = "rbxassetid://14581621055"
+								mesh.Offset = Vector3.new(0, 0.55, 0)
+								mesh.Scale = Vector3.new(1.15, 1.15, 1.15)
+								mesh.Parent = rightLeg
+							end
+						end
+					elseif korbloxMode == "Off" then
+						local rightLeg = rig:FindFirstChild("Right Leg")
+						if rightLeg then
+							local mesh = rightLeg:FindFirstChildOfClass("SpecialMesh")
+							if mesh then
+								mesh:Destroy()
+							end
+						end
+					end
+				end
+			end
+			task.wait(0.5)
+		end
+	end)
+end
+
+-- WINDOW
+local window = Rayfield:CreateWindow({
+    name = "RuinWare Client",
+    subtitle = "Made by the RuinWare Dev Team©",
+    sidebarLayout = true,
+    theme = "Default",
+})
+
+-- MAIN
+
+local tab = window:CreateTab({ name = "Main", icon = 83935746771599 })
+
+tab:CreateDivider({ text = "Movement" })
+
+-- auto jump
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+
+local player = Players.LocalPlayer
+local autoJumpEnabled = false
+local lookDownOnly = false
+local moveOnly = false
+local rampProtection = false
+
+local LOOK_DOWN_THRESHOLD = -0.7
+
+local rayParams = RaycastParams.new()
+rayParams.FilterType = Enum.RaycastFilterType.Exclude
+
+local function isGroundFlat(root)
+    if not rampProtection then return true end
+    local result = workspace:Raycast(root.Position, Vector3.new(0, -10, 0), rayParams)
+    if not result then return false end
+    local angle = math.deg(math.acos(result.Normal.Unit.Y))
+    return angle <= 8
+end
+
+local function isLookingDownEnough()
+    if not lookDownOnly then return true end
+    local cam = workspace.CurrentCamera
+    if not cam then return false end
+    return cam.CFrame.LookVector.Y <= LOOK_DOWN_THRESHOLD
+end
+
+local function isMoving(hum)
+    if not moveOnly then return true end
+    return hum.MoveDirection.Magnitude > 0
+end
+
+local function tryJump(hum, root)
+    if not autoJumpEnabled then return end
+    if hum.Health <= 0 then return end
+    if not isGroundFlat(root) then return end
+    if not isLookingDownEnough() then return end
+    if not isMoving(hum) then return end
+    hum:ChangeState(Enum.HumanoidStateType.Jumping)
+end
+
+local stateConn
+
+local function attachToCharacter(char)
+    local hum = char:WaitForChild("Humanoid")
+    local root = char:WaitForChild("HumanoidRootPart")
+
+    rayParams.FilterDescendantsInstances = {char}
+
+    if stateConn then stateConn:Disconnect() end
+    stateConn = hum.StateChanged:Connect(function(_, newState)
+        if newState == Enum.HumanoidStateType.Landed
+        or newState == Enum.HumanoidStateType.Running
+        or newState == Enum.HumanoidStateType.RunningNoPhysics then
+            tryJump(hum, root)
+        end
+    end)
+end
+
+if player.Character then
+    task.spawn(attachToCharacter, player.Character)
+end
+player.CharacterAdded:Connect(function(char)
+    task.spawn(attachToCharacter, char)
+end)
+
+RunService.PreSimulation:Connect(function()
+    if not autoJumpEnabled then return end
+    local char = player.Character
+    if not char then return end
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    local root = char:FindFirstChild("HumanoidRootPart")
+    if not hum or not root then return end
+    if hum.FloorMaterial == Enum.Material.Air then return end
+    tryJump(hum, root)
+end)
+
+tab:CreateToggle({
+    name = "Auto Jump",
+    currentValue = false,
+    flag = "AutoJump_Toggle",
+    callback = function(value)
+        autoJumpEnabled = value
+    end,
+})
+
+tab:CreateToggle({
+    name = "Ramp Protection",
+    currentValue = true,
+    flag = "AutoJump_RampProtection_Toggle",
+    callback = function(value)
+        rampProtection = value
+    end,
+})
+
+tab:CreateToggle({
+    name = "Only Trigger On Look Down",
+    currentValue = false,
+    flag = "AutoJump_LookDown_Toggle",
+    callback = function(value)
+        lookDownOnly = value
+    end,
+})
+
+tab:CreateToggle({
+    name = "Only Trigger On Move",
+    currentValue = false,
+    flag = "AutoJump_MoveOnly_Toggle",
+    callback = function(value)
+        moveOnly = value
+    end,
+})
+
+-- LJ
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+
+local player = Players.LocalPlayer
+local LegitJumpEnabled = false
+
+local delayRayParams = RaycastParams.new()
+delayRayParams.FilterType = Enum.RaycastFilterType.Exclude
+
+local tickCounter = 0
+local targetTick = 0
+local landed = false
+local delayStateConn
+
+local function delayIsGroundFlat(root)
+    local result = workspace:Raycast(root.Position, Vector3.new(0, -10, 0), delayRayParams)
+    if not result then return false end
+    local angle = math.deg(math.acos(result.Normal.Unit.Y))
+    return angle <= 8
+end
+
+local function attachDelayJump(char)
+    local hum = char:WaitForChild("Humanoid")
+    local root = char:WaitForChild("HumanoidRootPart")
+    delayRayParams.FilterDescendantsInstances = {char}
+
+    if delayStateConn then delayStateConn:Disconnect() end
+    delayStateConn = hum.StateChanged:Connect(function(_, newState)
+        if not delayJumpEnabled then return end
+        if newState ~= Enum.HumanoidStateType.Landed then return end
+        tickCounter = 0
+        targetTick = math.random(2, 6)
+        landed = true
+    end)
+end
+
+if player.Character then
+    task.spawn(attachDelayJump, player.Character)
+end
+player.CharacterAdded:Connect(function(char)
+    task.spawn(attachDelayJump, char)
+end)
+
+RunService.PreSimulation:Connect(function()
+    if not delayJumpEnabled then return end
+    local char = player.Character
+    if not char then return end
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    local root = char:FindFirstChild("HumanoidRootPart")
+    if not hum or not root then return end
+    if hum.Health <= 0 then return end
+    if hum.FloorMaterial == Enum.Material.Air then
+        landed = false
+        return
+    end
+    if not landed then return end
+    if not delayIsGroundFlat(root) then return end
+
+    tickCounter = tickCounter + 1
+    if tickCounter >= targetTick then
+        hum:ChangeState(Enum.HumanoidStateType.Jumping)
+        landed = false
+    end
+end)
+
+tab:CreateDivider()
+
+tab:CreateToggle({
+    name = "Legit Jump",
+    currentValue = false,
+    flag = "LegitJump_Toggle",
+    callback = function(value)
+        delayJumpEnabled = value
+    end,
+})
+
+-- hold jump
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+
+local player = Players.LocalPlayer
+local holdJumpEnabled = false
+local jumpHeld = false
+local holdRampProtection = false
+
+local holdRayParams = RaycastParams.new()
+holdRayParams.FilterType = Enum.RaycastFilterType.Exclude
+
+local function holdIsGroundFlat(root)
+    if not holdRampProtection then return true end
+    local result = workspace:Raycast(root.Position, Vector3.new(0, -10, 0), holdRayParams)
+    if not result then return false end
+    local angle = math.deg(math.acos(result.Normal.Unit.Y))
+    return angle <= 8
+end
+
+local holdStateConn
+
+local function attachHoldJump(char)
+    local hum = char:WaitForChild("Humanoid")
+    local root = char:WaitForChild("HumanoidRootPart")
+    holdRayParams.FilterDescendantsInstances = {char}
+
+    if holdStateConn then holdStateConn:Disconnect() end
+    holdStateConn = hum.StateChanged:Connect(function(_, newState)
+        if not holdJumpEnabled then return end
+        if not jumpHeld then return end
+        if hum.Health <= 0 then return end
+        if newState ~= Enum.HumanoidStateType.Landed
+        and newState ~= Enum.HumanoidStateType.Running
+        and newState ~= Enum.HumanoidStateType.RunningNoPhysics then return end
+        if not holdIsGroundFlat(root) then return end
+        hum:ChangeState(Enum.HumanoidStateType.Jumping)
+    end)
+end
+
+if player.Character then
+    task.spawn(attachHoldJump, player.Character)
+end
+player.CharacterAdded:Connect(function(char)
+    task.spawn(attachHoldJump, char)
+end)
+
+RunService.PreSimulation:Connect(function()
+    if not holdJumpEnabled then return end
+    if not jumpHeld then return end
+    local char = player.Character
+    if not char then return end
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    local root = char:FindFirstChild("HumanoidRootPart")
+    if not hum or not root then return end
+    if hum.FloorMaterial == Enum.Material.Air then return end
+    if hum.Health <= 0 then return end
+    if not holdIsGroundFlat(root) then return end
+    hum:ChangeState(Enum.HumanoidStateType.Jumping)
+end)
+
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if input.KeyCode == Enum.KeyCode.Space then
+        jumpHeld = true
+    end
+end)
+
+UserInputService.InputEnded:Connect(function(input)
+    if input.KeyCode == Enum.KeyCode.Space then
+        jumpHeld = false
+    end
+end)
+
+task.spawn(function()
+    local playerGui = player:WaitForChild("PlayerGui")
+    local touchGui = playerGui:WaitForChild("TouchGui", 30)
+    if not touchGui then return end
+    local frame = touchGui:WaitForChild("TouchControlFrame", 10)
+    if not frame then return end
+    local btn = frame:WaitForChild("JumpButton", 10)
+    if not btn then return end
+    btn.MouseButton1Down:Connect(function() jumpHeld = true end)
+    btn.MouseButton1Up:Connect(function() jumpHeld = false end)
+    btn.MouseLeave:Connect(function() jumpHeld = false end)
+end)
+
+tab:CreateDivider()
+
+tab:CreateToggle({
+    name = "Hold Jump",
+    currentValue = false,
+    flag = "HoldJump_Toggle",
+    callback = function(value)
+        holdJumpEnabled = value
+    end,
+})
+
+tab:CreateToggle({
+    name = "Hold Jump Ramp Protection",
+    currentValue = true,
+    flag = "HoldJump_RampProtection_Toggle",
+    callback = function(value)
+        holdRampProtection = value
+    end,
+})
+
+-- easy bounce
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+
+local player = Players.LocalPlayer
+local easyBounceEnabled = false
+local bounceMultiplier = 1.5
+
+local bounceRayParams = RaycastParams.new()
+bounceRayParams.FilterType = Enum.RaycastFilterType.Exclude
+
+local lastYVelocity = 0
+local bounceStateConn
+
+local function bounceIsSteepEnough(root)
+    local result = workspace:Raycast(root.Position, Vector3.new(0, -10, 0), bounceRayParams)
+    if not result then return false end
+    local angle = math.deg(math.acos(result.Normal.Unit.Y))
+    return angle >= 12
+end
+
+local function attachEasyBounce(char)
+    local hum = char:WaitForChild("Humanoid")
+    local root = char:WaitForChild("HumanoidRootPart")
+    bounceRayParams.FilterDescendantsInstances = {char}
+
+    if bounceStateConn then bounceStateConn:Disconnect() end
+    bounceStateConn = hum.StateChanged:Connect(function(_, newState)
+        if not easyBounceEnabled then return end
+        if newState ~= Enum.HumanoidStateType.Landed then return end
+        if hum.Health <= 0 then return end
+        if not bounceIsSteepEnough(root) then return end
+        local bounceVel = math.abs(lastYVelocity) * bounceMultiplier
+        if bounceVel < 10 then return end
+        root.AssemblyLinearVelocity = Vector3.new(
+            root.AssemblyLinearVelocity.X,
+            bounceVel,
+            root.AssemblyLinearVelocity.Z
+        )
+    end)
+end
+
+if player.Character then
+    task.spawn(attachEasyBounce, player.Character)
+end
+player.CharacterAdded:Connect(function(char)
+    task.spawn(attachEasyBounce, char)
+end)
+
+RunService.Heartbeat:Connect(function()
+    if not easyBounceEnabled then return end
+    local char = player.Character
+    if not char then return end
+    local root = char:FindFirstChild("HumanoidRootPart")
+    if not root then return end
+    lastYVelocity = root.AssemblyLinearVelocity.Y
+end)
+
+tab:CreateDivider()
+
+tab:CreateToggle({
+    name = "Easy Bounce",
+    currentValue = false,
+    flag = "EasyBounce_Toggle",
+    callback = function(value)
+        easyBounceEnabled = value
+    end,
+})
+
+tab:CreateSlider({
+    name = "Easy Bounce Multiplier",
+    range = {1.08, 3.00},
+    increment = 0.01,
+    suffix = "x",
+    currentValue = 1.5,
+    flag = "EasyBounce_Multiplier",
+    callback = function(value)
+        bounceMultiplier = value
+    end,
+})
+
+-- HB
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+
+local player = Players.LocalPlayer
+local hardBounceEnabled = false
+local hardBounceMultiplier = 1.5
+
+local hardBounceRayParams = RaycastParams.new()
+hardBounceRayParams.FilterType = Enum.RaycastFilterType.Exclude
+
+local lastYVelocity = 0
+local airStartTime = 0
+local wasInAir = false
+local hardBounceStateConn
+
+local function attachHardBounce(char)
+    local hum = char:WaitForChild("Humanoid")
+    local root = char:WaitForChild("HumanoidRootPart")
+    hardBounceRayParams.FilterDescendantsInstances = {char}
+
+    if hardBounceStateConn then hardBounceStateConn:Disconnect() end
+    hardBounceStateConn = hum.StateChanged:Connect(function(_, newState)
+        if not hardBounceEnabled then return end
+        if newState ~= Enum.HumanoidStateType.Landed then return end
+        if hum.Health <= 0 then return end
+        if not wasInAir then return end
+        if (tick() - airStartTime) < 1 then return end
+        local bounceVel = math.abs(lastYVelocity) * hardBounceMultiplier
+        if bounceVel < 10 then return end
+        root.AssemblyLinearVelocity = Vector3.new(
+            root.AssemblyLinearVelocity.X,
+            bounceVel,
+            root.AssemblyLinearVelocity.Z
+        )
+    end)
+end
+
+if player.Character then
+    task.spawn(attachHardBounce, player.Character)
+end
+player.CharacterAdded:Connect(function(char)
+    task.spawn(attachHardBounce, char)
+end)
+
+RunService.Heartbeat:Connect(function()
+    if not hardBounceEnabled then return end
+    local char = player.Character
+    if not char then return end
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    local root = char:FindFirstChild("HumanoidRootPart")
+    if not hum or not root then return end
+
+    lastYVelocity = root.AssemblyLinearVelocity.Y
+
+    if hum.FloorMaterial == Enum.Material.Air then
+        if not wasInAir then
+            wasInAir = true
+            airStartTime = tick()
+        end
+    else
+        wasInAir = false
+    end
+end)
+
+tab:CreateDivider()
+
+tab:CreateToggle({
+    name = "Hard Bounce",
+    currentValue = false,
+    flag = "HardBounce_Toggle",
+    callback = function(value)
+        hardBounceEnabled = value
+    end,
+})
+
+tab:CreateSlider({
+    name = "Hard Bounce Multiplier",
+    range = {1.08, 3.00},
+    increment = 0.01,
+    suffix = "x",
+    currentValue = 1.5,
+    flag = "HardBounce_Multiplier",
+    callback = function(value)
+        hardBounceMultiplier = value
+    end,
+})
+
+-- LB
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+
+local player = Players.LocalPlayer
+local legitBounceEnabled = false
+local LEGIT_MULTIPLIER = 1.11
+
+local legitRayParams = RaycastParams.new()
+legitRayParams.FilterType = Enum.RaycastFilterType.Exclude
+
+local legitLastYVelocity = 0
+local legitAirStartTime = 0
+local legitWasInAir = false
+local legitStateConn
+
+local function legitIsSteepEnough(root)
+    local result = workspace:Raycast(root.Position, Vector3.new(0, -10, 0), legitRayParams)
+    if not result then return false end
+    local angle = math.deg(math.acos(result.Normal.Unit.Y))
+    return angle >= 12
+end
+
+local function attachLegitBounce(char)
+    local hum = char:WaitForChild("Humanoid")
+    local root = char:WaitForChild("HumanoidRootPart")
+    legitRayParams.FilterDescendantsInstances = {char}
+
+    if legitStateConn then legitStateConn:Disconnect() end
+    legitStateConn = hum.StateChanged:Connect(function(_, newState)
+        if not legitBounceEnabled then return end
+        if newState ~= Enum.HumanoidStateType.Landed then return end
+        if hum.Health <= 0 then return end
+        if not legitWasInAir then return end
+        if (tick() - legitAirStartTime) < 1 then return end
+        if not legitIsSteepEnough(root) then return end
+        local bounceVel = math.abs(legitLastYVelocity) * LEGIT_MULTIPLIER
+        if bounceVel < 10 then return end
+        root.AssemblyLinearVelocity = Vector3.new(
+            root.AssemblyLinearVelocity.X,
+            bounceVel,
+            root.AssemblyLinearVelocity.Z
+        )
+    end)
+end
+
+if player.Character then
+    task.spawn(attachLegitBounce, player.Character)
+end
+player.CharacterAdded:Connect(function(char)
+    task.spawn(attachLegitBounce, char)
+end)
+
+RunService.Heartbeat:Connect(function()
+    if not legitBounceEnabled then return end
+    local char = player.Character
+    if not char then return end
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    local root = char:FindFirstChild("HumanoidRootPart")
+    if not hum or not root then return end
+
+    legitLastYVelocity = root.AssemblyLinearVelocity.Y
+
+    if hum.FloorMaterial == Enum.Material.Air then
+        if not legitWasInAir then
+            legitWasInAir = true
+            legitAirStartTime = tick()
+        end
+    else
+        legitWasInAir = false
+    end
+end)
+
+tab:CreateDivider()
+
+tab:CreateToggle({
+    name = "Legit Bounce",
+    currentValue = false,
+    flag = "LegitBounce_Toggle",
+    callback = function(value)
+        legitBounceEnabled = value
+    end,
+})
+
+-- YL
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+
+local player = Players.LocalPlayer
+local yLockEnabled = false
+local yLockPart = nil
+local yLockY = 0
+
+local function createYLockPart()
+    local part = Instance.new("Part")
+    part.Name = "YLockPlatform"
+    part.Size = Vector3.new(300, 1, 300)
+    part.Anchored = true
+    part.CanCollide = true
+    part.CanQuery = false
+    part.CanTouch = false
+    part.Transparency = 1
+    part.Material = Enum.Material.SmoothPlastic
+    part.TopSurface = Enum.SurfaceType.Smooth
+    part.BottomSurface = Enum.SurfaceType.Smooth
+    part.Parent = workspace
+    return part
+end
+
+local function toggleYLock(on)
+    if on then
+        local char = player.Character
+        local root = char and char:FindFirstChild("HumanoidRootPart")
+        yLockY = root and (root.Position.Y - 1) or 0
+        yLockPart = createYLockPart()
+        yLockPart.Position = Vector3.new(
+            root and root.Position.X or 0,
+            yLockY,
+            root and root.Position.Z or 0
+        )
+    else
+        if yLockPart then
+            yLockPart:Destroy()
+            yLockPart = nil
+        end
+    end
+end
+
+RunService.Heartbeat:Connect(function()
+    if not yLockEnabled then return end
+    if not yLockPart then return end
+    local char = player.Character
+    if not char then return end
+    local root = char:FindFirstChild("HumanoidRootPart")
+    if not root then return end
+    yLockPart.Position = Vector3.new(root.Position.X, yLockY, root.Position.Z)
+end)
+
+player.CharacterAdded:Connect(function()
+    if yLockEnabled then
+        toggleYLock(false)
+        task.wait(0.1)
+        toggleYLock(true)
+    end
+end)
+
+tab:CreateDivider()
+
+tab:CreateToggle({
+    name = "Y Lock",
+    currentValue = false,
+    flag = "YLock_Toggle",
+    callback = function(value)
+        yLockEnabled = value
+        toggleYLock(value)
+    end,
+})
+
+-- SPEED
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+
+local player = Players.LocalPlayer
+local speedChangerEnabled = false
+local targetSpeed = 100
+local currentSpeed = 0
+local ACCEL_RATE = 200
+local DECEL_RATE = 400
+local jumpedBackwards = false
+
+local speedCharConn
+local speedHum, speedRoot
+
+local function speedGetLabel()
+    local pg = player:FindFirstChild("PlayerGui")
+    if not pg then return nil end
+    local g = pg:FindFirstChild("Game")
+    if not g then return nil end
+    local hud = g:FindFirstChild("HUD")
+    if not hud then return nil end
+    local overlay = hud:FindFirstChild("Overlay")
+    if not overlay then return nil end
+    local cs = overlay:FindFirstChild("CharacterStatus")
+    if not cs then return nil end
+    local bl = cs:FindFirstChild("BottomLeft")
+    if not bl then return nil end
+    local sp = bl:FindFirstChild("Speedometer")
+    if not sp then return nil end
+    return sp:FindFirstChild("Speed")
+end
+
+local function speedSetLabel(value)
+    local label = speedGetLabel()
+    if not label then return end
+    local txt = tostring(math.floor(value + 0.5))
+    if label:IsA("TextLabel") or label:IsA("TextButton") then
+        label.Text = txt
+    elseif label:IsA("StringValue") then
+        label.Value = txt
+    elseif label:IsA("NumberValue") or label:IsA("IntValue") then
+        label.Value = math.floor(value + 0.5)
+    end
+end
+
+local function speedAttach(char)
+    speedHum = char:WaitForChild("Humanoid")
+    speedRoot = char:WaitForChild("HumanoidRootPart")
+    jumpedBackwards = false
+    currentSpeed = 0
+
+    if speedChangerEnabled then
+        speedHum.WalkSpeed = 0
+    end
+
+    if speedCharConn then speedCharConn:Disconnect() end
+    speedCharConn = speedHum.Jumping:Connect(function()
+        if not speedChangerEnabled then return end
+        if speedHum.MoveDirection.Magnitude > 0 then
+            local dot = speedRoot.CFrame.LookVector:Dot(speedHum.MoveDirection)
+            if dot < 0 then
+                jumpedBackwards = true
+            end
+        end
+    end)
+end
+
+if player.Character then task.spawn(speedAttach, player.Character) end
+player.CharacterAdded:Connect(function(char) task.spawn(speedAttach, char) end)
+
+RunService.Heartbeat:Connect(function(dt)
+    if not speedChangerEnabled then return end
+    if not speedHum or not speedRoot then return end
+    if speedHum.Health <= 0 then return end
+
+    local moving = speedHum.MoveDirection.Magnitude > 0
+    local goingBack = false
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+
+local player = Players.LocalPlayer
+local speedChangerEnabled = false
+local targetSpeed = 100
+local currentSpeed = 0
+local jumpedBackwards = false
+
+local SV_ACCEL = 5.5
+local SV_FRICTION = 5.2
+local SV_STOPSPEED = 80
+local LANDING_SPEED_FACTOR = 0.75
+local BHOP_WINDOW = 0.05
+
+local speedHum, speedRoot
+local velocity = Vector3.new(0, 0, 0)
+local isGrounded = false
+local lastLandTime = 0
+local jumpBuffered = false
+local speedCharConn
+local landConn
+
+local function speedGetLabel()
+    local pg = player:FindFirstChild("PlayerGui")
+    if not pg then return nil end
+    local g = pg:FindFirstChild("Game")
+    if not g then return nil end
+    local hud = g:FindFirstChild("HUD")
+    if not hud then return nil end
+    local overlay = hud:FindFirstChild("Overlay")
+    if not overlay then return nil end
+    local cs = overlay:FindFirstChild("CharacterStatus")
+    if not cs then return nil end
+    local bl = cs:FindFirstChild("BottomLeft")
+    if not bl then return nil end
+    local sp = bl:FindFirstChild("Speedometer")
+    if not sp then return nil end
+    return sp:FindFirstChild("Speed")
+end
+
+local function speedSetLabel(value)
+    local label = speedGetLabel()
+    if not label then return end
+    local txt = tostring(math.floor(value + 0.5))
+    if label:IsA("TextLabel") or label:IsA("TextButton") then
+        label.Text = txt
+    elseif label:IsA("StringValue") then
+        label.Value = txt
+    elseif label:IsA("NumberValue") or label:IsA("IntValue") then
+        label.Value = math.floor(value + 0.5)
+    end
+end
+
+local function accelerate(vel, wishDir, wishSpeed, accel, dt)
+    local currentSpeed = vel:Dot(wishDir)
+    local addSpeed = wishSpeed - currentSpeed
+    if addSpeed <= 0 then return vel end
+    local accelSpeed = math.min(accel * wishSpeed * dt, addSpeed)
+    return vel + wishDir * accelSpeed
+end
+
+local function applyFriction(vel, dt)
+    local speed = Vector3.new(vel.X, 0, vel.Z).Magnitude
+    if speed < 0.1 then return Vector3.new(0, vel.Y, 0) end
+    local drop = math.max(speed, SV_STOPSPEED) * SV_FRICTION * dt
+    local newSpeed = math.max(speed - drop, 0)
+    local scale = newSpeed / speed
+    return Vector3.new(vel.X * scale, vel.Y, vel.Z * scale)
+end
+
+local function speedAttach(char)
+    speedHum = char:WaitForChild("Humanoid")
+    speedRoot = char:WaitForChild("HumanoidRootPart")
+    jumpedBackwards = false
+    currentSpeed = 0
+    velocity = Vector3.new(0, 0, 0)
+
+    if speedChangerEnabled then
+        speedHum.WalkSpeed = 0
+    end
+
+    if speedCharConn then speedCharConn:Disconnect() end
+    speedCharConn = speedHum.Jumping:Connect(function()
+        if not speedChangerEnabled then return end
+        if speedHum.MoveDirection.Magnitude > 0 then
+            local dot = speedRoot.CFrame.LookVector:Dot(speedHum.MoveDirection)
+            if dot < 0 then jumpedBackwards = true end
+        end
+    end)
+
+    if landConn then landConn:Disconnect() end
+    landConn = speedHum.StateChanged:Connect(function(_, newState)
+        if newState == Enum.HumanoidStateType.Landed then
+            lastLandTime = tick()
+            isGrounded = true
+        elseif newState == Enum.HumanoidStateType.Freefall then
+            isGrounded = false
+        end
+    end)
+end
+
+if player.Character then task.spawn(speedAttach, player.Character) end
+player.CharacterAdded:Connect(function(char) task.spawn(speedAttach, char) end)
+
+RunService.Heartbeat:Connect(function(dt)
+    if not speedChangerEnabled then return end
+    if not speedHum or not speedRoot then return end
+    if speedHum.Health <= 0 then return end
+
+    local moveDir = speedHum.MoveDirection
+    local moving = moveDir.Magnitude > 0
+    local wishDir = moving and moveDir.Unit or Vector3.new(0, 0, 0)
+
+    local grounded = speedHum.FloorMaterial ~= Enum.Material.Air
+
+    if grounded and not isGrounded then
+        isGrounded = true
+        lastLandTime = tick()
+        local flatSpeed = Vector3.new(velocity.X, 0, velocity.Z).Magnitude
+        local timeSinceLand = tick() - lastLandTime
+        if timeSinceLand > BHOP_WINDOW or not jumpBuffered then
+            local clamped = math.min(flatSpeed, targetSpeed * LANDING_SPEED_FACTOR)
+            if flatSpeed > 0 then
+                local scale = clamped / flatSpeed
+                velocity = Vector3.new(velocity.X * scale, velocity.Y, velocity.Z * scale)
+            end
+        end
+    elseif not grounded then
+        isGrounded = false
+    end
+
+    if grounded then
+        velocity = applyFriction(velocity, dt)
+        if moving then
+            local wishSpeed = targetSpeed
+            if jumpedBackwards then
+                wishSpeed = targetSpeed * 0.25
+            elseif speedRoot.CFrame.LookVector:Dot(wishDir) < 0 then
+                wishSpeed = targetSpeed * 0.5
+            end
+            velocity = accelerate(velocity, wishDir, wishSpeed, SV_ACCEL, dt)
+        end
+    end
+
+    local flatVel = Vector3.new(velocity.X, 0, velocity.Z)
+    if flatVel.Magnitude > targetSpeed then
+        local scale = targetSpeed / flatVel.Magnitude
+        velocity = Vector3.new(velocity.X * scale, velocity.Y, velocity.Z * scale)
+    end
+
+    if velocity.Magnitude > 0.1 then
+        speedRoot.CFrame = speedRoot.CFrame + velocity * dt
+    end
+
+    currentSpeed = Vector3.new(velocity.X, 0, velocity.Z).Magnitude
+    speedSetLabel(currentSpeed)
+end)
+
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+    if input.KeyCode == Enum.KeyCode.Space then
+        jumpBuffered = true
+        task.delay(BHOP_WINDOW, function()
+            jumpBuffered = false
+        end)
+    end
+end)
+
+tab:CreateDivider()
+
+tab:CreateToggle({
+    name = "Speed Changer",
+    currentValue = false,
+    flag = "SpeedChanger_Toggle",
+    callback = function(value)
+        speedChangerEnabled = value
+        if not value then
+            currentSpeed = 0
+            velocity = Vector3.new(0, 0, 0)
+            jumpedBackwards = false
+            if speedHum then speedHum.WalkSpeed = 16 end
+            speedSetLabel(0)
+        else
+            if speedHum then speedHum.WalkSpeed = 0 end
+        end
+    end,
+})
+
+tab:CreateSlider({
+    name = "Speed Changer",
+    range = {33.3, 500.5},
+    increment = 0.1,
+    suffix = " sps",
+    currentValue = 100,
+    flag = "SpeedChanger_Slider",
+    callback = function(value)
+        targetSpeed = value
+    end,
+})
+
+-- VIS
+local VisTab = window:CreateTab({ name = "Visuals", icon = 126802044806598 })
+buildExtras(VisTab, window)
+-- EX
+local tab = window:CreateTab({ name = "Extra", icon = 108740503011398 })
+
+tab:CreateDivider({ text = "Close RuinWare" })
+
+
+tab:CreateButton({
+    name = "Close RuinWare",
+    callback = function()
+        window:Popup({
+            title = "Close RuinWare?",
+            content = "This closes the ruinware client. Cant be undone.",
+            options = {
+                { text = "Cancel" },
+                { text = "Close", style = "danger", callback = function()
+                    autoJumpEnabled = false
+                    lookDownOnly = false
+                    moveOnly = false
+                    rampProtection = false
+                    holdJumpEnabled = false
+                    holdRampProtection = false
+                    easyBounceEnabled = false
+                    hardBounceEnabled = false
+                    delayJumpEnabled = false
+                    legitBounceEnabled = false
+                    yLockEnabled = false
+                    speedChangerEnabled = false
+                    jumpHeld = false
+
+                    if yLockPart then
+                        yLockPart:Destroy()
+                        yLockPart = nil
+                    end
+                    if speedHum then
+                        speedHum.WalkSpeed = 16
+                    end
+
+                    if Rayfield.Flags then
+                        for flag in pairs(Rayfield.Flags) do
+                            pcall(function() Rayfield.Flags[flag] = false end)
+                        end
+                    end
+
+                    pcall(function() Rayfield:Destroy() end)
+                    pcall(function() Rayfield:Unload() end)
+                end },
+            },
+        })
+    end,
+})
+
+-- PLAYER
+local tab = window:CreateTab({ name = "Player", icon = 98364829449527 })
+-- TAS
+local tab = window:CreateTab({ name = "TAS", icon = 106970371098897 })
+-- AF
+local tab = window:CreateTab({ name = "Auto Farm", icon = 96086831296475 })
+-- ATMOSPHERE
+local tab = window:CreateTab({ name = "Atmosphere", icon = 90547516100800 })
+-- COS
+local CosTab = window:CreateTab({ name = "Cosmetics", icon = 93893786571261 })
+buildEmoteChanger(CosTab, window)
+buildCosmeticChanger(CosTab, window)
+-- TP
+local tab = window:CreateTab({ name = "Teleport", icon = 138254104860948 })
+-- VCL
+local tab = window:CreateTab({ name = "Vehicle", icon = 12338080417 })
+-- MAP
+local tab = window:CreateTab({ name = "Map", icon = 78731952302365 })
