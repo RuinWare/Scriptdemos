@@ -1863,7 +1863,113 @@ CROUCH SPAM
 ============================================================================
 ]]--
 
--- hi
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+
+local spamCrouchEnabled = false
+local spamInterval = 0.1
+
+local function isMobileDevice()
+    return UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
+end
+
+local function getCrouchButton()
+    local pg = Players.LocalPlayer:FindFirstChild("PlayerGui")
+    if not pg then return nil end
+    local g = pg:FindFirstChild("Game")
+    if not g then return nil end
+    local hud = g:FindFirstChild("HUD")
+    if not hud then return nil end
+    local mob = hud:FindFirstChild("Mobile")
+    if not mob then return nil end
+    local right = mob:FindFirstChild("Right")
+    if not right then return nil end
+    local inner = right:FindFirstChild("Mobile")
+    if not inner then return nil end
+    return inner:FindFirstChild("CrouchButton")
+end
+
+local function fireSignal(signal, ...)
+    if not signal then return end
+    if firesignal then
+        pcall(firesignal, signal, ...)
+    elseif getconnections then
+        local ok, conns = pcall(getconnections, signal)
+        if ok and conns then
+            for _, c in pairs(conns) do
+                task.spawn(function()
+                    if c.Function then pcall(c.Function, ...) end
+                end)
+            end
+        end
+    end
+end
+
+local function pressMobile()
+    local btn = getCrouchButton()
+    if not btn then return end
+    fireSignal(btn.MouseButton1Down)
+end
+
+local function releaseMobile()
+    local btn = getCrouchButton()
+    if not btn then return end
+    fireSignal(btn.MouseButton1Up)
+end
+
+local function pressPC()
+    if keypress then pcall(keypress, Enum.KeyCode.C) end
+end
+
+local function releasePC()
+    if keyrelease then pcall(keyrelease, Enum.KeyCode.C) end
+end
+
+local function press()
+    if isMobileDevice() then pressMobile() else pressPC() end
+end
+
+local function release()
+    if isMobileDevice() then releaseMobile() else releasePC() end
+end
+
+tab:CreateDivider()
+
+tab:CreateToggle({
+    name = "Spam Crouch",
+    currentValue = false,
+    flag = "SpamCrouch_Toggle",
+    callback = function(v)
+        spamCrouchEnabled = v
+        if v then
+            task.spawn(function()
+                release()
+                task.wait(0.02)
+                press()
+                while spamCrouchEnabled do
+                    release()
+                    task.wait(spamInterval)
+                    if not spamCrouchEnabled then break end
+                    press()
+                    task.wait(spamInterval)
+                end
+                release()
+            end)
+        else
+            release()
+        end
+    end,
+})
+
+tab:CreateSlider({
+    name = "Spam Crouch Interval",
+    range = {0.002, 5.00},
+    increment = 0.001,
+    suffix = "s",
+    currentValue = 0.1,
+    flag = "SpamCrouch_Interval",
+    callback = function(v) spamInterval = v end,
+})
 
 --[[
 ============================================================================
