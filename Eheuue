@@ -967,175 +967,203 @@ local tab = window:CreateTab({ name = "Main", icon = 83935746771599 })
 
 tab:CreateDivider({ text = "Movement" })
 
+--[[
+============================================================================
+AUTO JUMP
+============================================================================
+]]--
+
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
+
 local player = Players.LocalPlayer
+local autoJumpEnabled = false
+local lookDownOnly = false
+local moveOnly = false
+local rampProtection = false
 
-do
-    local autoJumpEnabled = false
-    local lookDownOnly = false
-    local moveOnly = false
-    local rampProtection = false
+local moveHoldThreshold = 0
+local moveAccum = 0
+local wasMovingCheck = false
+local wasGroundedCheck = true
+local airborneStartCheck = 0
+local groundStoppedAtCheck = 0
+local lastTickCheck = 0
 
-    local moveHoldThreshold = 0
-    local moveAccum = 0
-    local wasMovingCheck = false
-    local wasGroundedCheck = true
-    local airborneStartCheck = 0
-    local groundStoppedAtCheck = 0
-    local lastTickCheck = 0
+local STOP_GRACE = 0.6
+local AIR_GRACE = 5.0
 
-    local STOP_GRACE = 0.6
-    local AIR_GRACE = 5.0
-    local LOOK_DOWN_THRESHOLD = -0.7
+local LOOK_DOWN_THRESHOLD = -0.7
 
-    local rayParams = RaycastParams.new()
-    rayParams.FilterType = Enum.RaycastFilterType.Exclude
+local rayParams = RaycastParams.new()
+rayParams.FilterType = Enum.RaycastFilterType.Exclude
 
-    local function isGroundFlat(root)
-        if not rampProtection then return true end
-        local result = workspace:Raycast(root.Position, Vector3.new(0, -10, 0), rayParams)
-        if not result then return false end
-        return math.deg(math.acos(result.Normal.Unit.Y)) <= 8
-    end
-
-    local function isLookingDownEnough()
-        if not lookDownOnly then return true end
-        local cam = workspace.CurrentCamera
-        if not cam then return false end
-        return cam.CFrame.LookVector.Y <= LOOK_DOWN_THRESHOLD
-    end
-
-    local function isMoving(hum)
-        local moving = hum.MoveDirection.Magnitude > 0
-        local grounded = hum.FloorMaterial ~= Enum.Material.Air
-        local now = tick()
-
-        if lastTickCheck == 0 then lastTickCheck = now end
-        local dt = now - lastTickCheck
-        lastTickCheck = now
-        if dt < 0 or dt > 0.5 then dt = 0 end
-
-        if moving and grounded and wasMovingCheck then
-            moveAccum = moveAccum + dt
-        end
-
-        if not grounded and wasGroundedCheck then
-            if groundStoppedAtCheck > 0 and (now - groundStoppedAtCheck) >= STOP_GRACE then
-                moveAccum = 0
-            end
-            groundStoppedAtCheck = 0
-            airborneStartCheck = now
-        elseif grounded and not wasGroundedCheck then
-            local airtime = airborneStartCheck > 0 and (now - airborneStartCheck) or 0
-            airborneStartCheck = 0
-            if airtime >= AIR_GRACE then
-                moveAccum = 0
-            end
-            if not moving then
-                groundStoppedAtCheck = now
-            end
-        end
-        wasGroundedCheck = grounded
-
-        if not moving then
-            if wasMovingCheck and grounded then
-                groundStoppedAtCheck = now
-            end
-            wasMovingCheck = false
-        else
-            if not wasMovingCheck then
-                if groundStoppedAtCheck > 0 and grounded and (now - groundStoppedAtCheck) >= STOP_GRACE then
-                    moveAccum = 0
-                end
-                wasMovingCheck = true
-            end
-            groundStoppedAtCheck = 0
-        end
-
-        if not moveOnly then return true end
-        if not moving then return false end
-        return moveAccum >= moveHoldThreshold
-    end
-
-    local function tryJump(hum, root)
-        if not autoJumpEnabled then return end
-        if hum.Health <= 0 then return end
-        if not isGroundFlat(root) then return end
-        if not isLookingDownEnough() then return end
-        if not isMoving(hum) then return end
-        hum:ChangeState(Enum.HumanoidStateType.Jumping)
-    end
-
-    local stateConn
-
-    local function attachToCharacter(char)
-        local hum = char:WaitForChild("Humanoid")
-        local root = char:WaitForChild("HumanoidRootPart")
-        rayParams.FilterDescendantsInstances = {char}
-        if stateConn then stateConn:Disconnect() end
-        stateConn = hum.StateChanged:Connect(function(_, newState)
-            if newState == Enum.HumanoidStateType.Landed
-            or newState == Enum.HumanoidStateType.Running
-            or newState == Enum.HumanoidStateType.RunningNoPhysics then
-                tryJump(hum, root)
-            end
-        end)
-    end
-
-    if player.Character then task.spawn(attachToCharacter, player.Character) end
-    player.CharacterAdded:Connect(function(char) task.spawn(attachToCharacter, char) end)
-
-    RunService.PreSimulation:Connect(function()
-        if not autoJumpEnabled then return end
-        local char = player.Character
-        if not char then return end
-        local hum = char:FindFirstChildOfClass("Humanoid")
-        local root = char:FindFirstChild("HumanoidRootPart")
-        if not hum or not root then return end
-        if hum.FloorMaterial == Enum.Material.Air then return end
-        tryJump(hum, root)
-    end)
-
-    tab:CreateToggle({
-        name = "Auto Jump",
-        currentValue = false,
-        flag = "AutoJump_Toggle",
-        callback = function(value) autoJumpEnabled = value end,
-    })
-
-    tab:CreateToggle({
-        name = "Ramp Protection",
-        currentValue = true,
-        flag = "AutoJump_RampProtection_Toggle",
-        callback = function(value) rampProtection = value end,
-    })
-
-    tab:CreateToggle({
-        name = "Only Trigger On Look Down",
-        currentValue = false,
-        flag = "AutoJump_LookDown_Toggle",
-        callback = function(value) lookDownOnly = value end,
-    })
-
-    tab:CreateToggle({
-        name = "Only Trigger On Move",
-        currentValue = false,
-        flag = "AutoJump_MoveOnly_Toggle",
-        callback = function(value) moveOnly = value end,
-    })
-
-    tab:CreateSlider({
-        name = "Move Hold Time",
-        range = {0, 5},
-        increment = 0.05,
-        suffix = "s",
-        currentValue = 0,
-        flag = "AutoJump_MoveHold",
-        callback = function(value) moveHoldThreshold = value end,
-    })
+local function isGroundFlat(root)
+    if not rampProtection then return true end
+    local result = workspace:Raycast(root.Position, Vector3.new(0, -10, 0), rayParams)
+    if not result then return false end
+    local angle = math.deg(math.acos(result.Normal.Unit.Y))
+    return angle <= 8
 end
+
+local function isLookingDownEnough()
+    if not lookDownOnly then return true end
+    local cam = workspace.CurrentCamera
+    if not cam then return false end
+    return cam.CFrame.LookVector.Y <= LOOK_DOWN_THRESHOLD
+end
+
+local function isMoving(hum)
+    local moving = hum.MoveDirection.Magnitude > 0
+    local grounded = hum.FloorMaterial ~= Enum.Material.Air
+    local now = tick()
+
+    if lastTickCheck == 0 then lastTickCheck = now end
+    local dt = now - lastTickCheck
+    lastTickCheck = now
+    if dt < 0 or dt > 0.5 then dt = 0 end
+
+    if moving and grounded and wasMovingCheck then
+        moveAccum = moveAccum + dt
+    end
+
+    if not grounded and wasGroundedCheck then
+        if groundStoppedAtCheck > 0 and (now - groundStoppedAtCheck) >= STOP_GRACE then
+            moveAccum = 0
+        end
+        groundStoppedAtCheck = 0
+        airborneStartCheck = now
+    elseif grounded and not wasGroundedCheck then
+        local airtime = airborneStartCheck > 0 and (now - airborneStartCheck) or 0
+        airborneStartCheck = 0
+        if airtime >= AIR_GRACE then
+            moveAccum = 0
+        end
+        if not moving then
+            groundStoppedAtCheck = now
+        end
+    end
+    wasGroundedCheck = grounded
+
+    if not moving then
+        if wasMovingCheck and grounded then
+            groundStoppedAtCheck = now
+        end
+        wasMovingCheck = false
+    else
+        if not wasMovingCheck then
+            if groundStoppedAtCheck > 0 and grounded and (now - groundStoppedAtCheck) >= STOP_GRACE then
+                moveAccum = 0
+            end
+            wasMovingCheck = true
+        end
+        groundStoppedAtCheck = 0
+    end
+
+    if not moveOnly then return true end
+    if not moving then return false end
+    return moveAccum >= moveHoldThreshold
+end
+
+local function tryJump(hum, root)
+    if not autoJumpEnabled then return end
+    if hum.Health <= 0 then return end
+    if not isGroundFlat(root) then return end
+    if not isLookingDownEnough() then return end
+    if not isMoving(hum) then return end
+    hum:ChangeState(Enum.HumanoidStateType.Jumping)
+end
+
+local stateConn
+
+local function attachToCharacter(char)
+    local hum = char:WaitForChild("Humanoid")
+    local root = char:WaitForChild("HumanoidRootPart")
+
+    rayParams.FilterDescendantsInstances = {char}
+
+    if stateConn then stateConn:Disconnect() end
+    stateConn = hum.StateChanged:Connect(function(_, newState)
+        if newState == Enum.HumanoidStateType.Landed
+        or newState == Enum.HumanoidStateType.Running
+        or newState == Enum.HumanoidStateType.RunningNoPhysics then
+            tryJump(hum, root)
+        end
+    end)
+end
+
+if player.Character then
+    task.spawn(attachToCharacter, player.Character)
+end
+player.CharacterAdded:Connect(function(char)
+    task.spawn(attachToCharacter, char)
+end)
+
+RunService.PreSimulation:Connect(function()
+    if not autoJumpEnabled then return end
+    local char = player.Character
+    if not char then return end
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    local root = char:FindFirstChild("HumanoidRootPart")
+    if not hum or not root then return end
+    if hum.FloorMaterial == Enum.Material.Air then return end
+    tryJump(hum, root)
+end)
+
+tab:CreateToggle({
+    name = "Auto Jump",
+    currentValue = false,
+    flag = "AutoJump_Toggle",
+    callback = function(value)
+        autoJumpEnabled = value
+    end,
+})
+
+tab:CreateToggle({
+    name = "Ramp Protection",
+    currentValue = true,
+    flag = "AutoJump_RampProtection_Toggle",
+    callback = function(value)
+        rampProtection = value
+    end,
+})
+
+tab:CreateToggle({
+    name = "Only Trigger On Look Down",
+    currentValue = false,
+    flag = "AutoJump_LookDown_Toggle",
+    callback = function(value)
+        lookDownOnly = value
+    end,
+})
+
+tab:CreateToggle({
+    name = "Only Trigger On Move",
+    currentValue = false,
+    flag = "AutoJump_MoveOnly_Toggle",
+    callback = function(value)
+        moveOnly = value
+    end,
+})
+
+tab:CreateSlider({
+    name = "Move Hold Time",
+    range = {0, 5},
+    increment = 0.05,
+    suffix = "s",
+    currentValue = 0,
+    flag = "AutoJump_MoveHold",
+    callback = function(value)
+        moveHoldThreshold = value
+    end,
+})
+
+--[[
+============================================================================
+LEGIT JUMP
+============================================================================
+]]--
 
 do
     local djEnabled = false
@@ -1153,6 +1181,7 @@ do
     local djMoveAccum = 0
     local djWasMoving = false
     local djLastTick = 0
+
     local DJ_LOOK_THRESH = -0.7
 
     local function djFlat(root)
@@ -1232,24 +1261,28 @@ do
         flag = "DelayJump_Toggle",
         callback = function(v) djEnabled = v end,
     })
+
     tab:CreateToggle({
         name = "Legit Jump Ramp Protection",
         currentValue = true,
         flag = "DelayJump_Ramp_Toggle",
         callback = function(v) djRamp = v end,
     })
+
     tab:CreateToggle({
         name = "Legit Jump Only Look Down",
         currentValue = false,
         flag = "DelayJump_LookDown_Toggle",
         callback = function(v) djLookDown = v end,
     })
+
     tab:CreateToggle({
         name = "Legit Jump Only On Move",
         currentValue = false,
         flag = "DelayJump_MoveOnly_Toggle",
         callback = function(v) djMoveOnly = v end,
     })
+
     tab:CreateSlider({
         name = "Legit Jump Move Hold",
         range = {0, 5},
@@ -1260,6 +1293,12 @@ do
         callback = function(v) djMoveHold = v end,
     })
 end
+
+--[[
+============================================================================
+HOLD JUMP
+============================================================================
+]]--
 
 do
     local hjEnabled = false
@@ -1275,6 +1314,7 @@ do
     local hjMoveAccum = 0
     local hjWasMoving = false
     local hjLastTick = 0
+
     local HJ_LOOK_THRESH = -0.7
 
     local function hjFlat(root)
@@ -1371,24 +1411,28 @@ do
         flag = "HoldJump_Toggle",
         callback = function(v) hjEnabled = v end,
     })
+
     tab:CreateToggle({
         name = "Hold Jump Ramp Protection",
         currentValue = true,
         flag = "HoldJump_Ramp_Toggle",
         callback = function(v) hjRamp = v end,
     })
+
     tab:CreateToggle({
         name = "Hold Jump Only Look Down",
         currentValue = false,
         flag = "HoldJump_LookDown_Toggle",
         callback = function(v) hjLookDown = v end,
     })
+
     tab:CreateToggle({
         name = "Hold Jump Only On Move",
         currentValue = false,
         flag = "HoldJump_MoveOnly_Toggle",
         callback = function(v) hjMoveOnly = v end,
     })
+
     tab:CreateSlider({
         name = "Hold Jump Move Hold",
         range = {0, 5},
@@ -1400,603 +1444,829 @@ do
     })
 end
 
-do
-    local easyBounceEnabled = false
-    local bounceMultiplier = 1.5
+--[[
+============================================================================
+EASY BOUNCE
+============================================================================
+]]--
 
-    local bounceRayParams = RaycastParams.new()
-    bounceRayParams.FilterType = Enum.RaycastFilterType.Exclude
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
 
-    local lastYVelocity = 0
-    local bounceStateConn
+local player = Players.LocalPlayer
+local easyBounceEnabled = false
+local bounceMultiplier = 1.5
 
-    local function bounceIsSteepEnough(root)
-        local result = workspace:Raycast(root.Position, Vector3.new(0, -10, 0), bounceRayParams)
-        if not result then return false end
-        return math.deg(math.acos(result.Normal.Unit.Y)) >= 12
-    end
+local bounceRayParams = RaycastParams.new()
+bounceRayParams.FilterType = Enum.RaycastFilterType.Exclude
 
-    local function attachEasyBounce(char)
-        local hum = char:WaitForChild("Humanoid")
-        local root = char:WaitForChild("HumanoidRootPart")
-        bounceRayParams.FilterDescendantsInstances = {char}
-        if bounceStateConn then bounceStateConn:Disconnect() end
-        bounceStateConn = hum.StateChanged:Connect(function(_, newState)
-            if not easyBounceEnabled then return end
-            if newState ~= Enum.HumanoidStateType.Landed then return end
-            if hum.Health <= 0 then return end
-            if not bounceIsSteepEnough(root) then return end
-            local bounceVel = math.abs(lastYVelocity) * bounceMultiplier
-            if bounceVel < 10 then return end
-            root.AssemblyLinearVelocity = Vector3.new(
-                root.AssemblyLinearVelocity.X,
-                bounceVel,
-                root.AssemblyLinearVelocity.Z
-            )
-        end)
-    end
+local lastYVelocity = 0
+local bounceStateConn
 
-    if player.Character then task.spawn(attachEasyBounce, player.Character) end
-    player.CharacterAdded:Connect(function(char) task.spawn(attachEasyBounce, char) end)
+local function bounceIsSteepEnough(root)
+    local result = workspace:Raycast(root.Position, Vector3.new(0, -10, 0), bounceRayParams)
+    if not result then return false end
+    local angle = math.deg(math.acos(result.Normal.Unit.Y))
+    return angle >= 12
+end
 
-    RunService.Heartbeat:Connect(function()
+local function attachEasyBounce(char)
+    local hum = char:WaitForChild("Humanoid")
+    local root = char:WaitForChild("HumanoidRootPart")
+    bounceRayParams.FilterDescendantsInstances = {char}
+
+    if bounceStateConn then bounceStateConn:Disconnect() end
+    bounceStateConn = hum.StateChanged:Connect(function(_, newState)
         if not easyBounceEnabled then return end
-        local char = player.Character
-        if not char then return end
-        local root = char:FindFirstChild("HumanoidRootPart")
-        if not root then return end
-        lastYVelocity = root.AssemblyLinearVelocity.Y
+        if newState ~= Enum.HumanoidStateType.Landed then return end
+        if hum.Health <= 0 then return end
+        if not bounceIsSteepEnough(root) then return end
+        local bounceVel = math.abs(lastYVelocity) * bounceMultiplier
+        if bounceVel < 10 then return end
+        root.AssemblyLinearVelocity = Vector3.new(
+            root.AssemblyLinearVelocity.X,
+            bounceVel,
+            root.AssemblyLinearVelocity.Z
+        )
     end)
-
-    tab:CreateDivider()
-
-    tab:CreateToggle({
-        name = "Easy Bounce",
-        currentValue = false,
-        flag = "EasyBounce_Toggle",
-        callback = function(value) easyBounceEnabled = value end,
-    })
-
-    tab:CreateSlider({
-        name = "Easy Bounce Multiplier",
-        range = {1.08, 3.00},
-        increment = 0.01,
-        suffix = "x",
-        currentValue = 1.5,
-        flag = "EasyBounce_Multiplier",
-        callback = function(value) bounceMultiplier = value end,
-    })
 end
 
-do
-    local hardBounceEnabled = false
-    local hardBounceMultiplier = 1.5
+if player.Character then
+    task.spawn(attachEasyBounce, player.Character)
+end
+player.CharacterAdded:Connect(function(char)
+    task.spawn(attachEasyBounce, char)
+end)
 
-    local hardBounceRayParams = RaycastParams.new()
-    hardBounceRayParams.FilterType = Enum.RaycastFilterType.Exclude
+RunService.Heartbeat:Connect(function()
+    if not easyBounceEnabled then return end
+    local char = player.Character
+    if not char then return end
+    local root = char:FindFirstChild("HumanoidRootPart")
+    if not root then return end
+    lastYVelocity = root.AssemblyLinearVelocity.Y
+end)
 
-    local lastYVelocity = 0
-    local airStartTime = 0
-    local wasInAir = false
-    local hardBounceStateConn
+tab:CreateDivider()
 
-    local function attachHardBounce(char)
-        local hum = char:WaitForChild("Humanoid")
-        local root = char:WaitForChild("HumanoidRootPart")
-        hardBounceRayParams.FilterDescendantsInstances = {char}
-        if hardBounceStateConn then hardBounceStateConn:Disconnect() end
-        hardBounceStateConn = hum.StateChanged:Connect(function(_, newState)
-            if not hardBounceEnabled then return end
-            if newState ~= Enum.HumanoidStateType.Landed then return end
-            if hum.Health <= 0 then return end
-            if not wasInAir then return end
-            if (tick() - airStartTime) < 1 then return end
-            local bounceVel = math.abs(lastYVelocity) * hardBounceMultiplier
-            if bounceVel < 10 then return end
-            root.AssemblyLinearVelocity = Vector3.new(
-                root.AssemblyLinearVelocity.X,
-                bounceVel,
-                root.AssemblyLinearVelocity.Z
-            )
-        end)
-    end
+tab:CreateToggle({
+    name = "Easy Bounce",
+    currentValue = false,
+    flag = "EasyBounce_Toggle",
+    callback = function(value)
+        easyBounceEnabled = value
+    end,
+})
 
-    if player.Character then task.spawn(attachHardBounce, player.Character) end
-    player.CharacterAdded:Connect(function(char) task.spawn(attachHardBounce, char) end)
+tab:CreateSlider({
+    name = "Easy Bounce Multiplier",
+    range = {1.08, 3.00},
+    increment = 0.01,
+    suffix = "x",
+    currentValue = 1.5,
+    flag = "EasyBounce_Multiplier",
+    callback = function(value)
+        bounceMultiplier = value
+    end,
+})
 
-    RunService.Heartbeat:Connect(function()
+--[[
+============================================================================
+HARD BOUNCE
+============================================================================
+]]--
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+
+local player = Players.LocalPlayer
+local hardBounceEnabled = false
+local hardBounceMultiplier = 1.5
+
+local hardBounceRayParams = RaycastParams.new()
+hardBounceRayParams.FilterType = Enum.RaycastFilterType.Exclude
+
+local lastYVelocity = 0
+local airStartTime = 0
+local wasInAir = false
+local hardBounceStateConn
+
+local function attachHardBounce(char)
+    local hum = char:WaitForChild("Humanoid")
+    local root = char:WaitForChild("HumanoidRootPart")
+    hardBounceRayParams.FilterDescendantsInstances = {char}
+
+    if hardBounceStateConn then hardBounceStateConn:Disconnect() end
+    hardBounceStateConn = hum.StateChanged:Connect(function(_, newState)
         if not hardBounceEnabled then return end
-        local char = player.Character
-        if not char then return end
-        local hum = char:FindFirstChildOfClass("Humanoid")
-        local root = char:FindFirstChild("HumanoidRootPart")
-        if not hum or not root then return end
-        lastYVelocity = root.AssemblyLinearVelocity.Y
-        if hum.FloorMaterial == Enum.Material.Air then
-            if not wasInAir then
-                wasInAir = true
-                airStartTime = tick()
-            end
-        else
-            wasInAir = false
-        end
+        if newState ~= Enum.HumanoidStateType.Landed then return end
+        if hum.Health <= 0 then return end
+        if not wasInAir then return end
+        if (tick() - airStartTime) < 1 then return end
+        local bounceVel = math.abs(lastYVelocity) * hardBounceMultiplier
+        if bounceVel < 10 then return end
+        root.AssemblyLinearVelocity = Vector3.new(
+            root.AssemblyLinearVelocity.X,
+            bounceVel,
+            root.AssemblyLinearVelocity.Z
+        )
     end)
-
-    tab:CreateDivider()
-
-    tab:CreateToggle({
-        name = "Hard Bounce",
-        currentValue = false,
-        flag = "HardBounce_Toggle",
-        callback = function(value) hardBounceEnabled = value end,
-    })
-
-    tab:CreateSlider({
-        name = "Hard Bounce Multiplier",
-        range = {1.08, 3.00},
-        increment = 0.01,
-        suffix = "x",
-        currentValue = 1.5,
-        flag = "HardBounce_Multiplier",
-        callback = function(value) hardBounceMultiplier = value end,
-    })
 end
 
-do
-    local legitBounceEnabled = false
-    local LEGIT_MULTIPLIER = 1.11
+if player.Character then
+    task.spawn(attachHardBounce, player.Character)
+end
+player.CharacterAdded:Connect(function(char)
+    task.spawn(attachHardBounce, char)
+end)
 
-    local legitRayParams = RaycastParams.new()
-    legitRayParams.FilterType = Enum.RaycastFilterType.Exclude
+RunService.Heartbeat:Connect(function()
+    if not hardBounceEnabled then return end
+    local char = player.Character
+    if not char then return end
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    local root = char:FindFirstChild("HumanoidRootPart")
+    if not hum or not root then return end
 
-    local legitLastYVelocity = 0
-    local legitAirStartTime = 0
-    local legitWasInAir = false
-    local legitStateConn
+    lastYVelocity = root.AssemblyLinearVelocity.Y
 
-    local function legitIsSteepEnough(root)
-        local result = workspace:Raycast(root.Position, Vector3.new(0, -10, 0), legitRayParams)
-        if not result then return false end
-        return math.deg(math.acos(result.Normal.Unit.Y)) >= 12
+    if hum.FloorMaterial == Enum.Material.Air then
+        if not wasInAir then
+            wasInAir = true
+            airStartTime = tick()
+        end
+    else
+        wasInAir = false
     end
+end)
 
-    local function attachLegitBounce(char)
-        local hum = char:WaitForChild("Humanoid")
-        local root = char:WaitForChild("HumanoidRootPart")
-        legitRayParams.FilterDescendantsInstances = {char}
-        if legitStateConn then legitStateConn:Disconnect() end
-        legitStateConn = hum.StateChanged:Connect(function(_, newState)
-            if not legitBounceEnabled then return end
-            if newState ~= Enum.HumanoidStateType.Landed then return end
-            if hum.Health <= 0 then return end
-            if not legitWasInAir then return end
-            if (tick() - legitAirStartTime) < 1 then return end
-            if not legitIsSteepEnough(root) then return end
-            local bounceVel = math.abs(legitLastYVelocity) * LEGIT_MULTIPLIER
-            if bounceVel < 10 then return end
-            root.AssemblyLinearVelocity = Vector3.new(
-                root.AssemblyLinearVelocity.X,
-                bounceVel,
-                root.AssemblyLinearVelocity.Z
-            )
-        end)
-    end
+tab:CreateDivider()
 
-    if player.Character then task.spawn(attachLegitBounce, player.Character) end
-    player.CharacterAdded:Connect(function(char) task.spawn(attachLegitBounce, char) end)
+tab:CreateToggle({
+    name = "Hard Bounce",
+    currentValue = false,
+    flag = "HardBounce_Toggle",
+    callback = function(value)
+        hardBounceEnabled = value
+    end,
+})
 
-    RunService.Heartbeat:Connect(function()
+tab:CreateSlider({
+    name = "Hard Bounce Multiplier",
+    range = {1.08, 3.00},
+    increment = 0.01,
+    suffix = "x",
+    currentValue = 1.5,
+    flag = "HardBounce_Multiplier",
+    callback = function(value)
+        hardBounceMultiplier = value
+    end,
+})
+
+--[[
+============================================================================
+LEGIT BOUNCE
+============================================================================
+]]--
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+
+local player = Players.LocalPlayer
+local legitBounceEnabled = false
+local LEGIT_MULTIPLIER = 1.11
+
+local legitRayParams = RaycastParams.new()
+legitRayParams.FilterType = Enum.RaycastFilterType.Exclude
+
+local legitLastYVelocity = 0
+local legitAirStartTime = 0
+local legitWasInAir = false
+local legitStateConn
+
+local function legitIsSteepEnough(root)
+    local result = workspace:Raycast(root.Position, Vector3.new(0, -10, 0), legitRayParams)
+    if not result then return false end
+    local angle = math.deg(math.acos(result.Normal.Unit.Y))
+    return angle >= 12
+end
+
+local function attachLegitBounce(char)
+    local hum = char:WaitForChild("Humanoid")
+    local root = char:WaitForChild("HumanoidRootPart")
+    legitRayParams.FilterDescendantsInstances = {char}
+
+    if legitStateConn then legitStateConn:Disconnect() end
+    legitStateConn = hum.StateChanged:Connect(function(_, newState)
         if not legitBounceEnabled then return end
-        local char = player.Character
-        if not char then return end
-        local hum = char:FindFirstChildOfClass("Humanoid")
-        local root = char:FindFirstChild("HumanoidRootPart")
-        if not hum or not root then return end
-        legitLastYVelocity = root.AssemblyLinearVelocity.Y
-        if hum.FloorMaterial == Enum.Material.Air then
-            if not legitWasInAir then
-                legitWasInAir = true
-                legitAirStartTime = tick()
-            end
-        else
-            legitWasInAir = false
-        end
+        if newState ~= Enum.HumanoidStateType.Landed then return end
+        if hum.Health <= 0 then return end
+        if not legitWasInAir then return end
+        if (tick() - legitAirStartTime) < 1 then return end
+        if not legitIsSteepEnough(root) then return end
+        local bounceVel = math.abs(legitLastYVelocity) * LEGIT_MULTIPLIER
+        if bounceVel < 10 then return end
+        root.AssemblyLinearVelocity = Vector3.new(
+            root.AssemblyLinearVelocity.X,
+            bounceVel,
+            root.AssemblyLinearVelocity.Z
+        )
     end)
-
-    tab:CreateDivider()
-
-    tab:CreateToggle({
-        name = "Legit Bounce",
-        currentValue = false,
-        flag = "LegitBounce_Toggle",
-        callback = function(value) legitBounceEnabled = value end,
-    })
 end
 
-do
-    local ReplicatedStorage = game:GetService("ReplicatedStorage")
-    local infSlideEnabled = false
-    local infSlideSpeed = 105
-    local sliding = false
-    local cachedTag = nil
-    local cachedService = nil
-    local cachedCharacter = nil
+if player.Character then
+    task.spawn(attachLegitBounce, player.Character)
+end
+player.CharacterAdded:Connect(function(char)
+    task.spawn(attachLegitBounce, char)
+end)
 
-    local UpdateCharacterDataRegistry = ReplicatedStorage:WaitForChild("Events"):WaitForChild("UpdateCharacterDataRegistry")
-    local CharacterTask = ReplicatedStorage:WaitForChild("Events"):WaitForChild("CharacterTask")
-    local CharacterServiceModule = ReplicatedStorage:WaitForChild("Services"):WaitForChild("Asset"):WaitForChild("CharacterService")
+RunService.Heartbeat:Connect(function()
+    if not legitBounceEnabled then return end
+    local char = player.Character
+    if not char then return end
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    local root = char:FindFirstChild("HumanoidRootPart")
+    if not hum or not root then return end
 
-    local crouchNames = {
-        CrouchIdle=1, CrouchMove=1, Crouch_RootStraight=1,
-        Slide=1, SlideAir=1,
-        EmotingSlide=1, EmotingSlideAir=1,
-        CarrySlide=1, CarrySlideAir=1,
-        CarryCrouchIdle=1, CarryCrouchMove=1,
-    }
-    local standNames = { Idle=1, Move=1, Move_RootStraight=1, Air=1, Jumping=1 }
+    legitLastYVelocity = root.AssemblyLinearVelocity.Y
 
-    local function getService()
-        if cachedService then return cachedService end
-        local ok, mod = pcall(require, CharacterServiceModule)
-        if ok and type(mod) == "table" then cachedService = mod end
-        return cachedService
-    end
-
-    local function getCharacter()
-        if cachedCharacter then return cachedCharacter end
-        local svc = getService()
-        if not svc or not svc.GetLocalCharacter then return nil end
-        local ok, char = pcall(svc.GetLocalCharacter, svc)
-        if ok and type(char) == "table" then
-            cachedCharacter = char
-            if type(char.Tag) == "number" and not cachedTag then cachedTag = char.Tag end
-            return char
+    if hum.FloorMaterial == Enum.Material.Air then
+        if not legitWasInAir then
+            legitWasInAir = true
+            legitAirStartTime = tick()
         end
-        return nil
+    else
+        legitWasInAir = false
     end
+end)
 
-    local function getTag()
-        if cachedTag then return cachedTag end
-        getCharacter()
-        return cachedTag
+tab:CreateDivider()
+
+tab:CreateToggle({
+    name = "Legit Bounce",
+    currentValue = false,
+    flag = "LegitBounce_Toggle",
+    callback = function(value)
+        legitBounceEnabled = value
+    end,
+})
+
+--[[
+============================================================================
+INF SLIDE
+============================================================================
+]]--
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local player = Players.LocalPlayer
+local infSlideEnabled = false
+local infSlideSpeed = 105
+local sliding = false
+local cachedTag = nil
+local cachedService = nil
+local cachedCharacter = nil
+
+local UpdateCharacterDataRegistry = ReplicatedStorage:WaitForChild("Events"):WaitForChild("UpdateCharacterDataRegistry")
+local CharacterTask = ReplicatedStorage:WaitForChild("Events"):WaitForChild("CharacterTask")
+local CharacterServiceModule = ReplicatedStorage:WaitForChild("Services"):WaitForChild("Asset"):WaitForChild("CharacterService")
+
+local crouchNames = {
+    CrouchIdle=1, CrouchMove=1, Crouch_RootStraight=1,
+    Slide=1, SlideAir=1,
+    EmotingSlide=1, EmotingSlideAir=1,
+    CarrySlide=1, CarrySlideAir=1,
+    CarryCrouchIdle=1, CarryCrouchMove=1,
+}
+local standNames = {
+    Idle=1, Move=1, Move_RootStraight=1, Air=1, Jumping=1,
+}
+
+local function getService()
+    if cachedService then return cachedService end
+    local ok, mod = pcall(require, CharacterServiceModule)
+    if ok and type(mod) == "table" then cachedService = mod end
+    return cachedService
+end
+
+local function getCharacter()
+    if cachedCharacter then return cachedCharacter end
+    local svc = getService()
+    if not svc or not svc.GetLocalCharacter then return nil end
+    local ok, char = pcall(svc.GetLocalCharacter, svc)
+    if ok and type(char) == "table" then
+        cachedCharacter = char
+        if type(char.Tag) == "number" and not cachedTag then cachedTag = char.Tag end
+        return char
     end
+    return nil
+end
 
-    local function setLocalFriction(v)
-        local char = getCharacter()
-        if not char or not char.Movement or not char.Movement.MoveStats or not char.Movement.MoveStats.Modifiers then return end
-        char.Movement.MoveStats.Modifiers.Friction = v
-    end
+local function getTag()
+    if cachedTag then return cachedTag end
+    getCharacter()
+    return cachedTag
+end
 
-    local function fireFriction(v)
-        local tag = getTag()
-        if not tag or not firesignal then return end
-        pcall(firesignal, CharacterTask.OnClientEvent, tag, "ModifyMovement", {"Friction", v})
-        setLocalFriction(v)
-    end
+local function setLocalFriction(v)
+    local char = getCharacter()
+    if not char then return end
+    local mv = char.Movement
+    if not mv then return end
+    local stats = mv.MoveStats
+    if not stats then return end
+    local mods = stats.Modifiers
+    if not mods then return end
+    mods.Friction = v
+end
 
-    CharacterTask.OnClientEvent:Connect(function(first)
-        if type(first) == "number" then
-            cachedTag = first
-            cachedCharacter = nil
-        end
-    end)
+local function fireFriction(v)
+    local tag = getTag()
+    if not tag or not firesignal then return end
+    pcall(firesignal, CharacterTask.OnClientEvent, tag, "ModifyMovement", {"Friction", v})
+    setLocalFriction(v)
+end
 
-    player.CharacterAdded:Connect(function()
-        cachedTag = nil
+CharacterTask.OnClientEvent:Connect(function(first)
+    if type(first) == "number" then
+        cachedTag = first
         cachedCharacter = nil
-        sliding = false
-    end)
-
-    local function detect(args)
-        for _, a in ipairs(args) do
-            if type(a) == "table" then
-                for _, v in pairs(a) do
-                    if type(v) == "string" then
-                        if crouchNames[v] then return "crouch" end
-                        if standNames[v] then return "stand" end
-                    end
-                end
-            end
-        end
-        return nil
     end
+end)
 
-    local old
-    old = hookmetamethod(game, "__namecall", function(self, ...)
-        if getnamecallmethod() == "FireServer" and self == UpdateCharacterDataRegistry then
-            if infSlideEnabled then
-                local kind = detect({...})
-                if kind == "crouch" then
-                    sliding = true
-                elseif kind == "stand" then
-                    sliding = false
-                    fireFriction(5)
+player.CharacterAdded:Connect(function()
+    cachedTag = nil
+    cachedCharacter = nil
+    sliding = false
+end)
+
+local function detect(args)
+    for _, a in ipairs(args) do
+        if type(a) == "table" then
+            for _, v in pairs(a) do
+                if type(v) == "string" then
+                    if crouchNames[v] then return "crouch" end
+                    if standNames[v] then return "stand" end
                 end
             end
         end
-        return old(self, ...)
-    end)
+    end
+    return nil
+end
 
-    RunService.Heartbeat:Connect(function()
-        if sliding and infSlideEnabled then
-            fireFriction(-infSlideSpeed)
-        end
-    end)
-
-    tab:CreateDivider()
-
-    tab:CreateToggle({
-        name = "Inf Slide",
-        currentValue = false,
-        flag = "InfSlide_Toggle",
-        callback = function(v)
-            infSlideEnabled = v
-            if not v then
+local old
+old = hookmetamethod(game, "__namecall", function(self, ...)
+    if getnamecallmethod() == "FireServer" and self == UpdateCharacterDataRegistry then
+        if infSlideEnabled then
+            local kind = detect({...})
+            if kind == "crouch" then
+                sliding = true
+            elseif kind == "stand" then
                 sliding = false
                 fireFriction(5)
             end
-        end,
-    })
+        end
+    end
+    return old(self, ...)
+end)
 
-    tab:CreateSlider({
-        name = "Inf Slide Speed",
-        range = {1, 105},
-        increment = 1,
-        currentValue = 105,
-        flag = "InfSlide_Speed",
-        callback = function(v) infSlideSpeed = v end,
-    })
+RunService.Heartbeat:Connect(function()
+    if sliding and infSlideEnabled then
+        fireFriction(-infSlideSpeed)
+    end
+end)
+
+tab:CreateDivider()
+
+tab:CreateToggle({
+    name = "Inf Slide",
+    currentValue = false,
+    flag = "InfSlide_Toggle",
+    callback = function(v)
+        infSlideEnabled = v
+        if not v then
+            sliding = false
+            fireFriction(5)
+        end
+    end,
+})
+
+tab:CreateSlider({
+    name = "Inf Slide Speed",
+    range = {1, 105},
+    increment = 1,
+    currentValue = 105,
+    flag = "InfSlide_Speed",
+    callback = function(v) infSlideSpeed = v end,
+})
+
+--[[
+============================================================================
+CROUCH SPAM
+============================================================================
+]]--
+
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+
+local spamCrouchEnabled = false
+local spamInterval = 0.1
+
+local function isMobileDevice()
+    return UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
 end
 
-do
-    local yLockEnabled = false
-    local yLockPart = nil
-    local yLockY = 0
+local function getCrouchButton()
+    local pg = Players.LocalPlayer:FindFirstChild("PlayerGui")
+    if not pg then return nil end
+    local g = pg:FindFirstChild("Game")
+    if not g then return nil end
+    local hud = g:FindFirstChild("HUD")
+    if not hud then return nil end
+    local mob = hud:FindFirstChild("Mobile")
+    if not mob then return nil end
+    local right = mob:FindFirstChild("Right")
+    if not right then return nil end
+    local inner = right:FindFirstChild("Mobile")
+    if not inner then return nil end
+    return inner:FindFirstChild("CrouchButton")
+end
 
-    local function createYLockPart()
-        local part = Instance.new("Part")
-        part.Name = "YLockPlatform"
-        part.Size = Vector3.new(300, 1, 300)
-        part.Anchored = true
-        part.CanCollide = true
-        part.CanQuery = false
-        part.CanTouch = false
-        part.Transparency = 1
-        part.Material = Enum.Material.SmoothPlastic
-        part.TopSurface = Enum.SurfaceType.Smooth
-        part.BottomSurface = Enum.SurfaceType.Smooth
-        part.Parent = workspace
-        return part
-    end
-
-    local function toggleYLock(on)
-        if on then
-            local char = player.Character
-            local root = char and char:FindFirstChild("HumanoidRootPart")
-            yLockY = root and (root.Position.Y - 1) or 0
-            yLockPart = createYLockPart()
-            yLockPart.Position = Vector3.new(
-                root and root.Position.X or 0,
-                yLockY,
-                root and root.Position.Z or 0
-            )
-        else
-            if yLockPart then
-                yLockPart:Destroy()
-                yLockPart = nil
+local function fireSignal(signal, ...)
+    if not signal then return end
+    if firesignal then
+        pcall(firesignal, signal, ...)
+    elseif getconnections then
+        local ok, conns = pcall(getconnections, signal)
+        if ok and conns then
+            for _, c in pairs(conns) do
+                task.spawn(function()
+                    if c.Function then pcall(c.Function, ...) end
+                end)
             end
         end
     end
+end
 
-    RunService.Heartbeat:Connect(function()
-        if not yLockEnabled or not yLockPart then return end
+local function pressMobile()
+    local btn = getCrouchButton()
+    if not btn then return end
+    fireSignal(btn.MouseButton1Down)
+end
+
+local function releaseMobile()
+    local btn = getCrouchButton()
+    if not btn then return end
+    fireSignal(btn.MouseButton1Up)
+end
+
+local function pressPC()
+    if keypress then pcall(keypress, Enum.KeyCode.C) end
+end
+
+local function releasePC()
+    if keyrelease then pcall(keyrelease, Enum.KeyCode.C) end
+end
+
+local function press()
+    if isMobileDevice() then pressMobile() else pressPC() end
+end
+
+local function release()
+    if isMobileDevice() then releaseMobile() else releasePC() end
+end
+
+tab:CreateDivider()
+
+tab:CreateToggle({
+    name = "Spam Crouch",
+    currentValue = false,
+    flag = "SpamCrouch_Toggle",
+    callback = function(v)
+        spamCrouchEnabled = v
+        if v then
+            task.spawn(function()
+                release()
+                task.wait(0.02)
+                press()
+                while spamCrouchEnabled do
+                    release()
+                    task.wait(spamInterval)
+                    if not spamCrouchEnabled then break end
+                    press()
+                    task.wait(spamInterval)
+                end
+                release()
+            end)
+        else
+            release()
+        end
+    end,
+})
+
+tab:CreateSlider({
+    name = "Spam Crouch Interval",
+    range = {0.002, 5.00},
+    increment = 0.001,
+    suffix = "s",
+    currentValue = 0.1,
+    flag = "SpamCrouch_Interval",
+    callback = function(v) spamInterval = v end,
+})
+
+--[[
+============================================================================
+Y LOCK
+============================================================================
+]]--
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+
+local player = Players.LocalPlayer
+local yLockEnabled = false
+local yLockPart = nil
+local yLockY = 0
+
+local function createYLockPart()
+    local part = Instance.new("Part")
+    part.Name = "YLockPlatform"
+    part.Size = Vector3.new(300, 1, 300)
+    part.Anchored = true
+    part.CanCollide = true
+    part.CanQuery = false
+    part.CanTouch = false
+    part.Transparency = 1
+    part.Material = Enum.Material.SmoothPlastic
+    part.TopSurface = Enum.SurfaceType.Smooth
+    part.BottomSurface = Enum.SurfaceType.Smooth
+    part.Parent = workspace
+    return part
+end
+
+local function toggleYLock(on)
+    if on then
         local char = player.Character
-        if not char then return end
-        local root = char:FindFirstChild("HumanoidRootPart")
-        if not root then return end
-        yLockPart.Position = Vector3.new(root.Position.X, yLockY, root.Position.Z)
-    end)
-
-    player.CharacterAdded:Connect(function()
-        if yLockEnabled then
-            toggleYLock(false)
-            task.wait(0.1)
-            toggleYLock(true)
+        local root = char and char:FindFirstChild("HumanoidRootPart")
+        yLockY = root and (root.Position.Y - 1) or 0
+        yLockPart = createYLockPart()
+        yLockPart.Position = Vector3.new(
+            root and root.Position.X or 0,
+            yLockY,
+            root and root.Position.Z or 0
+        )
+    else
+        if yLockPart then
+            yLockPart:Destroy()
+            yLockPart = nil
         end
-    end)
-
-    tab:CreateDivider()
-
-    tab:CreateToggle({
-        name = "Y Lock",
-        currentValue = false,
-        flag = "YLock_Toggle",
-        callback = function(value)
-            yLockEnabled = value
-            toggleYLock(value)
-        end,
-    })
+    end
 end
 
-do
-    local speedChangerEnabled = false
-    local targetSpeed = 100
-    local currentSpeed = 0
-    local ACCEL_RATE = 200
-    local DECEL_RATE = 400
-    local jumpedBackwards = false
+RunService.Heartbeat:Connect(function()
+    if not yLockEnabled then return end
+    if not yLockPart then return end
+    local char = player.Character
+    if not char then return end
+    local root = char:FindFirstChild("HumanoidRootPart")
+    if not root then return end
+    yLockPart.Position = Vector3.new(root.Position.X, yLockY, root.Position.Z)
+end)
 
-    local speedCharConn
-    local speedHum, speedRoot
+player.CharacterAdded:Connect(function()
+    if yLockEnabled then
+        toggleYLock(false)
+        task.wait(0.1)
+        toggleYLock(true)
+    end
+end)
 
-    local function speedGetLabel()
-        local pg = player:FindFirstChild("PlayerGui")
-        if not pg then return nil end
-        local g = pg:FindFirstChild("Game")
-        if not g then return nil end
-        local hud = g:FindFirstChild("HUD")
-        if not hud then return nil end
-        local overlay = hud:FindFirstChild("Overlay")
-        if not overlay then return nil end
-        local cs = overlay:FindFirstChild("CharacterStatus")
-        if not cs then return nil end
-        local bl = cs:FindFirstChild("BottomLeft")
-        if not bl then return nil end
-        local sp = bl:FindFirstChild("Speedometer")
-        if not sp then return nil end
-        return sp:FindFirstChild("Speed")
+tab:CreateDivider()
+
+tab:CreateToggle({
+    name = "Y Lock",
+    currentValue = false,
+    flag = "YLock_Toggle",
+    callback = function(value)
+        yLockEnabled = value
+        toggleYLock(value)
+    end,
+})
+
+--[[
+============================================================================
+SPEED CHANGER
+============================================================================
+]]--
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+
+local player = Players.LocalPlayer
+local speedChangerEnabled = false
+local targetSpeed = 100
+local currentSpeed = 0
+local ACCEL_RATE = 200
+local DECEL_RATE = 400
+local jumpedBackwards = false
+
+local speedCharConn
+local speedHum, speedRoot
+
+local function speedGetLabel()
+    local pg = player:FindFirstChild("PlayerGui")
+    if not pg then return nil end
+    local g = pg:FindFirstChild("Game")
+    if not g then return nil end
+    local hud = g:FindFirstChild("HUD")
+    if not hud then return nil end
+    local overlay = hud:FindFirstChild("Overlay")
+    if not overlay then return nil end
+    local cs = overlay:FindFirstChild("CharacterStatus")
+    if not cs then return nil end
+    local bl = cs:FindFirstChild("BottomLeft")
+    if not bl then return nil end
+    local sp = bl:FindFirstChild("Speedometer")
+    if not sp then return nil end
+    return sp:FindFirstChild("Speed")
+end
+
+local function speedSetLabel(value)
+    local label = speedGetLabel()
+    if not label then return end
+    local txt = tostring(math.floor(value + 0.5))
+    if label:IsA("TextLabel") or label:IsA("TextButton") then
+        label.Text = txt
+    elseif label:IsA("StringValue") then
+        label.Value = txt
+    elseif label:IsA("NumberValue") or label:IsA("IntValue") then
+        label.Value = math.floor(value + 0.5)
+    end
+end
+
+local function speedAttach(char)
+    speedHum = char:WaitForChild("Humanoid")
+    speedRoot = char:WaitForChild("HumanoidRootPart")
+    jumpedBackwards = false
+    currentSpeed = 0
+
+    if speedChangerEnabled then
+        speedHum.WalkSpeed = 0
     end
 
-    local function speedSetLabel(value)
-        local label = speedGetLabel()
-        if not label then return end
-        local txt = tostring(math.floor(value + 0.5))
-        if label:IsA("TextLabel") or label:IsA("TextButton") then
-            label.Text = txt
-        elseif label:IsA("StringValue") then
-            label.Value = txt
-        elseif label:IsA("NumberValue") or label:IsA("IntValue") then
-            label.Value = math.floor(value + 0.5)
-        end
-    end
-
-    local function speedAttach(char)
-        speedHum = char:WaitForChild("Humanoid")
-        speedRoot = char:WaitForChild("HumanoidRootPart")
-        jumpedBackwards = false
-        currentSpeed = 0
-        if speedChangerEnabled then speedHum.WalkSpeed = 0 end
-        if speedCharConn then speedCharConn:Disconnect() end
-        speedCharConn = speedHum.Jumping:Connect(function()
-            if not speedChangerEnabled then return end
-            if speedHum.MoveDirection.Magnitude > 0 then
-                local dot = speedRoot.CFrame.LookVector:Dot(speedHum.MoveDirection)
-                if dot < 0 then jumpedBackwards = true end
-            end
-        end)
-    end
-
-    if player.Character then task.spawn(speedAttach, player.Character) end
-    player.CharacterAdded:Connect(function(char) task.spawn(speedAttach, char) end)
-
-    RunService.Heartbeat:Connect(function(dt)
+    if speedCharConn then speedCharConn:Disconnect() end
+    speedCharConn = speedHum.Jumping:Connect(function()
         if not speedChangerEnabled then return end
-        if not speedHum or not speedRoot then return end
-        if speedHum.Health <= 0 then return end
-
-        local moving = speedHum.MoveDirection.Magnitude > 0
-        local goingBack = false
-        if moving then
+        if speedHum.MoveDirection.Magnitude > 0 then
             local dot = speedRoot.CFrame.LookVector:Dot(speedHum.MoveDirection)
-            goingBack = dot < 0
-        end
-
-        if moving then
-            if currentSpeed < targetSpeed then
-                currentSpeed = math.min(targetSpeed, currentSpeed + ACCEL_RATE * dt)
-            else
-                currentSpeed = targetSpeed
+            if dot < 0 then
+                jumpedBackwards = true
             end
-        else
-            currentSpeed = math.max(0, currentSpeed - DECEL_RATE * dt)
         end
-
-        local mult = 1
-        if goingBack then
-            if jumpedBackwards then mult = 0.25 else mult = 0.5 end
-        else
-            jumpedBackwards = false
-        end
-
-        local applied = currentSpeed * mult
-        if applied > 0 and moving then
-            local step = applied * dt
-            local dir = speedHum.MoveDirection.Unit
-            speedRoot.CFrame = speedRoot.CFrame + dir * step
-        end
-
-        speedSetLabel(applied)
     end)
-
-    tab:CreateDivider()
-
-    tab:CreateToggle({
-        name = "Speed Changer",
-        currentValue = false,
-        flag = "SpeedChanger_Toggle",
-        callback = function(value)
-            speedChangerEnabled = value
-            if not value then
-                currentSpeed = 0
-                jumpedBackwards = false
-                if speedHum then speedHum.WalkSpeed = 16 end
-                speedSetLabel(0)
-            else
-                if speedHum then speedHum.WalkSpeed = 0 end
-            end
-        end,
-    })
-
-    tab:CreateSlider({
-        name = "Speed",
-        range = {33.3, 500.5},
-        increment = 0.1,
-        suffix = " sps",
-        currentValue = 100,
-        flag = "SpeedChanger_Slider",
-        callback = function(value) targetSpeed = value end,
-    })
-
-    local instantAccelEnabled = false
-    local IA_SPEED = 16.6
-    local IA_BACKWARDS_MULT = 0.5
-    local IA_BACKWARDS_DOT = -0.3
-    local IA_DURATION = 2.5
-
-    local iaHum, iaRoot
-    local iaMoveStart = 0
-    local iaWasMoving = false
-
-    local function iaAttach(char)
-        iaHum = char:WaitForChild("Humanoid")
-        iaRoot = char:WaitForChild("HumanoidRootPart")
-        iaMoveStart = 0
-        iaWasMoving = false
-        if instantAccelEnabled then iaHum.WalkSpeed = 0 end
-    end
-
-    if player.Character then task.spawn(iaAttach, player.Character) end
-    player.CharacterAdded:Connect(function(char) task.spawn(iaAttach, char) end)
-
-    RunService.Heartbeat:Connect(function(dt)
-        if not instantAccelEnabled then return end
-        if not iaHum or not iaRoot or not iaRoot.Parent then return end
-        if iaHum.Health <= 0 then return end
-        local moveDir = iaHum.MoveDirection
-        local moving = moveDir.Magnitude > 0
-        if moving and not iaWasMoving then iaMoveStart = tick() end
-        iaWasMoving = moving
-        if not moving then return end
-        if tick() - iaMoveStart >= IA_DURATION then return end
-        local wishDir = moveDir.Unit
-        local backwards = iaRoot.CFrame.LookVector:Dot(wishDir) < IA_BACKWARDS_DOT
-        local speed = backwards and (IA_SPEED * IA_BACKWARDS_MULT) or IA_SPEED
-        iaRoot.CFrame = iaRoot.CFrame + Vector3.new(wishDir.X * speed * dt, 0, wishDir.Z * speed * dt)
-    end)
-
-    tab:CreateDivider()
-
-    tab:CreateToggle({
-        name = "Instant Acceleration",
-        currentValue = false,
-        flag = "InstantAccel_Toggle",
-        callback = function(value)
-            instantAccelEnabled = value
-            if iaHum then iaHum.WalkSpeed = value and 0 or 16 end
-        end,
-    })
 end
 
+if player.Character then task.spawn(speedAttach, player.Character) end
+player.CharacterAdded:Connect(function(char) task.spawn(speedAttach, char) end)
+
+RunService.Heartbeat:Connect(function(dt)
+    if not speedChangerEnabled then return end
+    if not speedHum or not speedRoot then return end
+    if speedHum.Health <= 0 then return end
+
+    local moving = speedHum.MoveDirection.Magnitude > 0
+    local goingBack = false
+    if moving then
+        local dot = speedRoot.CFrame.LookVector:Dot(speedHum.MoveDirection)
+        goingBack = dot < 0
+    end
+
+    if moving then
+        if currentSpeed < targetSpeed then
+            currentSpeed = math.min(targetSpeed, currentSpeed + ACCEL_RATE * dt)
+        else
+            currentSpeed = targetSpeed
+        end
+    else
+        currentSpeed = math.max(0, currentSpeed - DECEL_RATE * dt)
+    end
+
+    local mult = 1
+    if goingBack then
+        if jumpedBackwards then
+            mult = 0.25
+        else
+            mult = 0.5
+        end
+    else
+        jumpedBackwards = false
+    end
+
+    local applied = currentSpeed * mult
+
+    if applied > 0 and moving then
+        local step = applied * dt
+        local dir = speedHum.MoveDirection.Unit
+        speedRoot.CFrame = speedRoot.CFrame + dir * step
+    end
+
+    speedSetLabel(applied)
+end)
+
+tab:CreateDivider()
+
+tab:CreateToggle({
+    name = "Speed Changer",
+    currentValue = false,
+    flag = "SpeedChanger_Toggle",
+    callback = function(value)
+        speedChangerEnabled = value
+        if not value then
+            currentSpeed = 0
+            jumpedBackwards = false
+            if speedHum then speedHum.WalkSpeed = 16 end
+            speedSetLabel(0)
+        else
+            if speedHum then speedHum.WalkSpeed = 0 end
+        end
+    end,
+})
+
+tab:CreateSlider({
+    name = "Speed",
+    range = {33.3, 500.5},
+    increment = 0.1,
+    suffix = " sps",
+    currentValue = 100,
+    flag = "SpeedChanger_Slider",
+    callback = function(value)
+        targetSpeed = value
+    end,
+})
+
+-- =============================
+
+local instantAccelEnabled = false
+
+local IA_SPEED = 16.6
+local IA_BACKWARDS_MULT = 0.5
+local IA_BACKWARDS_DOT = -0.3
+local IA_DURATION = 2.5
+
+local iaHum, iaRoot
+local iaMoveStart = 0
+local iaWasMoving = false
+
+local function iaAttach(char)
+    iaHum = char:WaitForChild("Humanoid")
+    iaRoot = char:WaitForChild("HumanoidRootPart")
+    iaMoveStart = 0
+    iaWasMoving = false
+    if instantAccelEnabled then iaHum.WalkSpeed = 0 end
+end
+
+if player.Character then task.spawn(iaAttach, player.Character) end
+player.CharacterAdded:Connect(function(char) task.spawn(iaAttach, char) end)
+
+RunService.Heartbeat:Connect(function(dt)
+    if not instantAccelEnabled then return end
+    if not iaHum or not iaRoot or not iaRoot.Parent then return end
+    if iaHum.Health <= 0 then return end
+
+    local moveDir = iaHum.MoveDirection
+    local moving = moveDir.Magnitude > 0
+
+    if moving and not iaWasMoving then
+        iaMoveStart = tick()
+    end
+    iaWasMoving = moving
+
+    if not moving then return end
+    if tick() - iaMoveStart >= IA_DURATION then return end
+
+    local wishDir = moveDir.Unit
+    local backwards = iaRoot.CFrame.LookVector:Dot(wishDir) < IA_BACKWARDS_DOT
+    local speed = backwards and (IA_SPEED * IA_BACKWARDS_MULT) or IA_SPEED
+
+    iaRoot.CFrame = iaRoot.CFrame + Vector3.new(wishDir.X * speed * dt, 0, wishDir.Z * speed * dt)
+end)
+
+tab:CreateDivider()
+
+tab:CreateToggle({
+    name = "Instant Acceleration",
+    currentValue = false,
+    flag = "InstantAccel_Toggle",
+    callback = function(value)
+        instantAccelEnabled = value
+        if iaHum then
+            iaHum.WalkSpeed = value and 0 or 16
+        end
+    end,
+})
 -- VIS
 local VisTab = window:CreateTab({ name = "Visuals", icon = 126802044806598 })
 buildExtras(VisTab, window)
@@ -2027,3 +2297,6 @@ local tab = window:CreateTab({ name = "Map", icon = 78731952302365 })
 -- ==================
 -- S C R I P T    E N D
 -- ==================
+
+
+Make EVERYTHING do end, also make everything from now on a do end, do NOT make headless and korblox a do end, DO NOT make emote changer do end, LR cosmetic changer do end.
