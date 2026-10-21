@@ -1258,7 +1258,7 @@ local function buildUnlockAll(tab, window)
 			name = "Unlock:",
 			options = dropOptions,
 			currentOption = { "Emotes" },
-			multiSelect = false,
+			multiSelect = true,
 			callback = function(selected)
 				currentMode = type(selected) == "table" and selected[1] or selected
 				if isUnlocking then doUnlock() end
