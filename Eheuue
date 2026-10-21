@@ -1863,7 +1863,7 @@ CROUCH SPAM
 ============================================================================
 ]]--
 
--- hi
+-- broken :(
 
 --[[
 ============================================================================
@@ -2064,7 +2064,8 @@ RunService.Heartbeat:Connect(function(dt)
     speedSetLabel(applied)
 end)
 
-tab:CreateDivider()
+tab:CreateDivider({ text = "Speed" })
+
 
 tab:CreateToggle({
     name = "Speed Changer",
@@ -2095,7 +2096,74 @@ tab:CreateSlider({
     end,
 })
 
--- =============================
+--[[
+============================================================================
+TP WALK
+============================================================================
+]]--
+
+do
+    local tpWalkEnabled = false
+    local tpWalkSlider = 1500
+
+    local function sliderToSPS(value)
+        return 16.6 + (value - 1500) * (114.07 / 8500)
+    end
+
+    local tpHum, tpRoot
+
+    local function tpAttach(char)
+        tpHum = char:WaitForChild("Humanoid")
+        tpRoot = char:WaitForChild("HumanoidRootPart")
+        if tpWalkEnabled then tpHum.WalkSpeed = 0 end
+    end
+
+    if player.Character then task.spawn(tpAttach, player.Character) end
+    player.CharacterAdded:Connect(function(char) task.spawn(tpAttach, char) end)
+
+    RunService.Heartbeat:Connect(function(dt)
+        if not tpWalkEnabled then return end
+        if not tpHum or not tpRoot or not tpRoot.Parent then return end
+        if tpHum.Health <= 0 then return end
+
+        local moveDir = tpHum.MoveDirection
+        if moveDir.Magnitude <= 0 then return end
+
+        local speed = sliderToSPS(tpWalkSlider)
+        local dir = moveDir.Unit
+        tpRoot.CFrame = tpRoot.CFrame + Vector3.new(dir.X * speed * dt, 0, dir.Z * speed * dt)
+    end)
+
+    tab:CreateDivider()
+
+    tab:CreateToggle({
+        name = "TP Walk",
+        currentValue = false,
+        flag = "TPWalk_Toggle",
+        callback = function(v)
+            tpWalkEnabled = v
+            if tpHum then tpHum.WalkSpeed = v and 0 or 16 end
+        end,
+    })
+
+    tab:CreateSlider({
+        name = "TP Walk Speed",
+        range = {1500, 10000},
+        increment = 1,
+        suffix = "",
+        currentValue = 1500,
+        flag = "TPWalk_Slider",
+        callback = function(v)
+            tpWalkSlider = v
+        end,
+    })
+end
+
+--[[
+============================================================================
+IA
+============================================================================
+]]--
 
 local instantAccelEnabled = false
 
@@ -2231,7 +2299,8 @@ do
         fireFriction(frictionValue)
     end)
 
-    tab:CreateDivider()
+    tab:CreateDivider({ text = "Modifiers" })
+
 
     tab:CreateToggle({
         name = "Friction Changer",
