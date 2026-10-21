@@ -1050,7 +1050,7 @@ local function buildUnlockAll(tab, window)
 
 		local clonedItems = {}
 		local isUnlocking = false
-		local currentMode = "Emotes"
+		local currentModes = { "Emotes" } -- Now a table for multi-select
 
 		local function resolvePath(keys)
 			local ok, result = pcall(function()
@@ -1095,7 +1095,6 @@ local function buildUnlockAll(tab, window)
 			return "nil"
 		end
 
-		-- Collect all items and headers
 		local allEmotes = {}
 		local allCosmetics = {}
 		local headers = { ["Normal"] = true, ["Rare"] = true }
@@ -1145,7 +1144,6 @@ local function buildUnlockAll(tab, window)
 		end
 		table.sort(dropOptions)
 
-		-- Find Templates
 		local catJam = ReplicatedStorage.Items.BaseItems.Emotes:FindFirstChild("CatJam")
 		local haha = resolvePath({"Items","ItemPacks","Base","DailyShop","Cosmetics","Unusual","Haha"})
 		local bobo = nil
@@ -1163,6 +1161,18 @@ local function buildUnlockAll(tab, window)
 		local function doUnlock()
 			clearUnlocks()
 			if not isUnlocking then return end
+
+			local processed = {} -- Keeps track of what was already cloned to prevent duplicates
+
+			local function shouldProcess(header, isEmote)
+				if #currentModes == 0 then return false end
+				for _, mode in ipairs(currentModes) do
+					if mode == "Emotes" and isEmote then return true end
+					if mode == "Cosmetics" and not isEmote then return true end
+					if header == mode then return true end
+				end
+				return false
+			end
 
 			local function processEmote(targetItem, template)
 				if not template then return end
@@ -1228,39 +1238,43 @@ local function buildUnlockAll(tab, window)
 				table.insert(clonedItems, clone)
 			end
 
-			if currentMode == "Emotes" then
-				for _, emote in ipairs(allEmotes) do processEmote(emote, catJam) end
-			elseif currentMode == "Cosmetics" then
-				for _, cos in ipairs(allCosmetics) do processCosmetic(cos) end
-			else
-				for _, emote in ipairs(allEmotes) do
-					local d = getData(emote)
-					if d and d.UIInfo and d.UIInfo.Header == currentMode then
-						processEmote(emote, catJam)
-					end
-				end
-				for _, cos in ipairs(allCosmetics) do
-					local d = getData(cos)
-					if d and d.UIInfo and d.UIInfo.Header == currentMode then
-						processCosmetic(cos)
-					end
+			-- Process Emotes
+			for _, emote in ipairs(allEmotes) do
+				local d = getData(emote)
+				local header = d and d.UIInfo and d.UIInfo.Header
+				if shouldProcess(header, true) and not processed[emote] then
+					processed[emote] = true
+					processEmote(emote, catJam)
 				end
 			end
 
-			window:Notify({ title = "Unlock All", content = ("Unlocked all %s items."):format(currentMode), duration = 5 })
+			-- Process Cosmetics
+			for _, cos in ipairs(allCosmetics) do
+				local d = getData(cos)
+				local header = d and d.UIInfo and d.UIInfo.Header
+				if shouldProcess(header, false) and not processed[cos] then
+					processed[cos] = true
+					processCosmetic(cos)
+				end
+			end
+
+			window:Notify({ title = "Unlock All", content = "Applied unlocks for selected modes.", duration = 5 })
 		end
-
-		-- UI Elements
-
-                tab:CreateDivider({ text = "Unlock All" })
 
 		tab:CreateDropdown({
 			name = "Unlock:",
 			options = dropOptions,
 			currentOption = { "Emotes" },
-			multiSelect = true,
+			multiSelect = true, -- ENABLED MULTI-SELECT
 			callback = function(selected)
-				currentMode = type(selected) == "table" and selected[1] or selected
+				currentModes = {}
+				if type(selected) == "table" then
+					for _, v in ipairs(selected) do
+						table.insert(currentModes, v)
+					end
+				elseif type(selected) == "string" then
+					table.insert(currentModes, selected)
+				end
 				if isUnlocking then doUnlock() end
 			end,
 		})
