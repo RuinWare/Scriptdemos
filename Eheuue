@@ -2156,6 +2156,109 @@ tab:CreateToggle({
     end,
 })
 
+--[[
+============================================================================
+FRICTION
+============================================================================
+]]--
+
+do
+    local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+    local frictionEnabled = false
+    local frictionValue = 5
+    local cachedTag = nil
+    local cachedService = nil
+    local cachedCharacter = nil
+
+    local UpdateCharacterDataRegistry = ReplicatedStorage:WaitForChild("Events"):WaitForChild("UpdateCharacterDataRegistry")
+    local CharacterTask = ReplicatedStorage:WaitForChild("Events"):WaitForChild("CharacterTask")
+    local CharacterServiceModule = ReplicatedStorage:WaitForChild("Services"):WaitForChild("Asset"):WaitForChild("CharacterService")
+
+    local function getService()
+        if cachedService then return cachedService end
+        local ok, mod = pcall(require, CharacterServiceModule)
+        if ok and type(mod) == "table" then cachedService = mod end
+        return cachedService
+    end
+
+    local function getCharacter()
+        if cachedCharacter then return cachedCharacter end
+        local svc = getService()
+        if not svc or not svc.GetLocalCharacter then return nil end
+        local ok, char = pcall(svc.GetLocalCharacter, svc)
+        if ok and type(char) == "table" then
+            cachedCharacter = char
+            if type(char.Tag) == "number" and not cachedTag then cachedTag = char.Tag end
+            return char
+        end
+        return nil
+    end
+
+    local function getTag()
+        if cachedTag then return cachedTag end
+        getCharacter()
+        return cachedTag
+    end
+
+    local function setLocalFriction(v)
+        local char = getCharacter()
+        if not char or not char.Movement or not char.Movement.MoveStats or not char.Movement.MoveStats.Modifiers then return end
+        char.Movement.MoveStats.Modifiers.Friction = v
+    end
+
+    local function fireFriction(v)
+        local tag = getTag()
+        if not tag or not firesignal then return end
+        pcall(firesignal, CharacterTask.OnClientEvent, tag, "ModifyMovement", {"Friction", v})
+        setLocalFriction(v)
+    end
+
+    CharacterTask.OnClientEvent:Connect(function(first)
+        if type(first) == "number" then
+            cachedTag = first
+            cachedCharacter = nil
+        end
+    end)
+
+    player.CharacterAdded:Connect(function()
+        cachedTag = nil
+        cachedCharacter = nil
+    end)
+
+    RunService.Heartbeat:Connect(function()
+        if not frictionEnabled then return end
+        fireFriction(frictionValue)
+    end)
+
+    tab:CreateDivider()
+
+    tab:CreateToggle({
+        name = "Friction Changer",
+        currentValue = false,
+        flag = "FrictionChanger_Toggle",
+        callback = function(v)
+            frictionEnabled = v
+            if not v then
+                fireFriction(5)
+            end
+        end,
+    })
+
+    tab:CreateInput({
+        name = "Friction Value",
+        placeholder = "e.g. -105",
+        currentValue = "5",
+        flag = "FrictionChanger_Value",
+        callback = function(text)
+            local n = tonumber(text)
+            if n then
+                frictionValue = n
+            end
+        end,
+    })
+end
+
 -- VIS
 local VisTab = window:CreateTab({ name = "Visuals", icon = 126802044806598 })
 buildExtras(VisTab, window)
