@@ -931,372 +931,6 @@ end
 
 --[[
 ============================================================================
-
-U   N   L   O   C   K      ALL
-
-============================================================================
-]]--
-
-local function buildUnlockAll(tab, window)
-	do
-		local ReplicatedStorage = game:GetService("ReplicatedStorage")
-
-		local EMOTE_PATHS = {
-			{"Items","ItemPacks","Gamepass","Unorganized","EmotePack","Emotes"},
-			{"Items","ItemPacks","Gamepass","Unorganized","EclipseSet","Emotes"},
-			{"Items","ItemPacks","Gamepass","Unorganized","DogSet","Emotes"},
-			{"Items","ItemPacks","Gamepass","Unorganized","Cats","Emotes"},
-			{"Items","ItemPacks","Gamepass","Unorganized","Animals","Emotes"},
-			{"Items","ItemPacks","Gamepass","Legacy","StPatricks2023","Emotes"},
-			{"Items","ItemPacks","Gamepass","Legacy","Military","Emotes"},
-			{"Items","ItemPacks","Gamepass","2026","RelicEmotesNew","Emotes"},
-			{"Items","ItemPacks","Gamepass","2026","PoseidonSet","Emotes"},
-			{"Items","ItemPacks","Gamepass","2026","BeeSet","Emotes"},
-			{"Items","ItemPacks","EventsDailyShop","Thanksgiving2025","Emotes"},
-			{"Items","ItemPacks","EventsDailyShop","OldRoblox","Emotes"},
-			{"Items","ItemPacks","EventsDailyShop","NewYears2024","Emotes"},
-			{"Items","ItemPacks","EventsDailyShop","LunarNewYear","Emotes"},
-			{"Items","ItemPacks","Events","2026","Valentines2026","Emotes"},
-			{"Items","ItemPacks","Events","2026","StPatricks2026","Emotes"},
-			{"Items","ItemPacks","Events","2026","Spring2026","Emotes"},
-			{"Items","ItemPacks","Events","2026","SUMMER26","Emotes"},
-			{"Items","ItemPacks","Events","2026","HLWN2026","Emotes"},
-			{"Items","ItemPacks","Events","2025","XMAS25","Emotes","DailyShop"},
-			{"Items","ItemPacks","Events","2025","XMAS25","Emotes","Battlepass"},
-			{"Items","ItemPacks","Events","2025","Valentines2025","Emotes"},
-			{"Items","ItemPacks","Events","2025","Summer2025","Emotes"},
-			{"Items","ItemPacks","Events","2025","StPatricks2025","Emotes"},
-			{"Items","ItemPacks","Events","2025","Hlwn2025","Emotes"},
-			{"Items","ItemPacks","Events","2024","Xmas2024","Emotes"},
-			{"Items","ItemPacks","Events","2024","Valentines2024","Emotes"},
-			{"Items","ItemPacks","Events","2024","StPatricks2024","Emotes"},
-			{"Items","ItemPacks","Events","2024","Hlwn2024","Emotes"},
-			{"Items","ItemPacks","Events","2024","Halloween2024","Emotes"},
-			{"Items","ItemPacks","Events","2023","Hlwn2023","Emotes"},
-			{"Items","ItemPacks","Events","2023","Halloween2023","Emotes"},
-			{"Items","ItemPacks","Events","2023","Xmas2023","Emotes"},
-			{"Items","ItemPacks","Events","2023","Valentines2023","Emotes"},
-			{"Items","ItemPacks","Events","2023","StPatricks2023","Emotes"},
-			{"Items","ItemPacks","Events","2023","Summer2023","Emotes"},
-			{"Items","ItemPacks","Events","2022","Hlwn2022","Emotes"},
-			{"Items","ItemPacks","Events","2022","Halloween2022","Emotes"},
-			{"Items","ItemPacks","Events","2022","Xmas2022","Emotes"},
-			{"Items","ItemPacks","Events","2022","Valentines2022","Emotes"},
-			{"Items","ItemPacks","Collab","ST","Emotes"},
-			{"Items","ItemPacks","Base","Special","Emotes"},
-			{"Items","ItemPacks","Base","NewShop","Emotes"},
-			{"Items","ItemPacks","Base","LevelShop","Emotes"},
-			{"Items","ItemPacks","Base","DailyShop","Emotes"},
-			{"Items","BaseItems","Emotes"},
-			{"Items","ItemPacks","Integration","M3GAN","Emotes"},
-			{"Items","ItemPacks","Gamepass","Unorganized","Gems","Emotes"},
-			{"Items","ItemPacks","Gamepass","Unorganized","LunarNewYearSet","Emotes"},
-			{"Items","ItemPacks","Gamepass","Unorganized","MusicEmotesPack1","Emotes"},
-			{"Items","ItemPacks","Gamepass","Unorganized","RelicEmotesVaulted","Emotes"},
-		}
-
-		local COSMETIC_PATHS = {
-			{"Items","ItemPacks","Gamepass","Legacy","StPatricks2023","Cosmetics"},
-			{"Items","ItemPacks","Base","Admin","Cosmetics"},
-			{"Items","ItemPacks","Gamepass","Legacy","Military","Cosmetics"},
-			{"Items","ItemPacks","Gamepass","2026","PoseidonSet","Cosmetics"},
-			{"Items","ItemPacks","Gamepass","2026","BeeSet","Cosmetics"},
-			{"Items","ItemPacks","EventsDailyShop","OldRoblox","Cosmetics"},
-			{"Items","ItemPacks","EventsDailyShop","NewYears2024","Cosmetics"},
-			{"Items","ItemPacks","EventsDailyShop","LunarNewYear","Cosmetics"},
-			{"Items","ItemPacks","EventsDailyShop","Easter","Cosmetics"},
-			{"Items","ItemPacks","EventsDailyShop","Birthday25","Cosmetics"},
-			{"Items","ItemPacks","EventsDailyShop","Anniversary26","Cosmetics"},
-			{"Items","ItemPacks","Collab","TowerBlitz","Cosmetics"},
-			{"Items","ItemPacks","Base","UpperLevel","Cosmetics"},
-			{"Items","ItemPacks","Base","Special","Cosmetics"},
-			{"Items","ItemPacks","Base","ForsakenCollabUpdate","Cosmetics"},
-			{"Items","ItemPacks","Base","DailyShop","Cosmetics","UnusualNew2"},
-			{"Items","ItemPacks","Base","DailyShop","Cosmetics","UnusualNew"},
-			{"Items","ItemPacks","Base","DailyShop","Cosmetics","Unusual"},
-			{"Items","ItemPacks","Base","DailyShop","Cosmetics","Normal"},
-			{"Items","ItemPacks","Base","DailyShop","Cosmetics","Character"},
-			{"Items","ItemPacks","Gamepass","Unorganized","Animals","Cosmetics"},
-			{"Items","ItemPacks","Gamepass","Unorganized","RetroCosmeticsSet","Cosmetics"},
-			{"Items","ItemPacks","Gamepass","Unorganized","LunarNewYearSet","Cosmetics"},
-			{"Items","ItemPacks","Gamepass","Unorganized","Gems","Cosmetics"},
-			{"Items","ItemPacks","Gamepass","Unorganized","Future","Cosmetics"},
-			{"Items","ItemPacks","Gamepass","Unorganized","EclipseSet","Cosmetics"},
-			{"Items","ItemPacks","Gamepass","Unorganized","DogSet","Cosmetics"},
-			{"Items","ItemPacks","Gamepass","Unorganized","Cats","Cosmetics"},
-			{"Items","ItemPacks","Events","2026","HLWN2026","Cosmetics"},
-			{"Items","ItemPacks","Events","2024","Halloween2024","Cosmetics"},
-			{"Items","ItemPacks","Events","2024","Halloween2024","Cosmetics","HLWN24EXCLUSIVE"},
-			{"Items","ItemPacks","Events","2023","Valentines2023","Cosmetics"},
-			{"Items","ItemPacks","Events","2023","Christmas2023","Cosmetics"},
-			{"Items","ItemPacks","Events","2022","Xmas2022","Cosmetics"},
-			{"Items","ItemPacks","Events","2022","Xmas2022","Cosmetics","XMASExclusive"},
-			{"Items","ItemPacks","Events","2022","Xmas2022","Cosmetics","XMasGamepass"},
-			{"Items","ItemPacks","Events","2022","Halloween2022","Cosmetics"},
-			{"Items","ItemPacks","Events","2022","Halloween2022","Cosmetics","HalloweenExclusive"},
-			{"Items","ItemPacks","Events","2026","Valentines2026","Cosmetics"},
-			{"Items","ItemPacks","Events","2026","StPatricks2026","Cosmetics"},
-			{"Items","ItemPacks","Events","2026","Spring2026","Cosmetics"},
-			{"Items","ItemPacks","Events","2026","SUMMER26","Cosmetics"},
-			{"Items","ItemPacks","Events","2025","XMAS25","Cosmetics"},
-			{"Items","ItemPacks","Events","2025","Valentines2025","Cosmetics"},
-			{"Items","ItemPacks","Events","2025","Summer2025","Cosmetics"},
-			{"Items","ItemPacks","Events","2025","StPatricks2025","Cosmetics"},
-			{"Items","ItemPacks","Events","2025","Hlwn2025","Cosmetics"},
-			{"Items","ItemPacks","Events","2024","Xmas2024","Cosmetics"},
-			{"Items","ItemPacks","Events","2024","Valentines2024","Cosmetics"},
-			{"Items","ItemPacks","Events","2024","StPatricks2024","Cosmetics"},
-		}
-
-		local clonedItems = {}
-		local isUnlocking = false
-		local currentModes = { "Emotes" } -- Now a table for multi-select
-
-		local function resolvePath(keys)
-			local ok, result = pcall(function()
-				local obj = ReplicatedStorage
-				for _, k in ipairs(keys) do obj = obj[k] end
-				return obj
-			end)
-			if ok and typeof(result) == "Instance" then return result end
-			return nil
-		end
-
-		local function getItemScript(item)
-			if item:IsA("ModuleScript") then return item end
-			for _, c in ipairs(item:GetChildren()) do
-				if c:IsA("ModuleScript") then return c end
-			end
-			return nil
-		end
-
-		local function getData(item)
-			local s = getItemScript(item)
-			if not s then return nil end
-			local ok, d = pcall(require, s)
-			return ok and type(d) == "table" and d or nil
-		end
-
-		local function serialize(val, depth)
-			depth = depth or 1
-			local indent = string.rep("    ", depth)
-			if type(val) == "string" then
-				return string.format("%q", val)
-			elseif type(val) == "number" or type(val) == "boolean" then
-				return tostring(val)
-			elseif type(val) == "table" then
-				local str = "{\n"
-				for k, v in pairs(val) do
-					local key = type(k) == "string" and string.format("[%q]", k) or string.format("[%s]", tostring(k))
-					str = str .. indent .. key .. " = " .. serialize(v, depth + 1) .. ",\n"
-				end
-				return str .. string.rep("    ", depth - 1) .. "}"
-			end
-			return "nil"
-		end
-
-		local allEmotes = {}
-		local allCosmetics = {}
-		local headers = { ["Normal"] = true, ["Rare"] = true }
-
-		for _, path in ipairs(EMOTE_PATHS) do
-			local f = resolvePath(path)
-			if f then
-				for _, c in ipairs(f:GetChildren()) do
-					if c:IsA("Folder") and (c.Name:lower() == "battlepass" or c.Name:lower() == "dailyshop") then
-						for _, inner in ipairs(c:GetChildren()) do
-							table.insert(allEmotes, inner)
-							local d = getData(inner)
-							if d and d.UIInfo and d.UIInfo.Header then headers[d.UIInfo.Header] = true end
-						end
-					else
-						table.insert(allEmotes, c)
-						local d = getData(c)
-						if d and d.UIInfo and d.UIInfo.Header then headers[d.UIInfo.Header] = true end
-					end
-				end
-			end
-		end
-
-		for _, path in ipairs(COSMETIC_PATHS) do
-			local f = resolvePath(path)
-			if f then
-				local function collect(inst)
-					for _, c in ipairs(inst:GetChildren()) do
-						if c.Name:match("^[Tt][Ii][Ee][Rr]%d+$") then
-							collect(c)
-						else
-							table.insert(allCosmetics, c)
-							local d = getData(c)
-							if d and d.UIInfo and d.UIInfo.Header then headers[d.UIInfo.Header] = true end
-						end
-					end
-				end
-				collect(f)
-			end
-		end
-
-		local dropOptions = {"Emotes", "Cosmetics"}
-		for h, _ in pairs(headers) do
-			if h ~= "Emotes" and h ~= "Cosmetics" then
-				table.insert(dropOptions, h)
-			end
-		end
-		table.sort(dropOptions)
-
-		local catJam = ReplicatedStorage.Items.BaseItems.Emotes:FindFirstChild("CatJam")
-		local haha = resolvePath({"Items","ItemPacks","Base","DailyShop","Cosmetics","Unusual","Haha"})
-		local bobo = nil
-		for _, c in ipairs(allCosmetics) do
-			if c.Name == "Bobo" then bobo = c break end
-		end
-
-		local function clearUnlocks()
-			for _, inst in ipairs(clonedItems) do
-				pcall(function() inst:Destroy() end)
-			end
-			clonedItems = {}
-		end
-
-		local function doUnlock()
-			clearUnlocks()
-			if not isUnlocking then return end
-
-			local processed = {} -- Keeps track of what was already cloned to prevent duplicates
-
-			local function shouldProcess(header, isEmote)
-				if #currentModes == 0 then return false end
-				for _, mode in ipairs(currentModes) do
-					if mode == "Emotes" and isEmote then return true end
-					if mode == "Cosmetics" and not isEmote then return true end
-					if header == mode then return true end
-				end
-				return false
-			end
-
-			local function processEmote(targetItem, template)
-				if not template then return end
-				local targetData = getData(targetItem)
-				if not targetData then return end
-
-				local clone = template:Clone()
-				clone.Name = targetItem.Name
-				
-				local newData = {
-					AppearanceInfo = targetData.AppearanceInfo or {},
-					UIInfo = targetData.UIInfo or {},
-					PurchaseInfo = {
-						LevelRequirement = 0,
-						AppearsIn = targetData.PurchaseInfo and targetData.PurchaseInfo.AppearsIn or "None",
-						Currency = targetData.PurchaseInfo and targetData.PurchaseInfo.Currency or "Tokens",
-						Price = 0,
-						OwnershipType = "Single"
-					},
-					EmoteInfo = targetData.EmoteInfo or {},
-					EquipInfo = { SlotType = "Emote" }
-				}
-
-				local script = getItemScript(clone)
-				if script then
-					script.Source = "return " .. serialize(newData)
-				end
-
-				clone.Parent = template.Parent
-				table.insert(clonedItems, clone)
-			end
-
-			local function processCosmetic(targetItem)
-				local targetData = getData(targetItem)
-				if not targetData then return end
-				
-				local template = (targetData.CosmeticInfo and targetData.CosmeticInfo.Unusual) and haha or bobo
-				if not template then return end
-
-				local clone = template:Clone()
-				clone.Name = targetItem.Name
-
-				local newData = {
-					AppearanceInfo = targetData.AppearanceInfo or {},
-					UIInfo = targetData.UIInfo or {},
-					PurchaseInfo = {
-						LevelRequirement = 0,
-						AppearsIn = targetData.PurchaseInfo and targetData.PurchaseInfo.AppearsIn or "None",
-						Currency = targetData.PurchaseInfo and targetData.PurchaseInfo.Currency or "Tokens",
-						Price = 0,
-						OwnershipType = "Single"
-					},
-					EquipInfo = targetData.EquipInfo or {},
-					CosmeticInfo = targetData.CosmeticInfo or {}
-				}
-
-				local script = getItemScript(clone)
-				if script then
-					script.Source = "return " .. serialize(newData)
-				end
-
-				clone.Parent = template.Parent
-				table.insert(clonedItems, clone)
-			end
-
-			-- Process Emotes
-			for _, emote in ipairs(allEmotes) do
-				local d = getData(emote)
-				local header = d and d.UIInfo and d.UIInfo.Header
-				if shouldProcess(header, true) and not processed[emote] then
-					processed[emote] = true
-					processEmote(emote, catJam)
-				end
-			end
-
-			-- Process Cosmetics
-			for _, cos in ipairs(allCosmetics) do
-				local d = getData(cos)
-				local header = d and d.UIInfo and d.UIInfo.Header
-				if shouldProcess(header, false) and not processed[cos] then
-					processed[cos] = true
-					processCosmetic(cos)
-				end
-			end
-
-			window:Notify({ title = "Unlock All", content = "Applied unlocks for selected modes.", duration = 5 })
-		end
-
-		tab:CreateDropdown({
-			name = "Unlock:",
-			options = dropOptions,
-			currentOption = { "Emotes" },
-			multiSelect = true, -- ENABLED MULTI-SELECT
-			callback = function(selected)
-				currentModes = {}
-				if type(selected) == "table" then
-					for _, v in ipairs(selected) do
-						table.insert(currentModes, v)
-					end
-				elseif type(selected) == "string" then
-					table.insert(currentModes, selected)
-				end
-				if isUnlocking then doUnlock() end
-			end,
-		})
-
-		tab:CreateToggle({
-			name = "Unlock All",
-			value = false,
-			callback = function(state)
-				isUnlocking = state
-				if state then
-					doUnlock()
-				else
-					clearUnlocks()
-					window:Notify({ title = "Unlock All", content = "Removed all unlocked items.", duration = 3 })
-				end
-			end,
-		})
-	end
-end
-
---[[
-============================================================================
 ============================================================================
 END END END END END END END END END END END END END END END END END END END
 
@@ -2872,6 +2506,155 @@ do
     })
 end
 
+--[[
+============================================================================
+BP UNME
+============================================================================
+]]--
+
+do
+	local bypassEnabled = false
+	local ReplicatedStorage = game:GetService("ReplicatedStorage")
+	local modifiedEmotes = {} -- Saves original speeds to restore them when turned off
+
+	local EMOTE_PATHS = {
+		{"Items","ItemPacks","Gamepass","Unorganized","EmotePack","Emotes"},
+		{"Items","ItemPacks","Gamepass","Unorganized","EclipseSet","Emotes"},
+		{"Items","ItemPacks","Gamepass","Unorganized","DogSet","Emotes"},
+		{"Items","ItemPacks","Gamepass","Unorganized","Cats","Emotes"},
+		{"Items","ItemPacks","Gamepass","Unorganized","Animals","Emotes"},
+		{"Items","ItemPacks","Gamepass","Legacy","StPatricks2023","Emotes"},
+		{"Items","ItemPacks","Gamepass","Legacy","Military","Emotes"},
+		{"Items","ItemPacks","Gamepass","2026","RelicEmotesNew","Emotes"},
+		{"Items","ItemPacks","Gamepass","2026","PoseidonSet","Emotes"},
+		{"Items","ItemPacks","Gamepass","2026","BeeSet","Emotes"},
+		{"Items","ItemPacks","EventsDailyShop","Thanksgiving2025","Emotes"},
+		{"Items","ItemPacks","EventsDailyShop","OldRoblox","Emotes"},
+		{"Items","ItemPacks","EventsDailyShop","NewYears2024","Emotes"},
+		{"Items","ItemPacks","EventsDailyShop","LunarNewYear","Emotes"},
+		{"Items","ItemPacks","Events","2026","Valentines2026","Emotes"},
+		{"Items","ItemPacks","Events","2026","StPatricks2026","Emotes"},
+		{"Items","ItemPacks","Events","2026","Spring2026","Emotes"},
+		{"Items","ItemPacks","Events","2026","SUMMER26","Emotes"},
+		{"Items","ItemPacks","Events","2026","HLWN2026","Emotes"},
+		{"Items","ItemPacks","Events","2025","XMAS25","Emotes","DailyShop"},
+		{"Items","ItemPacks","Events","2025","XMAS25","Emotes","Battlepass"},
+		{"Items","ItemPacks","Events","2025","Valentines2025","Emotes"},
+		{"Items","ItemPacks","Events","2025","Summer2025","Emotes"},
+		{"Items","ItemPacks","Events","2025","StPatricks2025","Emotes"},
+		{"Items","ItemPacks","Events","2025","Hlwn2025","Emotes"},
+		{"Items","ItemPacks","Events","2024","Xmas2024","Emotes"},
+		{"Items","ItemPacks","Events","2024","Valentines2024","Emotes"},
+		{"Items","ItemPacks","Events","2024","StPatricks2024","Emotes"},
+		{"Items","ItemPacks","Events","2024","Hlwn2024","Emotes"},
+		{"Items","ItemPacks","Events","2024","Halloween2024","Emotes"},
+		{"Items","ItemPacks","Events","2023","Hlwn2023","Emotes"},
+		{"Items","ItemPacks","Events","2023","Halloween2023","Emotes"},
+		{"Items","ItemPacks","Events","2023","Xmas2023","Emotes"},
+		{"Items","ItemPacks","Events","2023","Valentines2023","Emotes"},
+		{"Items","ItemPacks","Events","2023","StPatricks2023","Emotes"},
+		{"Items","ItemPacks","Events","2023","Summer2023","Emotes"},
+		{"Items","ItemPacks","Events","2022","Hlwn2022","Emotes"},
+		{"Items","ItemPacks","Events","2022","Halloween2022","Emotes"},
+		{"Items","ItemPacks","Events","2022","Xmas2022","Emotes"},
+		{"Items","ItemPacks","Events","2022","Valentines2022","Emotes"},
+		{"Items","ItemPacks","Collab","ST","Emotes"},
+		{"Items","ItemPacks","Base","Special","Emotes"},
+		{"Items","ItemPacks","Base","NewShop","Emotes"},
+		{"Items","ItemPacks","Base","LevelShop","Emotes"},
+		{"Items","ItemPacks","Base","DailyShop","Emotes"},
+		{"Items","BaseItems","Emotes"},
+		{"Items","ItemPacks","Integration","M3GAN","Emotes"},
+		{"Items","ItemPacks","Gamepass","Unorganized","Gems","Emotes"},
+		{"Items","ItemPacks","Gamepass","Unorganized","LunarNewYearSet","Emotes"},
+		{"Items","ItemPacks","Gamepass","Unorganized","MusicEmotesPack1","Emotes"},
+		{"Items","ItemPacks","Gamepass","Unorganized","RelicEmotesVaulted","Emotes"},
+	}
+
+	local function resolvePath(keys)
+		local ok, result = pcall(function()
+			local obj = ReplicatedStorage
+			for _, k in ipairs(keys) do obj = obj[k] end
+			return obj
+		end)
+		if ok and typeof(result) == "Instance" then return result end
+		return nil
+	end
+
+	local function getItemScript(item)
+		if item:IsA("ModuleScript") then return item end
+		for _, c in ipairs(item:GetChildren()) do
+			if c:IsA("ModuleScript") then return c end
+		end
+		return nil
+	end
+
+	local function applyBypass()
+		for _, path in ipairs(EMOTE_PATHS) do
+			local folder = resolvePath(path)
+			if folder then
+				for _, child in ipairs(folder:GetChildren()) do
+					-- Handle expanded folders like Battlepass/DailyShop
+					if child:IsA("Folder") and (child.Name:lower() == "battlepass" or child.Name:lower() == "dailyshop") then
+						for _, inner in ipairs(child:GetChildren()) do
+							local script = getItemScript(inner)
+							if script then
+								local ok, data = pcall(require, script)
+								if ok and type(data) == "table" and data.EmoteInfo and data.EmoteInfo.SpeedMult then
+									if not modifiedEmotes[inner] then
+										modifiedEmotes[inner] = data.EmoteInfo.SpeedMult
+									end
+									data.EmoteInfo.SpeedMult = 0.3
+								end
+							end
+						end
+					else
+						local script = getItemScript(child)
+						if script then
+							local ok, data = pcall(require, script)
+							if ok and type(data) == "table" and data.EmoteInfo and data.EmoteInfo.SpeedMult then
+								if not modifiedEmotes[child] then
+									modifiedEmotes[child] = data.EmoteInfo.SpeedMult
+								end
+								data.EmoteInfo.SpeedMult = 0.3
+							end
+						end
+					end
+				end
+			end
+		end
+	end
+
+	local function revertBypass()
+		for item, originalSpeed in pairs(modifiedEmotes) do
+			local script = getItemScript(item)
+			if script then
+				local ok, data = pcall(require, script)
+				if ok and type(data) == "table" and data.EmoteInfo then
+					-- Restores to the saved original (which is 0 for unmovable emotes)
+					data.EmoteInfo.SpeedMult = originalSpeed
+				end
+			end
+		end
+		modifiedEmotes = {}
+	end
+
+	tab:CreateDivider()
+
+	tab:CreateToggle({
+		name = "Unmovable Emote Bypass",
+		currentValue = false,
+		callback = function(v)
+			bypassEnabled = v
+			if bypassEnabled then
+				applyBypass()
+			else
+				revertBypass()
+			end
+		end,
+	})
+end
+
 -- VIS
 local VisTab = window:CreateTab({ name = "Visuals", icon = 126802044806598 })
 buildExtras(VisTab, window)
@@ -2891,7 +2674,6 @@ local tab = window:CreateTab({ name = "Atmosphere", icon = 90547516100800 })
 local CosTab = window:CreateTab({ name = "Cosmetics", icon = 93893786571261 })
 buildEmoteChanger(CosTab, window)
 buildCosmeticChanger(CosTab, window)
-buildUnlockAll(CosTab, window)
 -- TP
 local tab = window:CreateTab({ name = "Teleport", icon = 138254104860948 })
 -- VCL
