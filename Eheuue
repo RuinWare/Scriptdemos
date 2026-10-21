@@ -1946,6 +1946,184 @@ tab:CreateToggle({
 
 --[[
 ============================================================================
+F JUMP
+============================================================================
+]]--
+
+do
+    local frontalEnabled = false
+    local frontalRamp = true
+    local frontalSlider = 55.5
+
+    local fRay = RaycastParams.new()
+    fRay.FilterType = Enum.RaycastFilterType.Exclude
+
+    local fHum, fRoot
+
+    local function frontalFlat(root)
+        if not frontalRamp then return true end
+        local r = workspace:Raycast(root.Position, Vector3.new(0, -10, 0), fRay)
+        if not r then return false end
+        return math.deg(math.acos(r.Normal.Unit.Y)) <= 8
+    end
+
+    local function frontalSPS()
+        return frontalSlider * 0.5
+    end
+
+    local function fAttach(char)
+        fHum = char:WaitForChild("Humanoid")
+        fRoot = char:WaitForChild("HumanoidRootPart")
+        fRay.FilterDescendantsInstances = {char}
+        if frontalEnabled then fHum.WalkSpeed = 0 end
+    end
+
+    if player.Character then task.spawn(fAttach, player.Character) end
+    player.CharacterAdded:Connect(function(c) task.spawn(fAttach, c) end)
+
+    RunService.Heartbeat:Connect(function(dt)
+        if not frontalEnabled then return end
+        if not fHum or not fRoot or not fRoot.Parent then return end
+        if fHum.Health <= 0 then return end
+
+        local cam = workspace.CurrentCamera
+        if not cam then return end
+
+        local look = cam.CFrame.LookVector
+        local dir = Vector3.new(look.X, 0, look.Z)
+        if dir.Magnitude > 0.001 then dir = dir.Unit end
+
+        local speed = frontalSPS()
+        fRoot.CFrame = fRoot.CFrame + dir * speed * dt
+
+        if fHum.FloorMaterial ~= Enum.Material.Air then
+            if frontalFlat(fRoot) then
+                fHum:ChangeState(Enum.HumanoidStateType.Jumping)
+            end
+        end
+    end)
+
+    tab:CreateDivider()
+
+    tab:CreateToggle({
+        name = "Frontal Jump",
+        currentValue = false,
+        flag = "FrontalJump_Toggle",
+        callback = function(v)
+            frontalEnabled = v
+            if fHum then fHum.WalkSpeed = v and 0 or 16 end
+        end,
+    })
+
+    tab:CreateToggle({
+        name = "Frontal Jump Ramp Protection",
+        currentValue = false,
+        flag = "FrontalJump_Ramp_Toggle",
+        callback = function(v) frontalRamp = v end,
+    })
+
+    tab:CreateSlider({
+        name = "Frontal Jump Speed",
+        range = {33.3, 555.5},
+        increment = 0.1,
+        suffix = "",
+        currentValue = 55.5,
+        flag = "FrontalJump_Slider",
+        callback = function(v) frontalSlider = v end,
+    })
+end
+
+--[[
+============================================================================
+BW JUMP
+============================================================================
+]]--
+
+do
+    local backwardEnabled = false
+    local backwardRamp = true
+    local backwardSlider = 55.5
+
+    local bRay = RaycastParams.new()
+    bRay.FilterType = Enum.RaycastFilterType.Exclude
+
+    local bHum, bRoot
+
+    local function backwardFlat(root)
+        if not backwardRamp then return true end
+        local r = workspace:Raycast(root.Position, Vector3.new(0, -10, 0), bRay)
+        if not r then return false end
+        return math.deg(math.acos(r.Normal.Unit.Y)) <= 8
+    end
+
+    local function backwardSPS()
+        return backwardSlider * 0.5
+    end
+
+    local function bAttach(char)
+        bHum = char:WaitForChild("Humanoid")
+        bRoot = char:WaitForChild("HumanoidRootPart")
+        bRay.FilterDescendantsInstances = {char}
+        if backwardEnabled then bHum.WalkSpeed = 0 end
+    end
+
+    if player.Character then task.spawn(bAttach, player.Character) end
+    player.CharacterAdded:Connect(function(c) task.spawn(bAttach, c) end)
+
+    RunService.Heartbeat:Connect(function(dt)
+        if not backwardEnabled then return end
+        if not bHum or not bRoot or not bRoot.Parent then return end
+        if bHum.Health <= 0 then return end
+
+        local cam = workspace.CurrentCamera
+        if not cam then return end
+
+        local look = cam.CFrame.LookVector
+        local dir = Vector3.new(-look.X, 0, -look.Z)
+        if dir.Magnitude > 0.001 then dir = dir.Unit end
+
+        local speed = backwardSPS()
+        bRoot.CFrame = bRoot.CFrame + dir * speed * dt
+
+        if bHum.FloorMaterial ~= Enum.Material.Air then
+            if backwardFlat(bRoot) then
+                bHum:ChangeState(Enum.HumanoidStateType.Jumping)
+            end
+        end
+    end)
+
+    tab:CreateDivider()
+
+    tab:CreateToggle({
+        name = "Backward Jump",
+        currentValue = false,
+        flag = "BackwardJump_Toggle",
+        callback = function(v)
+            backwardEnabled = v
+            if bHum then bHum.WalkSpeed = v and 0 or 16 end
+        end,
+    })
+
+    tab:CreateToggle({
+        name = "Backward Jump Ramp Protection",
+        currentValue = false,
+        flag = "BackwardJump_Ramp_Toggle",
+        callback = function(v) backwardRamp = v end,
+    })
+
+    tab:CreateSlider({
+        name = "Backward Jump Speed",
+        range = {33.3, 555.5},
+        increment = 0.1,
+        suffix = "",
+        currentValue = 55.5,
+        flag = "BackwardJump_Slider",
+        callback = function(v) backwardSlider = v end,
+    })
+end
+
+--[[
+============================================================================
 SPEED CHANGER
 ============================================================================
 ]]--
