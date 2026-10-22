@@ -2809,7 +2809,7 @@ do
 	local korbloxMode = "Off"
 	local savedAccessories = {}
 
-       tab:CreateDivider({ text = "Headless (R6)" })
+    VisTab:CreateDivider({ text = "Headless (R6)" })
 
 	VisTab:CreateDropdown({
 		name = "Headless",
@@ -2834,7 +2834,7 @@ do
 		end,
 	})
 
-       tab:CreateDivider({ text = "Korblox (R6)" })
+    VisTab:CreateDivider({ text = "Korblox (R6)" })
 
 	VisTab:CreateDropdown({
 		name = "Korblox",
