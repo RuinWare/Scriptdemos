@@ -1730,26 +1730,13 @@ do
         ["Railway"] = true,
     }
 
-    local function isDescendantOfMap(part)
-        if not part then return false end
-        local map = workspace:FindFirstChild("Map")
-        if not map then return false end
-        local current = part
-        while current do
-            if current == map then return true end
-            current = current.Parent
-        end
-        return false
-    end
-
     local function isTargetSurface(part)
         if not part then return false end
-        if not targetNames[part.Name] then return false end
-        return isDescendantOfMap(part)
+        return targetNames[part.Name] == true
     end
 
     local function getSurfaceBelow(root)
-        local result = workspace:Raycast(root.Position, Vector3.new(0, -10, 0), fenceRayParams)
+        local result = workspace:Raycast(root.Position, Vector3.new(0, -2, 0), fenceRayParams)
         if not result then return nil end
         return result.Instance
     end
@@ -2948,6 +2935,79 @@ V     I     S     U     A     L     S          (     T     A     B     )
 
 local VisTab = window:CreateTab({ name = "Visuals", icon = 126802044806598 })
 buildExtras(VisTab, window)
+
+--[[
+============================================================================
+FOV
+============================================================================
+]]--
+
+do
+    local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+    local fovEnabled = false
+    local fovValue = 90
+    local fovText = "90"
+
+    local SetSetting = ReplicatedStorage:WaitForChild("Shared"):WaitForChild("UserData"):WaitForChild("Remotes"):WaitForChild("SetSetting")
+
+    local function applyFOV(value)
+        pcall(function()
+            SetSetting:FireServer("FOV", value)
+        end)
+    end
+
+    tab:CreateDivider()
+
+    tab:CreateToggle({
+        name = "FOV Changer",
+        currentValue = false,
+        flag = "FOVChanger_Toggle",
+        callback = function(v)
+            fovEnabled = v
+            if v then
+                local n = tonumber(fovText)
+                if n then
+                    fovValue = n
+                    applyFOV(n)
+                else
+                    fovEnabled = false
+                    window:Notify({
+                        title = "FOV Changer",
+                        content = "Invalid number in textbox: " .. tostring(fovText),
+                        duration = 4,
+                    })
+                    pcall(function() tab:SetToggle("FOVChanger_Toggle", false) end)
+                end
+            else
+                applyFOV(90)
+            end
+        end,
+    })
+
+    tab:CreateInput({
+        name = "FOV Value",
+        placeholder = "e.g. 90",
+        currentValue = "90",
+        flag = "FOVChanger_Value",
+        callback = function(text)
+            fovText = text
+            local n = tonumber(text)
+            if not n then
+                window:Notify({
+                    title = "FOV Changer",
+                    content = "Not a number: " .. tostring(text),
+                    duration = 3,
+                })
+                return
+            end
+            fovValue = n
+            if fovEnabled then
+                applyFOV(n)
+            end
+        end,
+    })
+end
 
 --[[
 ============================================================================
