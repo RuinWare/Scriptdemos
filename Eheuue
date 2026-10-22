@@ -289,13 +289,15 @@ E     D     I     T     S
         tab:CreateDivider({ text = "Emote Changer" })
 	tab:CreateToggle({
 		name = "Use Textbox",
+                icon = "139316637881536"
 		value = false,
 		callback = function(v) state.UseTextbox = v end,
 	})
 
 	tab:CreateInput({
 		name = "Current Emote",
-		placeholder = "e.g. Smug",
+                icon = "75272415197329",
+		placeholder = "e.g. Smug Dance",
 		callback = function(text)
 			local found = findEmote(text)
 			state.Current = found
@@ -309,7 +311,8 @@ E     D     I     T     S
 
 	tab:CreateInput({
 		name = "Suggested Emote",
-		placeholder = "e.g. Dance2",
+                icon = "97183652403912",
+		placeholder = "e.g. Broom of Doom",
 		callback = function(text)
 			local found = findEmote(text)
 			state.SuggestedText = found
@@ -322,7 +325,8 @@ E     D     I     T     S
 	})
 
 	tab:CreateInput({
-		name = "Variant (1-3)",
+		name = "Variant",
+                icon = "138273988376377",
 		placeholder = "1",
 		numeric = true,
 		callback = function(text)
@@ -336,6 +340,7 @@ E     D     I     T     S
 
 	local EmoteDropdown = tab:CreateDropdown({
 		name = "Emote List",
+                icon = "119388489350677",
 		options = buildEmoteList(),
 		multiSelect = false,
 		callback = function(selected)
@@ -346,6 +351,7 @@ E     D     I     T     S
 
 	tab:CreateButton({
 		name = "Change Emotes",
+                icon = "96709237281649",
 		callback = function()
 			local target = state.Current
 			if not target then
@@ -686,7 +692,8 @@ E     D     I     T     S
 
 	tab:CreateInput({
 		name = "Current Cosmetic",
-		placeholder = "e.g. Hat1",
+                icon = "75272415197329",
+		placeholder = "e.g. Haha",
 		callback = function(text)
 			local found = findCosmetic(text)
 			state.Current = found
@@ -700,7 +707,8 @@ E     D     I     T     S
 
 	tab:CreateInput({
 		name = "Suggested Cosmetic",
-		placeholder = "e.g. Hat2",
+                icon = ""97183652403912,
+		placeholder = "e.g. Blood Moon",
 		callback = function(text)
 			local found = findCosmetic(text)
 			state.SuggestedText = found
@@ -818,6 +826,8 @@ M     A     I     N          (     T     A     B     )
 ]]--
 
 local tab = window:CreateTab({ name = "Main", icon = 83935746771599 })
+
+tab:CreateSection({ name = "Aiming", icon = 93364949241311 })
 
 tab:CreateDivider({ text = "Movement" })
 
@@ -1572,103 +1582,7 @@ Fence bounce idk
 ============================================================================
 ]]--
 
-do
-    local fenceBounceEnabled = false
-    local fenceBounceMultiplier = 1.5
-
-    local fenceRayParams = RaycastParams.new()
-    fenceRayParams.FilterType = Enum.RaycastFilterType.Exclude
-
-    local fenceLastYVelocity = 0
-    local fenceAirStartTime = 0
-    local fenceWasInAir = false
-    local fenceStateConn
-
-    local targetNames = {
-        ["Meshes/Wooden Fence"] = true,
-        ["Fence"] = true,
-        ["Railway"] = true,
-    }
-
-    local function isTargetSurface(part)
-        if not part then return false end
-        return targetNames[part.Name] == true
-    end
-
-    local function getSurfaceBelow(root)
-        local result = workspace:Raycast(root.Position, Vector3.new(0, -2, 0), fenceRayParams)
-        if not result then return nil end
-        return result.Instance
-    end
-
-    local function attachFenceBounce(char)
-        local hum = char:WaitForChild("Humanoid")
-        local root = char:WaitForChild("HumanoidRootPart")
-        fenceRayParams.FilterDescendantsInstances = {char}
-
-        if fenceStateConn then fenceStateConn:Disconnect() end
-        fenceStateConn = hum.StateChanged:Connect(function(_, newState)
-            if not fenceBounceEnabled then return end
-            if newState ~= Enum.HumanoidStateType.Landed then return end
-            if hum.Health <= 0 then return end
-            if not fenceWasInAir then return end
-            if (tick() - fenceAirStartTime) < 1 then return end
-
-            local surface = getSurfaceBelow(root)
-            if not isTargetSurface(surface) then return end
-
-            local bounceVel = math.abs(fenceLastYVelocity) * fenceBounceMultiplier
-            if bounceVel < 10 then return end
-            root.AssemblyLinearVelocity = Vector3.new(
-                root.AssemblyLinearVelocity.X,
-                bounceVel,
-                root.AssemblyLinearVelocity.Z
-            )
-        end)
-    end
-
-    if player.Character then task.spawn(attachFenceBounce, player.Character) end
-    player.CharacterAdded:Connect(function(c) task.spawn(attachFenceBounce, c) end)
-
-    RunService.Heartbeat:Connect(function()
-        if not fenceBounceEnabled then return end
-        local char = player.Character
-        if not char then return end
-        local hum = char:FindFirstChildOfClass("Humanoid")
-        local root = char:FindFirstChild("HumanoidRootPart")
-        if not hum or not root then return end
-
-        fenceLastYVelocity = root.AssemblyLinearVelocity.Y
-
-        if hum.FloorMaterial == Enum.Material.Air then
-            if not fenceWasInAir then
-                fenceWasInAir = true
-                fenceAirStartTime = tick()
-            end
-        else
-            fenceWasInAir = false
-        end
-    end)
-
-    tab:CreateDivider()
-
-    tab:CreateToggle({
-        name = "Fence Bounce",
-        currentValue = false,
-        flag = "FenceBounce_Toggle",
-        callback = function(value) fenceBounceEnabled = value end,
-    })
-
-    tab:CreateSlider({
-        name = "Fence Bounce Multiplier",
-        range = {1.08, 3.00},
-        increment = 0.01,
-        suffix = "x",
-        currentValue = 1.5,
-        flag = "FenceBounce_Multiplier",
-        callback = function(value) fenceBounceMultiplier = value end,
-    })
-end
+-- failed again
 
 --[[
 ============================================================================
@@ -2621,7 +2535,7 @@ end
 
 --[[
 ============================================================================
-LEGIT JUMP
+ESC
 ============================================================================
 ]]--
 
@@ -2780,6 +2694,153 @@ do
 			currentSpeedValue = v
 			if speedEnabled then
 				applySpeed() -- Updates live while the toggle is on
+			end
+		end,
+	})
+end
+
+--[[
+============================================================================
+EW
+============================================================================
+]]--
+
+do
+	local walkEnabled = false
+	local ReplicatedStorage = game:GetService("ReplicatedStorage")
+	local modifiedEmotes = {} -- Saves original speeds to restore them when turned off
+
+	local EMOTE_PATHS = {
+		{"Items","ItemPacks","Gamepass","Unorganized","EmotePack","Emotes"},
+		{"Items","ItemPacks","Gamepass","Unorganized","EclipseSet","Emotes"},
+		{"Items","ItemPacks","Gamepass","Unorganized","DogSet","Emotes"},
+		{"Items","ItemPacks","Gamepass","Unorganized","Cats","Emotes"},
+		{"Items","ItemPacks","Gamepass","Unorganized","Animals","Emotes"},
+		{"Items","ItemPacks","Gamepass","Legacy","StPatricks2023","Emotes"},
+		{"Items","ItemPacks","Gamepass","Legacy","Military","Emotes"},
+		{"Items","ItemPacks","Gamepass","2026","RelicEmotesNew","Emotes"},
+		{"Items","ItemPacks","Gamepass","2026","PoseidonSet","Emotes"},
+		{"Items","ItemPacks","Gamepass","2026","BeeSet","Emotes"},
+		{"Items","ItemPacks","EventsDailyShop","Thanksgiving2025","Emotes"},
+		{"Items","ItemPacks","EventsDailyShop","OldRoblox","Emotes"},
+		{"Items","ItemPacks","EventsDailyShop","NewYears2024","Emotes"},
+		{"Items","ItemPacks","EventsDailyShop","LunarNewYear","Emotes"},
+		{"Items","ItemPacks","Events","2026","Valentines2026","Emotes"},
+		{"Items","ItemPacks","Events","2026","StPatricks2026","Emotes"},
+		{"Items","ItemPacks","Events","2026","Spring2026","Emotes"},
+		{"Items","ItemPacks","Events","2026","SUMMER26","Emotes"},
+		{"Items","ItemPacks","Events","2026","HLWN2026","Emotes"},
+		{"Items","ItemPacks","Events","2025","XMAS25","Emotes","DailyShop"},
+		{"Items","ItemPacks","Events","2025","XMAS25","Emotes","Battlepass"},
+		{"Items","ItemPacks","Events","2025","Valentines2025","Emotes"},
+		{"Items","ItemPacks","Events","2025","Summer2025","Emotes"},
+		{"Items","ItemPacks","Events","2025","StPatricks2025","Emotes"},
+		{"Items","ItemPacks","Events","2025","Hlwn2025","Emotes"},
+		{"Items","ItemPacks","Events","2024","Xmas2024","Emotes"},
+		{"Items","ItemPacks","Events","2024","Valentines2024","Emotes"},
+		{"Items","ItemPacks","Events","2024","StPatricks2024","Emotes"},
+		{"Items","ItemPacks","Events","2024","Hlwn2024","Emotes"},
+		{"Items","ItemPacks","Events","2024","Halloween2024","Emotes"},
+		{"Items","ItemPacks","Events","2023","Hlwn2023","Emotes"},
+		{"Items","ItemPacks","Events","2023","Halloween2023","Emotes"},
+		{"Items","ItemPacks","Events","2023","Xmas2023","Emotes"},
+		{"Items","ItemPacks","Events","2023","Valentines2023","Emotes"},
+		{"Items","ItemPacks","Events","2023","StPatricks2023","Emotes"},
+		{"Items","ItemPacks","Events","2023","Summer2023","Emotes"},
+		{"Items","ItemPacks","Events","2022","Hlwn2022","Emotes"},
+		{"Items","ItemPacks","Events","2022","Halloween2022","Emotes"},
+		{"Items","ItemPacks","Events","2022","Xmas2022","Emotes"},
+		{"Items","ItemPacks","Events","2022","Valentines2022","Emotes"},
+		{"Items","ItemPacks","Collab","ST","Emotes"},
+		{"Items","ItemPacks","Base","Special","Emotes"},
+		{"Items","ItemPacks","Base","NewShop","Emotes"},
+		{"Items","ItemPacks","Base","LevelShop","Emotes"},
+		{"Items","ItemPacks","Base","DailyShop","Emotes"},
+		{"Items","BaseItems","Emotes"},
+		{"Items","ItemPacks","Integration","M3GAN","Emotes"},
+		{"Items","ItemPacks","Gamepass","Unorganized","Gems","Emotes"},
+		{"Items","ItemPacks","Gamepass","Unorganized","LunarNewYearSet","Emotes"},
+		{"Items","ItemPacks","Gamepass","Unorganized","MusicEmotesPack1","Emotes"},
+		{"Items","ItemPacks","Gamepass","Unorganized","RelicEmotesVaulted","Emotes"},
+	}
+
+	local function resolvePath(keys)
+		local ok, result = pcall(function()
+			local obj = ReplicatedStorage
+			for _, k in ipairs(keys) do obj = obj[k] end
+			return obj
+		end)
+		if ok and typeof(result) == "Instance" then return result end
+		return nil
+	end
+
+	local function getItemScript(item)
+		if item:IsA("ModuleScript") then return item end
+		for _, c in ipairs(item:GetChildren()) do
+			if c:IsA("ModuleScript") then return c end
+		end
+		return nil
+	end
+
+	local function applyWalk()
+		for _, path in ipairs(EMOTE_PATHS) do
+			local folder = resolvePath(path)
+			if folder then
+				for _, child in ipairs(folder:GetChildren()) do
+					if child:IsA("Folder") and (child.Name:lower() == "battlepass" or child.Name:lower() == "dailyshop") then
+						for _, inner in ipairs(child:GetChildren()) do
+							local script = getItemScript(inner)
+							if script then
+								local ok, data = pcall(require, script)
+								if ok and type(data) == "table" and data.EmoteInfo and data.EmoteInfo.SpeedMult then
+									if not modifiedEmotes[inner] then
+										modifiedEmotes[inner] = data.EmoteInfo.SpeedMult
+									end
+									data.EmoteInfo.SpeedMult = 2
+								end
+							end
+						end
+					else
+						local script = getItemScript(child)
+						if script then
+							local ok, data = pcall(require, script)
+							if ok and type(data) == "table" and data.EmoteInfo and data.EmoteInfo.SpeedMult then
+								if not modifiedEmotes[child] then
+									modifiedEmotes[child] = data.EmoteInfo.SpeedMult
+								end
+								data.EmoteInfo.SpeedMult = 2
+							end
+						end
+					end
+				end
+			end
+		end
+	end
+
+	local function revertWalk()
+		for item, originalSpeed in pairs(modifiedEmotes) do
+			local script = getItemScript(item)
+			if script then
+				local ok, data = pcall(require, script)
+				if ok and type(data) == "table" and data.EmoteInfo then
+					data.EmoteInfo.SpeedMult = originalSpeed
+				end
+			end
+		end
+		modifiedEmotes = {}
+	end
+
+	tab:CreateDivider()
+
+	tab:CreateToggle({
+		name = "Emote Walk",
+		value = false,
+		callback = function(v)
+			walkEnabled = v
+			if walkEnabled then
+				applyWalk()
+			else
+				revertWalk()
 			end
 		end,
 	})
@@ -3011,7 +3072,7 @@ E     X     T     R     A     S          (     T     A     B     )
 ============================================================================
 ]]--
 
-local tab = window:CreateTab({ name = "Extra", icon = 108740503011398 })
+local ExTab = window:CreateTab({ name = "Extra", icon = 108740503011398 })
 
 --[[
 ============================================================================
@@ -3021,27 +3082,70 @@ P     L     A     Y     E     R          (     T     A     B     )
 ============================================================================
 ]]--
 
-local tab = window:CreateTab({ name = "Player", icon = 98364829449527 })
+local PlyrTab = window:CreateTab({ name = "Player", icon = 98364829449527 })
 
--- STATS
-local tab = window:CreateTab({ name = "Stats", icon = 115151888442101 })
--- TAS
-local tab = window:CreateTab({ name = "TAS", icon = 106970371098897 })
--- AF
-local tab = window:CreateTab({ name = "Auto Farm", icon = 96086831296475 })
--- ATMOSPHERE
-local tab = window:CreateTab({ name = "Atmosphere", icon = 90547516100800 })
--- COS
+--[[
+============================================================================
+
+S     T     A     T     S               (     T     A     B     )
+
+============================================================================
+]]--
+
+local StsTab = window:CreateTab({ name = "Stats", icon = 115151888442101 })
+
+--[[
+============================================================================
+
+T     A     S          (     T     A     B     )
+
+============================================================================
+]]--
+
+local TasTab = window:CreateTab({ name = "TAS", icon = 106970371098897 })
+
+--[[
+============================================================================
+
+A     U     T     O          F     A     R     M          (     T     A     B     )
+
+============================================================================
+]]--
+
+local AfTab = window:CreateTab({ name = "Auto Farm", icon = 96086831296475 })
+
+--[[
+============================================================================
+
+A     T     M     O     S     P     H     E     R     E          (     T     A     B     )
+
+============================================================================
+]]--
+
+local AtmoTab = window:CreateTab({ name = "Atmosphere", icon = 90547516100800 })
+
+
+--[[
+============================================================================
+
+C     O     S     M     E     T     I     C     S          (     T     A     B     )
+
+============================================================================
+]]--
+
 local CosTab = window:CreateTab({ name = "Cosmetics", icon = 93893786571261 })
 buildEmoteChanger(CosTab, window)
 buildCosmeticChanger(CosTab, window)
 -- TP
-local tab = window:CreateTab({ name = "Teleport", icon = 138254104860948 })
+local TpTab = window:CreateTab({ name = "Teleport", icon = 138254104860948 })
 -- VCL
-local tab = window:CreateTab({ name = "Vehicle", icon = 12338080417 })
+local VclTab = window:CreateTab({ name = "Vehicle", icon = 12338080417 })
 -- MAP
-local tab = window:CreateTab({ name = "Map", icon = 78731952302365 })
-
+local MapTab = window:CreateTab({ name = "Map", icon = 78731952302365 })
+-- SCRIPT
+local ScriptTab = window:CreateTab({ name = "Script Settings", icon = 13321848320 })
+-- CREDITS
+local CreTab = window:CreateTab({ name = "Credits", icon = 13321848320 })
 
 -- ==================
 -- S C R I P T    E N D
