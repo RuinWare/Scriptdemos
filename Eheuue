@@ -2953,30 +2953,12 @@ do
 
     local fovEnabled = false
     local fovValue = 90
-    local fovText = "90"
 
-    local function getSetSetting()
-        local shared = ReplicatedStorage:FindFirstChild("Shared")
-        if not shared then return nil end
-        local userData = shared:FindFirstChild("UserData")
-        if not userData then return nil end
-        local remotes = userData:FindFirstChild("Remotes")
-        if not remotes then return nil end
-        return remotes:FindFirstChild("SetSetting")
-    end
+    local SetSetting = ReplicatedStorage:WaitForChild("Shared"):WaitForChild("UserData"):WaitForChild("Remotes"):WaitForChild("SetSetting")
 
-    local function applyFOV(value)
-        local remote = getSetSetting()
-        if not remote then
-            window:Notify({
-                title = "FOV Changer",
-                content = "SetSetting remote not found.",
-                duration = 4,
-            })
-            return
-        end
+    local function fireFOV(value)
         pcall(function()
-            remote:FireServer("FOV", value)
+            SetSetting:FireServer("FOV", value)
         end)
     end
 
@@ -2989,44 +2971,25 @@ do
         callback = function(v)
             fovEnabled = v
             if v then
-                local n = tonumber(fovText)
-                if n then
-                    fovValue = n
-                    applyFOV(n)
-                else
-                    fovEnabled = false
-                    window:Notify({
-                        title = "FOV Changer",
-                        content = "Invalid number in textbox: " .. tostring(fovText),
-                        duration = 4,
-                    })
-                    pcall(function() tab:SetToggle("FOVChanger_Toggle", false) end)
-                end
+                fireFOV(fovValue)
             else
-                applyFOV(90)
+                fireFOV(90)
             end
         end,
     })
 
     tab:CreateInput({
         name = "FOV Value",
-        placeholder = "e.g. 90",
+        placeholder = "e.g. 120",
         currentValue = "90",
         flag = "FOVChanger_Value",
         callback = function(text)
-            fovText = text
             local n = tonumber(text)
-            if not n then
-                window:Notify({
-                    title = "FOV Changer",
-                    content = "Not a number: " .. tostring(text),
-                    duration = 3,
-                })
-                return
-            end
-            fovValue = n
-            if fovEnabled then
-                applyFOV(n)
+            if n then
+                fovValue = n
+                if fovEnabled then
+                    fireFOV(fovValue)
+                end
             end
         end,
     })
