@@ -1708,6 +1708,123 @@ tab:CreateToggle({
 
 --[[
 ============================================================================
+Fence bounce idk
+============================================================================
+]]--
+
+do
+    local fenceBounceEnabled = false
+    local fenceBounceMultiplier = 1.5
+
+    local fenceRayParams = RaycastParams.new()
+    fenceRayParams.FilterType = Enum.RaycastFilterType.Exclude
+
+    local fenceLastYVelocity = 0
+    local fenceAirStartTime = 0
+    local fenceWasInAir = false
+    local fenceStateConn
+
+    local targetNames = {
+        ["Meshes/Wooden Fence"] = true,
+        ["Fence"] = true,
+        ["Railway"] = true,
+    }
+
+    local function isDescendantOfMap(part)
+        if not part then return false end
+        local map = workspace:FindFirstChild("Map")
+        if not map then return false end
+        local current = part
+        while current do
+            if current == map then return true end
+            current = current.Parent
+        end
+        return false
+    end
+
+    local function isTargetSurface(part)
+        if not part then return false end
+        if not targetNames[part.Name] then return false end
+        return isDescendantOfMap(part)
+    end
+
+    local function getSurfaceBelow(root)
+        local result = workspace:Raycast(root.Position, Vector3.new(0, -10, 0), fenceRayParams)
+        if not result then return nil end
+        return result.Instance
+    end
+
+    local function attachFenceBounce(char)
+        local hum = char:WaitForChild("Humanoid")
+        local root = char:WaitForChild("HumanoidRootPart")
+        fenceRayParams.FilterDescendantsInstances = {char}
+
+        if fenceStateConn then fenceStateConn:Disconnect() end
+        fenceStateConn = hum.StateChanged:Connect(function(_, newState)
+            if not fenceBounceEnabled then return end
+            if newState ~= Enum.HumanoidStateType.Landed then return end
+            if hum.Health <= 0 then return end
+            if not fenceWasInAir then return end
+            if (tick() - fenceAirStartTime) < 1 then return end
+
+            local surface = getSurfaceBelow(root)
+            if not isTargetSurface(surface) then return end
+
+            local bounceVel = math.abs(fenceLastYVelocity) * fenceBounceMultiplier
+            if bounceVel < 10 then return end
+            root.AssemblyLinearVelocity = Vector3.new(
+                root.AssemblyLinearVelocity.X,
+                bounceVel,
+                root.AssemblyLinearVelocity.Z
+            )
+        end)
+    end
+
+    if player.Character then task.spawn(attachFenceBounce, player.Character) end
+    player.CharacterAdded:Connect(function(c) task.spawn(attachFenceBounce, c) end)
+
+    RunService.Heartbeat:Connect(function()
+        if not fenceBounceEnabled then return end
+        local char = player.Character
+        if not char then return end
+        local hum = char:FindFirstChildOfClass("Humanoid")
+        local root = char:FindFirstChild("HumanoidRootPart")
+        if not hum or not root then return end
+
+        fenceLastYVelocity = root.AssemblyLinearVelocity.Y
+
+        if hum.FloorMaterial == Enum.Material.Air then
+            if not fenceWasInAir then
+                fenceWasInAir = true
+                fenceAirStartTime = tick()
+            end
+        else
+            fenceWasInAir = false
+        end
+    end)
+
+    tab:CreateDivider()
+
+    tab:CreateToggle({
+        name = "Fence Bounce",
+        currentValue = false,
+        flag = "FenceBounce_Toggle",
+        callback = function(value) fenceBounceEnabled = value end,
+    })
+
+    tab:CreateSlider({
+        name = "Fence Bounce Multiplier",
+        range = {1.08, 3.00},
+        increment = 0.01,
+        suffix = "x",
+        currentValue = 1.5,
+        flag = "FenceBounce_Multiplier",
+        callback = function(value) fenceBounceMultiplier = value end,
+    })
+end
+
+--[[
+============================================================================
 INF SLIDE
 ============================================================================
 ]]--
