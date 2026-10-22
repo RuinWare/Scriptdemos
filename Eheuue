@@ -2935,6 +2935,7 @@ V     I     S     U     A     L     S          (     T     A     B     )
 
 local VisTab = window:CreateTab({ name = "Visuals", icon = 126802044806598 })
 buildExtras(VisTab, window)
+end
 
 --[[
 ============================================================================
