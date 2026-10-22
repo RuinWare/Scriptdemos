@@ -289,7 +289,7 @@ E     D     I     T     S
         tab:CreateDivider({ text = "Emote Changer" })
 	tab:CreateToggle({
 		name = "Use Textbox",
-                icon = "139316637881536",
+                icon = "94012998635755",
 		value = false,
 		callback = function(v) state.UseTextbox = v end,
 	})
