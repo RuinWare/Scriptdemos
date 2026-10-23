@@ -289,7 +289,7 @@ E     D     I     T     S
         tab:CreateDivider({ text = "Emote Changer" })
 	tab:CreateToggle({
 		name = "Use Textbox",
-                icon = 94012998635755,
+                icon = 131412776187171,
 		value = false,
 		callback = function(v) state.UseTextbox = v end,
 	})
@@ -351,7 +351,7 @@ E     D     I     T     S
 
 	tab:CreateButton({
 		name = "Change Emotes",
-                icon = 96709237281649,
+        icon = 96709237281649,
 		callback = function()
 			local target = state.Current
 			if not target then
@@ -686,7 +686,7 @@ E     D     I     T     S
         tab:CreateDivider({ text = "Cosmetic Changer" })
 	tab:CreateToggle({
 		name = "Use Textbox",
-                icon = 131412776187171,
+        icon = 131412776187171,
 		value = false,
 		callback = function(v) state.UseTextbox = v end,
 	})
@@ -723,6 +723,7 @@ E     D     I     T     S
 
 	local CosmeticDropdown = tab:CreateDropdown({
 		name = "Cosmetic List",
+        icon = 94713520185581,
 		options = buildCosmeticList(),
 		multiSelect = false,
 		callback = function(selected)
@@ -733,6 +734,7 @@ E     D     I     T     S
 
 	tab:CreateButton({
 		name = "Change Cosmetics",
+        icon = 105433648935304,
 		callback = function()
 			local target = state.Current
 			if not target then
@@ -986,6 +988,7 @@ end)
 
 tab:CreateToggle({
     name = "Auto Jump",
+    icon = 109475752270721,
     currentValue = false,
     flag = "AutoJump_Toggle",
     callback = function(value)
@@ -995,6 +998,7 @@ tab:CreateToggle({
 
 tab:CreateToggle({
     name = "Ramp Protection",
+    icon = 111308594268728,
     currentValue = true,
     flag = "AutoJump_RampProtection_Toggle",
     callback = function(value)
@@ -1004,6 +1008,7 @@ tab:CreateToggle({
 
 tab:CreateToggle({
     name = "Only Trigger On Look Down",
+    icon = 128804949999663,
     currentValue = false,
     flag = "AutoJump_LookDown_Toggle",
     callback = function(value)
@@ -1013,6 +1018,7 @@ tab:CreateToggle({
 
 tab:CreateToggle({
     name = "Only Trigger On Move",
+    icon = 135743813499745,
     currentValue = false,
     flag = "AutoJump_MoveOnly_Toggle",
     callback = function(value)
@@ -1022,6 +1028,7 @@ tab:CreateToggle({
 
 tab:CreateSlider({
     name = "Move Hold Time",
+    icon = 136077598178846,
     range = {0, 5},
     increment = 0.05,
     suffix = "s",
@@ -1130,6 +1137,7 @@ do
 
     tab:CreateToggle({
         name = "Legit Jump",
+        icon = 109475752270721,
         currentValue = false,
         flag = "DelayJump_Toggle",
         callback = function(v) djEnabled = v end,
@@ -1137,6 +1145,7 @@ do
 
     tab:CreateToggle({
         name = "Legit Jump Ramp Protection",
+        icon = 111308594268728,
         currentValue = true,
         flag = "DelayJump_Ramp_Toggle",
         callback = function(v) djRamp = v end,
@@ -1144,6 +1153,7 @@ do
 
     tab:CreateToggle({
         name = "Legit Jump Only Look Down",
+        icon = 128804949999663
         currentValue = false,
         flag = "DelayJump_LookDown_Toggle",
         callback = function(v) djLookDown = v end,
@@ -1151,6 +1161,7 @@ do
 
     tab:CreateToggle({
         name = "Legit Jump Only On Move",
+        icon = 135743813499745,
         currentValue = false,
         flag = "DelayJump_MoveOnly_Toggle",
         callback = function(v) djMoveOnly = v end,
