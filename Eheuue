@@ -816,17 +816,14 @@ END END END END END END END END END END END END END END END END END END END
 local window = Rayfield:CreateWindow({
     name = "RuinWare Client",
     icon = 125108001144149,
-    subtitle = "Working",
     sidebarLayout = true,
     theme = "Default",
 })
 
 local tag = window:CreateTag({
-    text = "us-en",
-    color = Color3.fromRGB(255, 175, 15),
+    text = "Evade",
+    color = Color3.fromRGB(119, 241, 23),
 })
-
-tag:Set({ text = "live", color = Color3.fromRGB(119, 241, 23) })
 
 --[[
 ============================================================================
@@ -837,8 +834,6 @@ M     A     I     N          (     T     A     B     )
 ]]--
 
 local tab = window:CreateTab({ name = "Main", icon = 83935746771599 })
-
-tab:CreateSection({ name = "Aiming", icon = 93364949241311 })
 
 tab:CreateDivider({ text = "Movement" })
 
@@ -999,7 +994,7 @@ tab:CreateToggle({
 tab:CreateToggle({
     name = "Ramp Protection",
     icon = 111308594268728,
-    currentValue = true,
+    currentValue = false,
     flag = "AutoJump_RampProtection_Toggle",
     callback = function(value)
         rampProtection = value
@@ -1047,7 +1042,7 @@ LEGIT JUMP
 
 do
     local djEnabled = false
-    local djRamp = true
+    local djRamp = false
     local djLookDown = false
     local djMoveOnly = false
     local djMoveHold = 0
@@ -1146,7 +1141,7 @@ do
     tab:CreateToggle({
         name = "Legit Jump Ramp Protection",
         icon = 111308594268728,
-        currentValue = true,
+        currentValue = false,
         flag = "DelayJump_Ramp_Toggle",
         callback = function(v) djRamp = v end,
     })
@@ -1169,6 +1164,7 @@ do
 
     tab:CreateSlider({
         name = "Legit Jump Move Hold",
+        icon = 136077598178846,
         range = {0, 5},
         increment = 0.05,
         suffix = "s",
@@ -1186,7 +1182,7 @@ HOLD JUMP
 
 do
     local hjEnabled = false
-    local hjRamp = true
+    local hjRamp = false
     local hjLookDown = false
     local hjMoveOnly = false
     local hjMoveHold = 0
@@ -1291,6 +1287,7 @@ do
 
     tab:CreateToggle({
         name = "Hold Jump",
+        icon = 97668677854395,
         currentValue = false,
         flag = "HoldJump_Toggle",
         callback = function(v) hjEnabled = v end,
@@ -1298,13 +1295,15 @@ do
 
     tab:CreateToggle({
         name = "Hold Jump Ramp Protection",
-        currentValue = true,
+        icon = 111308594268728,
+        currentValue = false,
         flag = "HoldJump_Ramp_Toggle",
         callback = function(v) hjRamp = v end,
     })
 
     tab:CreateToggle({
         name = "Hold Jump Only Look Down",
+        icon = 128804949999663,
         currentValue = false,
         flag = "HoldJump_LookDown_Toggle",
         callback = function(v) hjLookDown = v end,
@@ -1312,6 +1311,7 @@ do
 
     tab:CreateToggle({
         name = "Hold Jump Only On Move",
+        icon = 135743813499745,
         currentValue = false,
         flag = "HoldJump_MoveOnly_Toggle",
         callback = function(v) hjMoveOnly = v end,
@@ -1319,6 +1319,7 @@ do
 
     tab:CreateSlider({
         name = "Hold Jump Move Hold",
+        icon = 136077598178846,
         range = {0, 5},
         increment = 0.05,
         suffix = "s",
@@ -1395,6 +1396,7 @@ tab:CreateDivider()
 
 tab:CreateToggle({
     name = "Easy Bounce",
+    icon = 116414714090955,
     currentValue = false,
     flag = "EasyBounce_Toggle",
     callback = function(value)
@@ -1404,6 +1406,7 @@ tab:CreateToggle({
 
 tab:CreateSlider({
     name = "Easy Bounce Multiplier",
+    icon = 120597962040224,
     range = {1.08, 3.00},
     increment = 0.01,
     suffix = "x",
@@ -1488,6 +1491,7 @@ tab:CreateDivider()
 
 tab:CreateToggle({
     name = "Hard Bounce",
+    icon = 116414714090955,
     currentValue = false,
     flag = "HardBounce_Toggle",
     callback = function(value)
@@ -1497,6 +1501,7 @@ tab:CreateToggle({
 
 tab:CreateSlider({
     name = "Hard Bounce Multiplier",
+    icon = 120597962040224,
     range = {1.08, 3.00},
     increment = 0.01,
     suffix = "x",
@@ -1589,6 +1594,7 @@ tab:CreateDivider()
 
 tab:CreateToggle({
     name = "Legit Bounce",
+    icon = 116414714090955,
     currentValue = false,
     flag = "LegitBounce_Toggle",
     callback = function(value)
@@ -1735,6 +1741,7 @@ tab:CreateDivider()
 
 tab:CreateToggle({
     name = "Inf Slide",
+    icon = 84806424467602,
     currentValue = false,
     flag = "InfSlide_Toggle",
     callback = function(v)
@@ -1748,6 +1755,7 @@ tab:CreateToggle({
 
 tab:CreateSlider({
     name = "Inf Slide Speed",
+    icon = 79297485010070,
     range = {1, 105},
     increment = 1,
     currentValue = 105,
@@ -1834,6 +1842,7 @@ tab:CreateDivider()
 
 tab:CreateToggle({
     name = "Y Lock",
+    icon = 139863028132428,
     currentValue = false,
     flag = "YLock_Toggle",
     callback = function(value)
@@ -1905,6 +1914,7 @@ do
 
     tab:CreateToggle({
         name = "Frontal Jump",
+        icon = 89569262948298,
         currentValue = false,
         flag = "FrontalJump_Toggle",
         callback = function(v)
@@ -1915,6 +1925,7 @@ do
 
     tab:CreateToggle({
         name = "Frontal Jump Ramp Protection",
+        icon = 111308594268728,
         currentValue = false,
         flag = "FrontalJump_Ramp_Toggle",
         callback = function(v) frontalRamp = v end,
@@ -1922,6 +1933,7 @@ do
 
     tab:CreateSlider({
         name = "Frontal Jump Speed",
+        icon = 79297485010070,
         range = {33.3, 555.5},
         increment = 0.1,
         suffix = "",
@@ -1994,6 +2006,7 @@ do
 
     tab:CreateToggle({
         name = "Backward Jump",
+        icon = 89569262948298,
         currentValue = false,
         flag = "BackwardJump_Toggle",
         callback = function(v)
@@ -2004,6 +2017,7 @@ do
 
     tab:CreateToggle({
         name = "Backward Jump Ramp Protection",
+        icon = 111308594268728,
         currentValue = false,
         flag = "BackwardJump_Ramp_Toggle",
         callback = function(v) backwardRamp = v end,
@@ -2011,6 +2025,7 @@ do
 
     tab:CreateSlider({
         name = "Backward Jump Speed",
+        icon = 79297485010070,
         range = {33.3, 555.5},
         increment = 0.1,
         suffix = "",
@@ -2145,6 +2160,7 @@ tab:CreateDivider({ text = "Speed" })
 
 tab:CreateToggle({
     name = "Speed Changer",
+    icon = 103917802962919,
     currentValue = false,
     flag = "SpeedChanger_Toggle",
     callback = function(value)
@@ -2162,6 +2178,7 @@ tab:CreateToggle({
 
 tab:CreateSlider({
     name = "Speed",
+    icon = 79297485010070,
     range = {33.3, 500.5},
     increment = 0.1,
     suffix = " sps",
@@ -2214,6 +2231,7 @@ do
 
     tab:CreateToggle({
         name = "TP Walk",
+        icon = 104227978260927,
         currentValue = false,
         flag = "TPWalk_Toggle",
         callback = function(v)
@@ -2224,6 +2242,7 @@ do
 
     tab:CreateSlider({
         name = "TP Walk Speed",
+        icon = 79297485010070,
         range = {1500, 10000},
         increment = 1,
         suffix = "",
@@ -2290,6 +2309,7 @@ tab:CreateDivider()
 
 tab:CreateToggle({
     name = "Instant Acceleration",
+    icon = 99352190313338,
     currentValue = false,
     flag = "InstantAccel_Toggle",
     callback = function(value)
@@ -2380,6 +2400,7 @@ do
 
     tab:CreateToggle({
         name = "Friction Changer",
+        icon = 102876083492144,
         currentValue = false,
         flag = "FrictionChanger_Toggle",
         callback = function(v)
@@ -2392,7 +2413,8 @@ do
 
     tab:CreateInput({
         name = "Friction Value",
-        placeholder = "e.g. -105",
+        icon = 120640130652888,
+        placeholder = "e.g. 5",
         currentValue = "5",
         flag = "FrictionChanger_Value",
         callback = function(text)
@@ -2541,6 +2563,7 @@ do
 
 	tab:CreateToggle({
 		name = "Unmovable Emote Bypass",
+        icon = 102876083492144,
 		currentValue = false,
 		callback = function(v)
 			bypassEnabled = v
@@ -2693,6 +2716,7 @@ do
 
 	tab:CreateToggle({
 		name = "Change Emote Speed",
+        icon = 121586615710226,
 		currentValue = false,
 		callback = function(v)
 			speedEnabled = v
@@ -2706,6 +2730,7 @@ do
 
 	tab:CreateSlider({
 		name = "Speed",
+        icon = 120597962040224,
 		range = {0, 16.6},
 		increment = 0.1,
 		suffix = "",
@@ -2854,6 +2879,7 @@ do
 
 	tab:CreateToggle({
 		name = "Emote Walk",
+        icon = 104227978260927,
 		value = false,
 		callback = function(v)
 			walkEnabled = v
@@ -2894,6 +2920,7 @@ do
 
 	VisTab:CreateDropdown({
 		name = "Headless",
+        icom = 85858833083747,
 		options = { "Off", "Only Head", "All" },
 		default = { "Off" },
 		multiSelect = false,
@@ -2919,6 +2946,7 @@ do
 
 	VisTab:CreateDropdown({
 		name = "Korblox",
+        icon = 122114796313973,
 		options = { "Off", "Right Leg", "Left Leg", "Both" },
 		default = { "Off" },
 		multiSelect = false,
@@ -3057,6 +3085,7 @@ do
 
     VisTab:CreateToggle({
         name = "FOV Changer",
+        icon = 97562574851729,
         currentValue = false,
         flag = "FOVChanger_Toggle",
         callback = function(v)
@@ -3071,6 +3100,7 @@ do
 
     VisTab:CreateInput({
         name = "FOV Value",
+        icon = 80363621811850,
         placeholder = "e.g. 120",
         callback = function(text)
             local n = tonumber(text)
@@ -3163,9 +3193,9 @@ local VclTab = window:CreateTab({ name = "Vehicle", icon = 12338080417 })
 -- MAP
 local MapTab = window:CreateTab({ name = "Map", icon = 78731952302365 })
 -- SCRIPT
-local ScriptTab = window:CreateTab({ name = "Script Settings", icon = 13321848320 })
+local ScriptTab = window:CreateTab({ name = "Script Settings", icon = 89152067769809 })
 -- CREDITS
-local CreTab = window:CreateTab({ name = "Credits", icon = 13321848320 })
+local CreTab = window:CreateTab({ name = "Credits", icon = 110016491347992 })
 
 -- ==================
 -- S C R I P T    E N D
