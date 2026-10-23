@@ -813,6 +813,7 @@ END END END END END END END END END END END END END END END END END END END
 -- WINDOW
 local window = Rayfield:CreateWindow({
     name = "RuinWare Client",
+    icon = "125108001144149",
     subtitle = "Evade",
     sidebarLayout = true,
     theme = "Default",
