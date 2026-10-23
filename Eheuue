@@ -311,7 +311,7 @@ E     D     I     T     S
 
 	tab:CreateInput({
 		name = "Suggested Emote",
-                icon = "97183652403912",
+                icon = "74401506935851",
 		placeholder = "e.g. Broom of Doom",
 		callback = function(text)
 			local found = findEmote(text)
