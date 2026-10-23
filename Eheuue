@@ -820,7 +820,7 @@ local window = Rayfield:CreateWindow({
     sidebarLayout = true,
     theme = "Default",
     showIcon = 98691154054966,
-    showName = "/"RuinWare/"",
+    showName = "RuinWare",
 
 })
 
