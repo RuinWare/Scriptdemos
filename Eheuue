@@ -1148,7 +1148,7 @@ do
 
     tab:CreateToggle({
         name = "Legit Jump Only Look Down",
-        icon = 128804949999663
+        icon = 128804949999663,
         currentValue = false,
         flag = "DelayJump_LookDown_Toggle",
         callback = function(v) djLookDown = v end,
