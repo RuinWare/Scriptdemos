@@ -2920,7 +2920,7 @@ do
 
 	VisTab:CreateDropdown({
 		name = "Headless",
-        icom = 85858833083747,
+        icon = 85858833083747,
 		options = { "Off", "Only Head", "All" },
 		default = { "Off" },
 		multiSelect = false,
